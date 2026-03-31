@@ -2,11 +2,64 @@ body {
   font-family: Arial, sans-serif;
   margin: 0;
   padding: 20px;
-  background: #f4f4f4;
+  background: #f8fafc;
+  color: #0f172a;
 }
 
 button {
   padding: 8px 12px;
   margin: 5px;
   cursor: pointer;
+}
+
+@media print {
+  body {
+    background: white !important;
+    color: black !important;
+    padding: 0 !important;
+    margin: 0 !important;
+  }
+
+  button,
+  input,
+  select,
+  textarea {
+    display: none !important;
+  }
+
+  [style*="cursor: pointer"] {
+    display: none !important;
+  }
+
+  [style*="background: #e2e8f0"],
+  [style*="background: #0f172a"],
+  [style*="background: #dc2626"] {
+    box-shadow: none !important;
+  }
+
+  table {
+    width: 100% !important;
+    border-collapse: collapse !important;
+    font-size: 12px !important;
+  }
+
+  th,
+  td {
+    border: 1px solid #cbd5e1 !important;
+    padding: 6px 8px !important;
+    text-align: left !important;
+    vertical-align: top !important;
+  }
+
+  h1,
+  h2,
+  h3 {
+    color: black !important;
+    margin-top: 0 !important;
+  }
+
+  @page {
+    size: auto;
+    margin: 0.5in;
+  }
 }
