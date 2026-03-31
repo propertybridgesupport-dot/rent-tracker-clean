@@ -68,6 +68,14 @@ export default function App() {
     lateFee: '0',
   })
 
+  const [editingPaymentId, setEditingPaymentId] = useState(null)
+  const [editPaymentForm, setEditPaymentForm] = useState({
+    paymentDate: '',
+    amount: '',
+    method: 'Cash',
+    note: '',
+  })
+
   const [editingOverrideId, setEditingOverrideId] = useState(null)
   const [overrideForm, setOverrideForm] = useState({
     tenantOverride: '',
@@ -318,6 +326,65 @@ export default function App() {
     await loadData()
   }
 
+  function startEditingPayment(payment) {
+    setEditingPaymentId(payment.id)
+    setEditPaymentForm({
+      paymentDate: payment.payment_date || '',
+      amount: String(payment.amount || ''),
+      method: payment.method || 'Cash',
+      note: payment.note || '',
+    })
+  }
+
+  function cancelEditingPayment() {
+    setEditingPaymentId(null)
+    setEditPaymentForm({
+      paymentDate: '',
+      amount: '',
+      method: 'Cash',
+      note: '',
+    })
+  }
+
+  async function saveEditedPayment(paymentId) {
+    setMessage('')
+
+    const { error } = await supabase
+      .from('payments')
+      .update({
+        payment_date: editPaymentForm.paymentDate,
+        amount: Number(editPaymentForm.amount || 0),
+        method: editPaymentForm.method,
+        note: editPaymentForm.note || null,
+      })
+      .eq('id', paymentId)
+
+    if (error) {
+      setMessage(error.message)
+      return
+    }
+
+    cancelEditingPayment()
+    await loadData()
+  }
+
+  async function deletePayment(paymentId) {
+    const confirmed = window.confirm('Delete this payment?')
+    if (!confirmed) return
+
+    setMessage('')
+
+    const { error } = await supabase.from('payments').delete().eq('id', paymentId)
+
+    if (error) {
+      setMessage(error.message)
+      return
+    }
+
+    if (editingPaymentId === paymentId) cancelEditingPayment()
+    await loadData()
+  }
+
   function startEditingOverride(propertyId, current) {
     setEditingOverrideId(propertyId)
     setOverrideForm({
@@ -402,15 +469,6 @@ export default function App() {
     return companyPayments.filter((payment) => String(payment.payment_date).startsWith(selectedMonth))
   }, [companyPayments, selectedMonth])
 
-  const monthlyPaymentLookup = useMemo(() => {
-    const map = {}
-    monthlyPayments.forEach((payment) => {
-      if (!map[payment.property_id]) map[payment.property_id] = []
-      map[payment.property_id].push(payment)
-    })
-    return map
-  }, [monthlyPayments])
-
   const ledgerRows = useMemo(() => {
     const selectedIndex = monthOptions.indexOf(selectedMonth)
 
@@ -481,7 +539,6 @@ export default function App() {
 
   const totalProperties = companyProperties.length
   const totalMonthlyRent = ledgerRows.reduce((sum, row) => sum + Number(row.effectiveRent || 0), 0)
-  const totalLateFees = ledgerRows.reduce((sum, row) => sum + Number(row.late_fee || 0), 0)
   const totalCollected = ledgerRows.reduce((sum, row) => sum + Number(row.totalPaid || 0), 0)
   const totalOutstanding = ledgerRows.reduce((sum, row) => sum + Number(row.balanceRemaining || 0), 0)
   const managementFeeCollected = totalCollected * 0.1
@@ -504,10 +561,8 @@ export default function App() {
           <form onSubmit={signIn}>
             <label style={styles.label}>Email</label>
             <input style={styles.input} type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
-
             <label style={styles.label}>Password</label>
             <input style={styles.input} type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
-
             <div style={styles.buttonRow}>
               <button style={styles.primaryButton} type="submit">Sign In</button>
               <button style={styles.secondaryButton} type="button" onClick={signUp}>Create Account</button>
@@ -598,7 +653,6 @@ export default function App() {
           <div style={styles.card}>
             <h2 style={styles.cardTitle}>Owner Summary</h2>
             <p style={styles.smallMuted}>{selectedCompanyName} — {monthLabel(selectedMonth)}</p>
-
             <div style={styles.tableWrap}>
               <table style={styles.table}>
                 <thead>
@@ -627,51 +681,8 @@ export default function App() {
                 </tbody>
               </table>
             </div>
-
             <div style={styles.notesBox}>
               <strong>Notes:</strong> Balances reflect prior unpaid amounts carried forward. Prorated rents and tenant changes are applied where applicable. Management fee is calculated at 10% of collected rent.
-            </div>
-          </div>
-
-          <div style={styles.card}>
-            <h2 style={styles.cardTitle}>Detailed Monthly Ledger</h2>
-            <div style={styles.tableWrap}>
-              <table style={styles.table}>
-                <thead>
-                  <tr>
-                    <th style={styles.th}>Property</th>
-                    <th style={styles.th}>Tenant</th>
-                    <th style={styles.th}>Bal Fwd</th>
-                    <th style={styles.th}>Start Bal</th>
-                    <th style={styles.th}>Rent</th>
-                    <th style={styles.th}>Late Fee</th>
-                    <th style={styles.th}>Total Due</th>
-                    <th style={styles.th}>Collected</th>
-                    <th style={styles.th}>Mgmt Fee</th>
-                    <th style={styles.th}>Balance</th>
-                    <th style={styles.th}>Move In</th>
-                    <th style={styles.th}>Move Out</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {ledgerRows.map((row) => (
-                    <tr key={`ledger-${row.id}`}>
-                      <td style={styles.td}>{row.address}</td>
-                      <td style={styles.td}>{row.effectiveTenant}</td>
-                      <td style={styles.td}>{currency(row.balanceForward)}</td>
-                      <td style={styles.td}>{currency(row.startingBalance)}</td>
-                      <td style={styles.td}>{currency(row.effectiveRent)}</td>
-                      <td style={styles.td}>{currency(row.late_fee)}</td>
-                      <td style={styles.td}>{currency(row.totalDue)}</td>
-                      <td style={styles.td}>{currency(row.totalPaid)}</td>
-                      <td style={styles.td}>{currency(row.managementFee)}</td>
-                      <td style={styles.td}>{currency(row.balanceRemaining)}</td>
-                      <td style={styles.td}>{row.moveInDate || '—'}</td>
-                      <td style={styles.td}>{row.moveOutDate || '—'}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
             </div>
           </div>
         </div>
@@ -780,21 +791,79 @@ export default function App() {
                     <th style={styles.th}>Amount</th>
                     <th style={styles.th}>Method</th>
                     <th style={styles.th}>Note</th>
+                    <th style={styles.th}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {monthlyPayments.length === 0 ? (
-                    <tr><td style={styles.td} colSpan="5">No payments entered for this month.</td></tr>
+                    <tr><td style={styles.td} colSpan="6">No payments entered for this month.</td></tr>
                   ) : (
                     monthlyPayments.map((payment) => {
                       const property = companyProperties.find((p) => p.id === payment.property_id)
                       return (
                         <tr key={payment.id}>
-                          <td style={styles.td}>{payment.payment_date}</td>
+                          <td style={styles.td}>
+                            {editingPaymentId === payment.id ? (
+                              <input
+                                style={styles.tableInput}
+                                type="date"
+                                value={editPaymentForm.paymentDate}
+                                onChange={(e) => setEditPaymentForm({ ...editPaymentForm, paymentDate: e.target.value })}
+                              />
+                            ) : payment.payment_date}
+                          </td>
                           <td style={styles.td}>{property?.address || '—'}</td>
-                          <td style={styles.td}>{currency(payment.amount)}</td>
-                          <td style={styles.td}>{payment.method || '—'}</td>
-                          <td style={styles.td}>{payment.note || '—'}</td>
+                          <td style={styles.td}>
+                            {editingPaymentId === payment.id ? (
+                              <input
+                                style={styles.tableInput}
+                                type="number"
+                                value={editPaymentForm.amount}
+                                onChange={(e) => setEditPaymentForm({ ...editPaymentForm, amount: e.target.value })}
+                              />
+                            ) : currency(payment.amount)}
+                          </td>
+                          <td style={styles.td}>
+                            {editingPaymentId === payment.id ? (
+                              <select
+                                style={styles.tableInput}
+                                value={editPaymentForm.method}
+                                onChange={(e) => setEditPaymentForm({ ...editPaymentForm, method: e.target.value })}
+                              >
+                                <option value="Cash">Cash</option>
+                                <option value="Bank Deposit">Bank Deposit</option>
+                                <option value="Check">Check</option>
+                                <option value="Money Order">Money Order</option>
+                                <option value="Cash App">Cash App</option>
+                                <option value="Zelle">Zelle</option>
+                                <option value="Venmo">Venmo</option>
+                              </select>
+                            ) : (payment.method || '—')}
+                          </td>
+                          <td style={styles.td}>
+                            {editingPaymentId === payment.id ? (
+                              <input
+                                style={styles.tableInput}
+                                value={editPaymentForm.note}
+                                onChange={(e) => setEditPaymentForm({ ...editPaymentForm, note: e.target.value })}
+                              />
+                            ) : (payment.note || '—')}
+                          </td>
+                          <td style={styles.td}>
+                            <div style={styles.actionRow}>
+                              {editingPaymentId === payment.id ? (
+                                <>
+                                  <button style={styles.smallPrimaryButton} type="button" onClick={() => saveEditedPayment(payment.id)}>Save</button>
+                                  <button style={styles.smallSecondaryButton} type="button" onClick={cancelEditingPayment}>Cancel</button>
+                                </>
+                              ) : (
+                                <>
+                                  <button style={styles.smallSecondaryButton} type="button" onClick={() => startEditingPayment(payment)}>Edit</button>
+                                  <button style={styles.smallDangerButton} type="button" onClick={() => deletePayment(payment.id)}>Delete</button>
+                                </>
+                              )}
+                            </div>
+                          </td>
                         </tr>
                       )
                     })
@@ -869,44 +938,32 @@ export default function App() {
                       <td style={styles.td}>
                         {isEditing ? (
                           <input style={styles.tableInput} value={overrideForm.tenantOverride} onChange={(e) => setOverrideForm({ ...overrideForm, tenantOverride: e.target.value })} />
-                        ) : (
-                          current?.tenant_override || '—'
-                        )}
+                        ) : (current?.tenant_override || '—')}
                       </td>
                       <td style={styles.td}>
                         {isEditing ? (
                           <input style={styles.tableInput} type="number" value={overrideForm.overrideRent} onChange={(e) => setOverrideForm({ ...overrideForm, overrideRent: e.target.value })} />
-                        ) : (
-                          current?.override_rent !== null && current?.override_rent !== undefined ? currency(current.override_rent) : '—'
-                        )}
+                        ) : (current?.override_rent !== null && current?.override_rent !== undefined ? currency(current.override_rent) : '—')}
                       </td>
                       <td style={styles.td}>
                         {isEditing ? (
                           <input style={styles.tableInput} type="number" value={overrideForm.startingBalance} onChange={(e) => setOverrideForm({ ...overrideForm, startingBalance: e.target.value })} />
-                        ) : (
-                          current?.starting_balance ? currency(current.starting_balance) : '—'
-                        )}
+                        ) : (current?.starting_balance ? currency(current.starting_balance) : '—')}
                       </td>
                       <td style={styles.td}>
                         {isEditing ? (
                           <input style={styles.tableInput} type="date" value={overrideForm.moveInDate} onChange={(e) => setOverrideForm({ ...overrideForm, moveInDate: e.target.value })} />
-                        ) : (
-                          current?.move_in_date || '—'
-                        )}
+                        ) : (current?.move_in_date || '—')}
                       </td>
                       <td style={styles.td}>
                         {isEditing ? (
                           <input style={styles.tableInput} type="date" value={overrideForm.moveOutDate} onChange={(e) => setOverrideForm({ ...overrideForm, moveOutDate: e.target.value })} />
-                        ) : (
-                          current?.move_out_date || '—'
-                        )}
+                        ) : (current?.move_out_date || '—')}
                       </td>
                       <td style={styles.td}>
                         {isEditing ? (
                           <input style={styles.tableInput} value={overrideForm.notes} onChange={(e) => setOverrideForm({ ...overrideForm, notes: e.target.value })} />
-                        ) : (
-                          current?.notes || '—'
-                        )}
+                        ) : (current?.notes || '—')}
                       </td>
                       <td style={styles.td}>
                         <div style={styles.actionRow}>
