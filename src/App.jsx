@@ -32,6 +32,7 @@ export default function App() {
 
   const [companies, setCompanies] = useState([])
   const [properties, setProperties] = useState([])
+  const [payments, setPayments] = useState([])
   const [selectedCompanyId, setSelectedCompanyId] = useState('')
   const [selectedMonth, setSelectedMonth] = useState('2026-03')
 
@@ -46,6 +47,14 @@ export default function App() {
     monthlyRent: '',
     dueDay: '1',
     lateFee: '0',
+  })
+
+  const [paymentForm, setPaymentForm] = useState({
+    propertyId: '',
+    paymentDate: '',
+    amount: '',
+    method: 'Cash',
+    note: '',
   })
 
   const [editingPropertyId, setEditingPropertyId] = useState(null)
@@ -82,20 +91,27 @@ export default function App() {
     setLoading(true)
     setMessage('')
 
-    const [{ data: companyData, error: companyError }, { data: propertyData, error: propertyError }] =
-      await Promise.all([
-        supabase.from('companies').select('*').order('created_at', { ascending: true }),
-        supabase.from('properties').select('*').order('created_at', { ascending: true }),
-      ])
+    const [
+      { data: companyData, error: companyError },
+      { data: propertyData, error: propertyError },
+      { data: paymentData, error: paymentError },
+    ] = await Promise.all([
+      supabase.from('companies').select('*').order('created_at', { ascending: true }),
+      supabase.from('properties').select('*').order('created_at', { ascending: true }),
+      supabase.from('payments').select('*').order('payment_date', { ascending: false }),
+    ])
 
     if (companyError) setMessage(companyError.message)
     if (propertyError) setMessage(propertyError.message)
+    if (paymentError) setMessage(paymentError.message)
 
     const safeCompanies = companyData || []
     const safeProperties = propertyData || []
+    const safePayments = paymentData || []
 
     setCompanies(safeCompanies)
     setProperties(safeProperties)
+    setPayments(safePayments)
 
     if (safeCompanies.length > 0) {
       const stillExists = safeCompanies.find((c) => c.id === selectedCompanyId)
@@ -207,6 +223,41 @@ export default function App() {
     await loadData()
   }
 
+  async function addPayment(e) {
+    e.preventDefault()
+    setMessage('')
+
+    if (!paymentForm.propertyId) {
+      setMessage('Please select a property.')
+      return
+    }
+
+    const payload = {
+      property_id: paymentForm.propertyId,
+      payment_date: paymentForm.paymentDate,
+      amount: Number(paymentForm.amount || 0),
+      method: paymentForm.method,
+      note: paymentForm.note || null,
+    }
+
+    const { error } = await supabase.from('payments').insert(payload)
+
+    if (error) {
+      setMessage(error.message)
+      return
+    }
+
+    setPaymentForm({
+      propertyId: '',
+      paymentDate: '',
+      amount: '',
+      method: 'Cash',
+      note: '',
+    })
+
+    await loadData()
+  }
+
   function startEditingProperty(property) {
     setEditingPropertyId(property.id)
     setEditPropertyForm({
@@ -286,10 +337,48 @@ export default function App() {
     return properties.filter((property) => property.company_id === selectedCompanyId)
   }, [properties, selectedCompanyId])
 
+  const companyPropertyIds = useMemo(() => {
+    return companyProperties.map((property) => property.id)
+  }, [companyProperties])
+
+  const companyPayments = useMemo(() => {
+    return payments.filter((payment) => companyPropertyIds.includes(payment.property_id))
+  }, [payments, companyPropertyIds])
+
+  const monthlyPayments = useMemo(() => {
+    return companyPayments.filter((payment) => String(payment.payment_date).startsWith(selectedMonth))
+  }, [companyPayments, selectedMonth])
+
+  const paymentLookup = useMemo(() => {
+    const map = {}
+    monthlyPayments.forEach((payment) => {
+      if (!map[payment.property_id]) map[payment.property_id] = []
+      map[payment.property_id].push(payment)
+    })
+    return map
+  }, [monthlyPayments])
+
+  const propertyLedgerRows = useMemo(() => {
+    return companyProperties.map((property) => {
+      const propertyPayments = paymentLookup[property.id] || []
+      const totalPaid = propertyPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0)
+      const totalDue = Number(property.monthly_rent || 0) + Number(property.late_fee || 0)
+      const balanceRemaining = totalDue - totalPaid
+      return {
+        ...property,
+        totalPaid,
+        totalDue,
+        balanceRemaining,
+      }
+    })
+  }, [companyProperties, paymentLookup])
+
   const totalMonthlyRent = companyProperties.reduce((sum, property) => sum + Number(property.monthly_rent || 0), 0)
   const totalLateFees = companyProperties.reduce((sum, property) => sum + Number(property.late_fee || 0), 0)
   const totalProperties = companyProperties.length
-  const managementFeeEstimate = totalMonthlyRent * 0.1
+  const totalCollected = monthlyPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0)
+  const managementFeeCollected = totalCollected * 0.1
+  const totalOutstanding = propertyLedgerRows.reduce((sum, row) => sum + Number(row.balanceRemaining || 0), 0)
 
   if (loading) {
     return (
@@ -340,7 +429,7 @@ export default function App() {
       <div style={styles.header}>
         <div>
           <h1 style={styles.title}>Rent Tracker</h1>
-          <p style={styles.subtitle}>Multi-owner dashboard for properties, tenants, and monthly reporting.</p>
+          <p style={styles.subtitle}>Multi-owner dashboard for properties, tenants, payments, and monthly reporting.</p>
         </div>
 
         <div style={styles.headerActions}>
@@ -419,13 +508,18 @@ export default function App() {
         </div>
 
         <div style={styles.kpiCard}>
-          <div style={styles.kpiLabel}>Late Fees</div>
-          <div style={styles.kpiValue}>{currency(totalLateFees)}</div>
+          <div style={styles.kpiLabel}>Collected</div>
+          <div style={styles.kpiValue}>{currency(totalCollected)}</div>
+        </div>
+
+        <div style={styles.kpiCard}>
+          <div style={styles.kpiLabel}>Outstanding</div>
+          <div style={styles.kpiValue}>{currency(totalOutstanding)}</div>
         </div>
 
         <div style={styles.kpiCard}>
           <div style={styles.kpiLabel}>10% Mgmt Fee</div>
-          <div style={styles.kpiValue}>{currency(managementFeeEstimate)}</div>
+          <div style={styles.kpiValue}>{currency(managementFeeCollected)}</div>
         </div>
       </div>
 
@@ -434,7 +528,7 @@ export default function App() {
       {activeTab === 'dashboard' && (
         <div style={styles.sectionGrid}>
           <div style={styles.card}>
-            <h2 style={styles.cardTitle}>Owner Summary</h2>
+            <h2 style={styles.cardTitle}>Monthly Ledger</h2>
             <p style={styles.smallMuted}>
               {selectedCompanyName} — {monthLabel(selectedMonth)}
             </p>
@@ -445,22 +539,28 @@ export default function App() {
                   <tr>
                     <th style={styles.th}>Property</th>
                     <th style={styles.th}>Tenant</th>
-                    <th style={styles.th}>Monthly Rent</th>
+                    <th style={styles.th}>Rent</th>
                     <th style={styles.th}>Late Fee</th>
+                    <th style={styles.th}>Total Due</th>
+                    <th style={styles.th}>Collected</th>
+                    <th style={styles.th}>Balance</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {companyProperties.length === 0 ? (
+                  {propertyLedgerRows.length === 0 ? (
                     <tr>
-                      <td style={styles.td} colSpan="4">No properties yet for this company.</td>
+                      <td style={styles.td} colSpan="7">No properties yet for this company.</td>
                     </tr>
                   ) : (
-                    companyProperties.map((property) => (
-                      <tr key={property.id}>
-                        <td style={styles.td}>{property.address}</td>
-                        <td style={styles.td}>{property.tenant}</td>
-                        <td style={styles.td}>{currency(property.monthly_rent)}</td>
-                        <td style={styles.td}>{currency(property.late_fee)}</td>
+                    propertyLedgerRows.map((row) => (
+                      <tr key={row.id}>
+                        <td style={styles.td}>{row.address}</td>
+                        <td style={styles.td}>{row.tenant}</td>
+                        <td style={styles.td}>{currency(row.monthly_rent)}</td>
+                        <td style={styles.td}>{currency(row.late_fee)}</td>
+                        <td style={styles.td}>{currency(row.totalDue)}</td>
+                        <td style={styles.td}>{currency(row.totalPaid)}</td>
+                        <td style={styles.td}>{currency(row.balanceRemaining)}</td>
                       </tr>
                     ))
                   )}
@@ -670,11 +770,106 @@ export default function App() {
       )}
 
       {activeTab === 'payments' && (
-        <div style={styles.card}>
-          <h2 style={styles.cardTitle}>Payments</h2>
-          <p style={styles.smallMuted}>
-            This is the next step. Once this dashboard is live, we’ll add payment entry, balances forward, and the monthly report.
-          </p>
+        <div style={styles.sectionGrid}>
+          <div style={styles.card}>
+            <h2 style={styles.cardTitle}>Payments This Month</h2>
+            <p style={styles.smallMuted}>
+              {selectedCompanyName} — {monthLabel(selectedMonth)}
+            </p>
+
+            <div style={styles.tableWrap}>
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th style={styles.th}>Date</th>
+                    <th style={styles.th}>Property</th>
+                    <th style={styles.th}>Amount</th>
+                    <th style={styles.th}>Method</th>
+                    <th style={styles.th}>Note</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {monthlyPayments.length === 0 ? (
+                    <tr>
+                      <td style={styles.td} colSpan="5">No payments entered for this month.</td>
+                    </tr>
+                  ) : (
+                    monthlyPayments.map((payment) => {
+                      const property = companyProperties.find((p) => p.id === payment.property_id)
+                      return (
+                        <tr key={payment.id}>
+                          <td style={styles.td}>{payment.payment_date}</td>
+                          <td style={styles.td}>{property?.address || '—'}</td>
+                          <td style={styles.td}>{currency(payment.amount)}</td>
+                          <td style={styles.td}>{payment.method || '—'}</td>
+                          <td style={styles.td}>{payment.note || '—'}</td>
+                        </tr>
+                      )
+                    })
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div style={styles.card}>
+            <h2 style={styles.cardTitle}>Add Payment</h2>
+            <form onSubmit={addPayment}>
+              <label style={styles.label}>Property</label>
+              <select
+                style={styles.input}
+                value={paymentForm.propertyId}
+                onChange={(e) => setPaymentForm({ ...paymentForm, propertyId: e.target.value })}
+              >
+                <option value="">Select property</option>
+                {companyProperties.map((property) => (
+                  <option key={property.id} value={property.id}>
+                    {property.address}
+                  </option>
+                ))}
+              </select>
+
+              <label style={styles.label}>Payment Date</label>
+              <input
+                style={styles.input}
+                type="date"
+                value={paymentForm.paymentDate}
+                onChange={(e) => setPaymentForm({ ...paymentForm, paymentDate: e.target.value })}
+              />
+
+              <label style={styles.label}>Amount</label>
+              <input
+                style={styles.input}
+                type="number"
+                value={paymentForm.amount}
+                onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })}
+              />
+
+              <label style={styles.label}>Method</label>
+              <select
+                style={styles.input}
+                value={paymentForm.method}
+                onChange={(e) => setPaymentForm({ ...paymentForm, method: e.target.value })}
+              >
+                <option value="Cash">Cash</option>
+                <option value="Bank Deposit">Bank Deposit</option>
+                <option value="Check">Check</option>
+                <option value="Money Order">Money Order</option>
+                <option value="Cash App">Cash App</option>
+                <option value="Zelle">Zelle</option>
+                <option value="Venmo">Venmo</option>
+              </select>
+
+              <label style={styles.label}>Note</label>
+              <input
+                style={styles.input}
+                value={paymentForm.note}
+                onChange={(e) => setPaymentForm({ ...paymentForm, note: e.target.value })}
+              />
+
+              <button style={styles.primaryButton} type="submit">Save Payment</button>
+            </form>
+          </div>
         </div>
       )}
     </div>
