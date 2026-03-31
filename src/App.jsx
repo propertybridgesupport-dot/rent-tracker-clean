@@ -21,6 +21,13 @@ function monthLabel(month) {
   })
 }
 
+function formatDate(value) {
+  if (!value) return '—'
+  const d = new Date(value)
+  if (Number.isNaN(d.getTime())) return value
+  return d.toLocaleDateString('en-US')
+}
+
 export default function App() {
   const [session, setSession] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -37,6 +44,7 @@ export default function App() {
 
   const [selectedCompanyId, setSelectedCompanyId] = useState('')
   const [selectedMonth, setSelectedMonth] = useState('2026-03')
+  const [selectedReportPropertyId, setSelectedReportPropertyId] = useState('')
 
   const [companyForm, setCompanyForm] = useState({
     companyName: '',
@@ -449,11 +457,23 @@ export default function App() {
   }, [companies, selectedCompanyId])
 
   const selectedCompanyName = selectedCompany?.company_name || selectedCompany?.name || 'No company selected'
+  const selectedCompanyEmail = selectedCompany?.owner_email || ''
 
   const companyProperties = useMemo(() => {
     if (!selectedCompanyId) return []
     return properties.filter((property) => property.company_id === selectedCompanyId)
   }, [properties, selectedCompanyId])
+
+  useEffect(() => {
+    if (companyProperties.length > 0) {
+      const exists = companyProperties.find((p) => p.id === selectedReportPropertyId)
+      if (!exists) {
+        setSelectedReportPropertyId(companyProperties[0].id)
+      }
+    } else {
+      setSelectedReportPropertyId('')
+    }
+  }, [companyProperties, selectedReportPropertyId])
 
   const companyPropertyIds = useMemo(() => companyProperties.map((property) => property.id), [companyProperties])
 
@@ -537,11 +557,100 @@ export default function App() {
     })
   }, [companyProperties, companyOverrides, companyPayments, selectedMonth])
 
+  const selectedReportProperty = companyProperties.find((p) => p.id === selectedReportPropertyId) || null
+
+  const selectedPropertyStatementRows = useMemo(() => {
+    if (!selectedReportProperty) return []
+
+    const statement = []
+
+    monthOptions.forEach((month) => {
+      const override = companyOverrides.find(
+        (item) => item.property_id === selectedReportProperty.id && item.month_key === month
+      )
+
+      const propertyPayments = companyPayments
+        .filter((payment) => payment.property_id === selectedReportProperty.id && String(payment.payment_date).startsWith(month))
+        .sort((a, b) => String(a.payment_date).localeCompare(String(b.payment_date)))
+
+      const effectiveRent =
+        override?.override_rent !== null && override?.override_rent !== undefined
+          ? Number(override.override_rent)
+          : Number(selectedReportProperty.monthly_rent || 0)
+
+      const chargeAmount = effectiveRent + Number(selectedReportProperty.late_fee || 0)
+
+      statement.push({
+        type: 'charge',
+        month,
+        date: `${month}-01`,
+        description: `Monthly charge`,
+        amount: chargeAmount,
+      })
+
+      propertyPayments.forEach((payment) => {
+        statement.push({
+          type: 'payment',
+          month,
+          date: payment.payment_date,
+          description: `Payment - ${payment.method || 'Method not listed'}`,
+          amount: -Number(payment.amount || 0),
+          note: payment.note || '',
+        })
+      })
+    })
+
+    statement.sort((a, b) => String(a.date).localeCompare(String(b.date)))
+
+    let runningBalance = 0
+
+    return statement.map((item) => {
+      runningBalance += Number(item.amount || 0)
+      return {
+        ...item,
+        runningBalance,
+      }
+    })
+  }, [selectedReportProperty, companyOverrides, companyPayments])
+
   const totalProperties = companyProperties.length
   const totalMonthlyRent = ledgerRows.reduce((sum, row) => sum + Number(row.effectiveRent || 0), 0)
   const totalCollected = ledgerRows.reduce((sum, row) => sum + Number(row.totalPaid || 0), 0)
   const totalOutstanding = ledgerRows.reduce((sum, row) => sum + Number(row.balanceRemaining || 0), 0)
   const managementFeeCollected = totalCollected * 0.1
+
+  function printOwnerReport() {
+    window.print()
+  }
+
+  function emailOwnerReport() {
+    if (!selectedCompanyEmail) {
+      setMessage('This company does not have an owner email saved yet.')
+      return
+    }
+
+    const subject = `${selectedCompanyName} - Owner Report - ${monthLabel(selectedMonth)}`
+    const lines = [
+      `Company: ${selectedCompanyName}`,
+      `Month: ${monthLabel(selectedMonth)}`,
+      '',
+      `Properties: ${totalProperties}`,
+      `Monthly Rent: ${currency(totalMonthlyRent)}`,
+      `Collected: ${currency(totalCollected)}`,
+      `Outstanding: ${currency(totalOutstanding)}`,
+      `10% Management Fee: ${currency(managementFeeCollected)}`,
+      '',
+      'Owner Summary:',
+      ...ledgerRows.map((row) =>
+        `${row.address} | ${row.effectiveTenant} | Rent: ${currency(row.effectiveRent)} | Collected: ${currency(row.totalPaid)} | Balance: ${currency(row.balanceRemaining)}`
+      ),
+      '',
+      'Notes:',
+      'Balances reflect prior unpaid amounts carried forward. Prorated rents and tenant changes are applied where applicable. Management fee is calculated at 10% of collected rent.',
+    ]
+
+    window.location.href = `mailto:${selectedCompanyEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(lines.join('\n'))}`
+  }
 
   if (loading) {
     return (
@@ -584,7 +693,7 @@ export default function App() {
         </div>
 
         <div style={styles.headerActions}>
-          <button style={styles.secondaryButton} onClick={() => window.print()}>Print Report</button>
+          <button style={styles.secondaryButton} onClick={printOwnerReport}>Print Report</button>
           <button style={styles.secondaryButton} onClick={signOut}>Sign Out</button>
         </div>
       </div>
@@ -617,6 +726,7 @@ export default function App() {
         <button style={activeTab === 'properties' ? styles.activeTabButton : styles.tabButton} onClick={() => setActiveTab('properties')}>Properties</button>
         <button style={activeTab === 'payments' ? styles.activeTabButton : styles.tabButton} onClick={() => setActiveTab('payments')}>Payments</button>
         <button style={activeTab === 'overrides' ? styles.activeTabButton : styles.tabButton} onClick={() => setActiveTab('overrides')}>Overrides</button>
+        <button style={activeTab === 'reports' ? styles.activeTabButton : styles.tabButton} onClick={() => setActiveTab('reports')}>Reports</button>
       </div>
 
       <div style={styles.cardGrid}>
@@ -985,6 +1095,115 @@ export default function App() {
           </div>
         </div>
       )}
+
+      {activeTab === 'reports' && (
+        <div style={styles.sectionGridSingle}>
+          <div style={styles.card}>
+            <div style={styles.reportHeaderRow}>
+              <div>
+                <h2 style={styles.cardTitle}>Owner Monthly Report</h2>
+                <p style={styles.smallMuted}>{selectedCompanyName} — {monthLabel(selectedMonth)}</p>
+              </div>
+              <div style={styles.actionRow}>
+                <button style={styles.smallSecondaryButton} type="button" onClick={printOwnerReport}>Print Owner Report</button>
+                <button style={styles.smallPrimaryButton} type="button" onClick={emailOwnerReport}>Email Owner Report</button>
+              </div>
+            </div>
+
+            <div style={styles.tableWrap}>
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th style={styles.th}>Property</th>
+                    <th style={styles.th}>Tenant</th>
+                    <th style={styles.th}>Rent</th>
+                    <th style={styles.th}>Collected</th>
+                    <th style={styles.th}>Balance</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ledgerRows.length === 0 ? (
+                    <tr><td style={styles.td} colSpan="5">No properties yet for this company.</td></tr>
+                  ) : (
+                    ledgerRows.map((row) => (
+                      <tr key={`report-${row.id}`}>
+                        <td style={styles.td}>{row.address}</td>
+                        <td style={styles.td}>{row.effectiveTenant}</td>
+                        <td style={styles.td}>{currency(row.effectiveRent)}</td>
+                        <td style={styles.td}>{currency(row.totalPaid)}</td>
+                        <td style={styles.td}>{currency(row.balanceRemaining)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            <div style={styles.reportTotals}>
+              <div><strong>Monthly Rent:</strong> {currency(totalMonthlyRent)}</div>
+              <div><strong>Collected:</strong> {currency(totalCollected)}</div>
+              <div><strong>Outstanding:</strong> {currency(totalOutstanding)}</div>
+              <div><strong>10% Management Fee:</strong> {currency(managementFeeCollected)}</div>
+            </div>
+
+            <div style={styles.notesBox}>
+              <strong>Notes:</strong> Balances reflect prior unpaid amounts carried forward. Prorated rents and tenant changes are applied where applicable. Management fee is calculated at 10% of collected rent.
+            </div>
+          </div>
+
+          <div style={styles.card}>
+            <h2 style={styles.cardTitle}>Property Statement</h2>
+
+            <label style={styles.label}>Property</label>
+            <select
+              style={styles.input}
+              value={selectedReportPropertyId}
+              onChange={(e) => setSelectedReportPropertyId(e.target.value)}
+            >
+              <option value="">Select property</option>
+              {companyProperties.map((property) => (
+                <option key={property.id} value={property.id}>
+                  {property.address}
+                </option>
+              ))}
+            </select>
+
+            <div style={styles.tableWrap}>
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th style={styles.th}>Date</th>
+                    <th style={styles.th}>Type</th>
+                    <th style={styles.th}>Description</th>
+                    <th style={styles.th}>Amount</th>
+                    <th style={styles.th}>Running Balance</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {!selectedReportProperty ? (
+                    <tr><td style={styles.td} colSpan="5">Select a property to view its statement.</td></tr>
+                  ) : selectedPropertyStatementRows.length === 0 ? (
+                    <tr><td style={styles.td} colSpan="5">No statement activity yet.</td></tr>
+                  ) : (
+                    selectedPropertyStatementRows.map((row, index) => (
+                      <tr key={`${row.type}-${row.date}-${index}`}>
+                        <td style={styles.td}>{formatDate(row.date)}</td>
+                        <td style={styles.td}>{row.type === 'charge' ? 'Charge' : 'Payment'}</td>
+                        <td style={styles.td}>
+                          {row.description}
+                          {row.note ? <div style={styles.smallMuted}>Note: {row.note}</div> : null}
+                        </td>
+                        <td style={styles.td}>{row.type === 'payment' ? `(${currency(Math.abs(row.amount))})` : currency(row.amount)}</td>
+                        <td style={styles.td}>{currency(row.runningBalance)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -1024,6 +1243,8 @@ const styles = {
   smallDangerButton: { background: '#dc2626', color: '#fff', border: 'none', borderRadius: '10px', padding: '8px 12px', cursor: 'pointer', fontWeight: 600, fontSize: '13px' },
   buttonRow: { display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '14px' },
   actionRow: { display: 'flex', gap: '8px', flexWrap: 'wrap' },
+  reportHeaderRow: { display: 'flex', justifyContent: 'space-between', gap: '16px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '12px' },
+  reportTotals: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px', marginTop: '16px', fontSize: '14px' },
   tableWrap: { overflowX: 'auto' },
   table: { width: '100%', borderCollapse: 'collapse' },
   th: { textAlign: 'left', padding: '10px 8px', borderBottom: '1px solid #e2e8f0', fontSize: '13px', color: '#475569', whiteSpace: 'nowrap' },
