@@ -48,6 +48,15 @@ export default function App() {
     lateFee: '0',
   })
 
+  const [editingPropertyId, setEditingPropertyId] = useState(null)
+  const [editPropertyForm, setEditPropertyForm] = useState({
+    address: '',
+    tenant: '',
+    monthlyRent: '',
+    dueDay: '1',
+    lateFee: '0',
+  })
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session ?? null)
@@ -79,13 +88,8 @@ export default function App() {
         supabase.from('properties').select('*').order('created_at', { ascending: true }),
       ])
 
-    if (companyError) {
-      setMessage(companyError.message)
-    }
-
-    if (propertyError) {
-      setMessage(propertyError.message)
-    }
+    if (companyError) setMessage(companyError.message)
+    if (propertyError) setMessage(propertyError.message)
 
     const safeCompanies = companyData || []
     const safeProperties = propertyData || []
@@ -95,9 +99,7 @@ export default function App() {
 
     if (safeCompanies.length > 0) {
       const stillExists = safeCompanies.find((c) => c.id === selectedCompanyId)
-      if (!stillExists) {
-        setSelectedCompanyId(safeCompanies[0].id)
-      }
+      if (!stillExists) setSelectedCompanyId(safeCompanies[0].id)
     } else {
       setSelectedCompanyId('')
     }
@@ -114,9 +116,7 @@ export default function App() {
       password,
     })
 
-    if (error) {
-      setMessage(error.message)
-    }
+    if (error) setMessage(error.message)
   }
 
   async function signUp(e) {
@@ -207,6 +207,74 @@ export default function App() {
     await loadData()
   }
 
+  function startEditingProperty(property) {
+    setEditingPropertyId(property.id)
+    setEditPropertyForm({
+      address: property.address || '',
+      tenant: property.tenant || '',
+      monthlyRent: String(property.monthly_rent || ''),
+      dueDay: String(property.due_day || 1),
+      lateFee: String(property.late_fee || 0),
+    })
+  }
+
+  function cancelEditingProperty() {
+    setEditingPropertyId(null)
+    setEditPropertyForm({
+      address: '',
+      tenant: '',
+      monthlyRent: '',
+      dueDay: '1',
+      lateFee: '0',
+    })
+  }
+
+  async function saveEditedProperty(propertyId) {
+    setMessage('')
+
+    const { error } = await supabase
+      .from('properties')
+      .update({
+        address: editPropertyForm.address,
+        tenant: editPropertyForm.tenant,
+        monthly_rent: Number(editPropertyForm.monthlyRent || 0),
+        due_day: Number(editPropertyForm.dueDay || 1),
+        late_fee: Number(editPropertyForm.lateFee || 0),
+      })
+      .eq('id', propertyId)
+
+    if (error) {
+      setMessage(error.message)
+      return
+    }
+
+    cancelEditingProperty()
+    await loadData()
+  }
+
+  async function deleteProperty(propertyId, address) {
+    const confirmed = window.confirm(`Delete property: ${address}?`)
+    if (!confirmed) return
+
+    setMessage('')
+
+    const { error } = await supabase
+      .from('properties')
+      .delete()
+      .eq('id', propertyId)
+
+    if (error) {
+      setMessage(error.message)
+      return
+    }
+
+    if (editingPropertyId === propertyId) {
+      cancelEditingProperty()
+    }
+
+    await loadData()
+  }
+
   const selectedCompany = useMemo(() => {
     return companies.find((company) => company.id === selectedCompanyId) || null
   }, [companies, selectedCompanyId])
@@ -236,7 +304,7 @@ export default function App() {
       <div style={styles.authPage}>
         <div style={styles.authCard}>
           <h1 style={styles.authTitle}>Rent Tracker</h1>
-          <p style={styles.authSubtitle}>Sign in to manage companies, properties, and reports.</p>
+          <p style={styles.authSubtitle}>Sign in to manage companies, properties, and monthly reporting.</p>
 
           <form onSubmit={signIn}>
             <label style={styles.label}>Email</label>
@@ -438,21 +506,114 @@ export default function App() {
                     <th style={styles.th}>Rent</th>
                     <th style={styles.th}>Due Day</th>
                     <th style={styles.th}>Late Fee</th>
+                    <th style={styles.th}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {companyProperties.length === 0 ? (
                     <tr>
-                      <td style={styles.td} colSpan="5">No properties yet for this company.</td>
+                      <td style={styles.td} colSpan="6">No properties yet for this company.</td>
                     </tr>
                   ) : (
                     companyProperties.map((property) => (
                       <tr key={property.id}>
-                        <td style={styles.td}>{property.address}</td>
-                        <td style={styles.td}>{property.tenant}</td>
-                        <td style={styles.td}>{currency(property.monthly_rent)}</td>
-                        <td style={styles.td}>{property.due_day}</td>
-                        <td style={styles.td}>{currency(property.late_fee)}</td>
+                        <td style={styles.td}>
+                          {editingPropertyId === property.id ? (
+                            <input
+                              style={styles.tableInput}
+                              value={editPropertyForm.address}
+                              onChange={(e) => setEditPropertyForm({ ...editPropertyForm, address: e.target.value })}
+                            />
+                          ) : (
+                            property.address
+                          )}
+                        </td>
+                        <td style={styles.td}>
+                          {editingPropertyId === property.id ? (
+                            <input
+                              style={styles.tableInput}
+                              value={editPropertyForm.tenant}
+                              onChange={(e) => setEditPropertyForm({ ...editPropertyForm, tenant: e.target.value })}
+                            />
+                          ) : (
+                            property.tenant
+                          )}
+                        </td>
+                        <td style={styles.td}>
+                          {editingPropertyId === property.id ? (
+                            <input
+                              style={styles.tableInput}
+                              type="number"
+                              value={editPropertyForm.monthlyRent}
+                              onChange={(e) => setEditPropertyForm({ ...editPropertyForm, monthlyRent: e.target.value })}
+                            />
+                          ) : (
+                            currency(property.monthly_rent)
+                          )}
+                        </td>
+                        <td style={styles.td}>
+                          {editingPropertyId === property.id ? (
+                            <input
+                              style={styles.tableInput}
+                              type="number"
+                              value={editPropertyForm.dueDay}
+                              onChange={(e) => setEditPropertyForm({ ...editPropertyForm, dueDay: e.target.value })}
+                            />
+                          ) : (
+                            property.due_day
+                          )}
+                        </td>
+                        <td style={styles.td}>
+                          {editingPropertyId === property.id ? (
+                            <input
+                              style={styles.tableInput}
+                              type="number"
+                              value={editPropertyForm.lateFee}
+                              onChange={(e) => setEditPropertyForm({ ...editPropertyForm, lateFee: e.target.value })}
+                            />
+                          ) : (
+                            currency(property.late_fee)
+                          )}
+                        </td>
+                        <td style={styles.td}>
+                          <div style={styles.actionRow}>
+                            {editingPropertyId === property.id ? (
+                              <>
+                                <button
+                                  style={styles.smallPrimaryButton}
+                                  type="button"
+                                  onClick={() => saveEditedProperty(property.id)}
+                                >
+                                  Save
+                                </button>
+                                <button
+                                  style={styles.smallSecondaryButton}
+                                  type="button"
+                                  onClick={cancelEditingProperty}
+                                >
+                                  Cancel
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <button
+                                  style={styles.smallSecondaryButton}
+                                  type="button"
+                                  onClick={() => startEditingProperty(property)}
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  style={styles.smallDangerButton}
+                                  type="button"
+                                  onClick={() => deleteProperty(property.id, property.address)}
+                                >
+                                  Delete
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </td>
                       </tr>
                     ))
                   )}
@@ -684,6 +845,15 @@ const styles = {
     background: '#fff',
     fontSize: '14px',
   },
+  tableInput: {
+    width: '100%',
+    boxSizing: 'border-box',
+    padding: '8px 10px',
+    borderRadius: '10px',
+    border: '1px solid #cbd5e1',
+    background: '#fff',
+    fontSize: '14px',
+  },
   primaryButton: {
     marginTop: '16px',
     background: '#0f172a',
@@ -703,11 +873,46 @@ const styles = {
     cursor: 'pointer',
     fontWeight: 600,
   },
+  smallPrimaryButton: {
+    background: '#0f172a',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '10px',
+    padding: '8px 12px',
+    cursor: 'pointer',
+    fontWeight: 600,
+    fontSize: '13px',
+  },
+  smallSecondaryButton: {
+    background: '#e2e8f0',
+    color: '#0f172a',
+    border: 'none',
+    borderRadius: '10px',
+    padding: '8px 12px',
+    cursor: 'pointer',
+    fontWeight: 600,
+    fontSize: '13px',
+  },
+  smallDangerButton: {
+    background: '#dc2626',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '10px',
+    padding: '8px 12px',
+    cursor: 'pointer',
+    fontWeight: 600,
+    fontSize: '13px',
+  },
   buttonRow: {
     display: 'flex',
     gap: '10px',
     flexWrap: 'wrap',
     marginTop: '14px',
+  },
+  actionRow: {
+    display: 'flex',
+    gap: '8px',
+    flexWrap: 'wrap',
   },
   tableWrap: {
     overflowX: 'auto',
@@ -728,6 +933,7 @@ const styles = {
     padding: '12px 8px',
     borderBottom: '1px solid #e2e8f0',
     fontSize: '14px',
+    verticalAlign: 'top',
   },
   smallMuted: {
     color: '#64748b',
