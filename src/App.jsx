@@ -33,6 +33,8 @@ export default function App() {
   const [companies, setCompanies] = useState([])
   const [properties, setProperties] = useState([])
   const [payments, setPayments] = useState([])
+  const [monthlyOverrides, setMonthlyOverrides] = useState([])
+
   const [selectedCompanyId, setSelectedCompanyId] = useState('')
   const [selectedMonth, setSelectedMonth] = useState('2026-03')
 
@@ -66,6 +68,16 @@ export default function App() {
     lateFee: '0',
   })
 
+  const [editingOverrideId, setEditingOverrideId] = useState(null)
+  const [overrideForm, setOverrideForm] = useState({
+    tenantOverride: '',
+    overrideRent: '',
+    moveInDate: '',
+    moveOutDate: '',
+    startingBalance: '',
+    notes: '',
+  })
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session ?? null)
@@ -82,9 +94,7 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    if (session) {
-      loadData()
-    }
+    if (session) loadData()
   }, [session])
 
   async function loadData() {
@@ -95,23 +105,28 @@ export default function App() {
       { data: companyData, error: companyError },
       { data: propertyData, error: propertyError },
       { data: paymentData, error: paymentError },
+      { data: overrideData, error: overrideError },
     ] = await Promise.all([
       supabase.from('companies').select('*').order('created_at', { ascending: true }),
       supabase.from('properties').select('*').order('created_at', { ascending: true }),
       supabase.from('payments').select('*').order('payment_date', { ascending: false }),
+      supabase.from('monthly_overrides').select('*').order('month_key', { ascending: true }),
     ])
 
     if (companyError) setMessage(companyError.message)
     if (propertyError) setMessage(propertyError.message)
     if (paymentError) setMessage(paymentError.message)
+    if (overrideError) setMessage(overrideError.message)
 
     const safeCompanies = companyData || []
     const safeProperties = propertyData || []
     const safePayments = paymentData || []
+    const safeOverrides = overrideData || []
 
     setCompanies(safeCompanies)
     setProperties(safeProperties)
     setPayments(safePayments)
+    setMonthlyOverrides(safeOverrides)
 
     if (safeCompanies.length > 0) {
       const stillExists = safeCompanies.find((c) => c.id === selectedCompanyId)
@@ -126,29 +141,16 @@ export default function App() {
   async function signIn(e) {
     e.preventDefault()
     setMessage('')
-
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    })
-
+    const { error } = await supabase.auth.signInWithPassword({ email, password })
     if (error) setMessage(error.message)
   }
 
   async function signUp(e) {
     e.preventDefault()
     setMessage('')
-
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-    })
-
-    if (error) {
-      setMessage(error.message)
-    } else {
-      setMessage('Account created. If email confirmation is on, confirm your email and then sign in.')
-    }
+    const { error } = await supabase.auth.signUp({ email, password })
+    if (error) setMessage(error.message)
+    else setMessage('Account created. If email confirmation is on, confirm your email and then sign in.')
   }
 
   async function signOut() {
@@ -178,11 +180,7 @@ export default function App() {
       return
     }
 
-    setCompanyForm({
-      companyName: '',
-      ownerEmail: '',
-    })
-
+    setCompanyForm({ companyName: '', ownerEmail: '' })
     await loadData()
   }
 
@@ -309,20 +307,73 @@ export default function App() {
 
     setMessage('')
 
-    const { error } = await supabase
-      .from('properties')
-      .delete()
-      .eq('id', propertyId)
+    const { error } = await supabase.from('properties').delete().eq('id', propertyId)
 
     if (error) {
       setMessage(error.message)
       return
     }
 
-    if (editingPropertyId === propertyId) {
-      cancelEditingProperty()
+    if (editingPropertyId === propertyId) cancelEditingProperty()
+    await loadData()
+  }
+
+  function startEditingOverride(propertyId, current) {
+    setEditingOverrideId(propertyId)
+    setOverrideForm({
+      tenantOverride: current?.tenant_override || '',
+      overrideRent: current?.override_rent ?? '',
+      moveInDate: current?.move_in_date || '',
+      moveOutDate: current?.move_out_date || '',
+      startingBalance: current?.starting_balance ?? '',
+      notes: current?.notes || '',
+    })
+  }
+
+  function cancelEditingOverride() {
+    setEditingOverrideId(null)
+    setOverrideForm({
+      tenantOverride: '',
+      overrideRent: '',
+      moveInDate: '',
+      moveOutDate: '',
+      startingBalance: '',
+      notes: '',
+    })
+  }
+
+  async function saveOverride(propertyId) {
+    setMessage('')
+
+    const existing = monthlyOverrides.find(
+      (item) => item.property_id === propertyId && item.month_key === selectedMonth
+    )
+
+    const payload = {
+      property_id: propertyId,
+      month_key: selectedMonth,
+      override_rent: overrideForm.overrideRent === '' ? null : Number(overrideForm.overrideRent),
+      tenant_override: overrideForm.tenantOverride || null,
+      move_in_date: overrideForm.moveInDate || null,
+      move_out_date: overrideForm.moveOutDate || null,
+      starting_balance: overrideForm.startingBalance === '' ? 0 : Number(overrideForm.startingBalance || 0),
+      notes: overrideForm.notes || null,
     }
 
+    let error
+
+    if (existing) {
+      ;({ error } = await supabase.from('monthly_overrides').update(payload).eq('id', existing.id))
+    } else {
+      ;({ error } = await supabase.from('monthly_overrides').insert(payload))
+    }
+
+    if (error) {
+      setMessage(error.message)
+      return
+    }
+
+    cancelEditingOverride()
     await loadData()
   }
 
@@ -337,19 +388,21 @@ export default function App() {
     return properties.filter((property) => property.company_id === selectedCompanyId)
   }, [properties, selectedCompanyId])
 
-  const companyPropertyIds = useMemo(() => {
-    return companyProperties.map((property) => property.id)
-  }, [companyProperties])
+  const companyPropertyIds = useMemo(() => companyProperties.map((property) => property.id), [companyProperties])
 
   const companyPayments = useMemo(() => {
     return payments.filter((payment) => companyPropertyIds.includes(payment.property_id))
   }, [payments, companyPropertyIds])
 
+  const companyOverrides = useMemo(() => {
+    return monthlyOverrides.filter((override) => companyPropertyIds.includes(override.property_id))
+  }, [monthlyOverrides, companyPropertyIds])
+
   const monthlyPayments = useMemo(() => {
     return companyPayments.filter((payment) => String(payment.payment_date).startsWith(selectedMonth))
   }, [companyPayments, selectedMonth])
 
-  const paymentLookup = useMemo(() => {
+  const monthlyPaymentLookup = useMemo(() => {
     const map = {}
     monthlyPayments.forEach((payment) => {
       if (!map[payment.property_id]) map[payment.property_id] = []
@@ -358,27 +411,80 @@ export default function App() {
     return map
   }, [monthlyPayments])
 
-  const propertyLedgerRows = useMemo(() => {
+  const ledgerRows = useMemo(() => {
+    const selectedIndex = monthOptions.indexOf(selectedMonth)
+
     return companyProperties.map((property) => {
-      const propertyPayments = paymentLookup[property.id] || []
-      const totalPaid = propertyPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0)
-      const totalDue = Number(property.monthly_rent || 0) + Number(property.late_fee || 0)
-      const balanceRemaining = totalDue - totalPaid
+      let balanceForward = 0
+
+      for (let i = 0; i <= selectedIndex; i += 1) {
+        const month = monthOptions[i]
+
+        const override = companyOverrides.find(
+          (item) => item.property_id === property.id && item.month_key === month
+        )
+
+        const monthPaymentsForProperty = companyPayments.filter(
+          (payment) => payment.property_id === property.id && String(payment.payment_date).startsWith(month)
+        )
+
+        const effectiveRent =
+          override?.override_rent !== null && override?.override_rent !== undefined
+            ? Number(override.override_rent)
+            : Number(property.monthly_rent || 0)
+
+        const effectiveTenant = override?.tenant_override || property.tenant
+        const startingBalance = Number(override?.starting_balance || 0)
+        const lateFee = Number(property.late_fee || 0)
+        const totalDue = balanceForward + startingBalance + effectiveRent + lateFee
+        const totalPaid = monthPaymentsForProperty.reduce((sum, payment) => sum + Number(payment.amount || 0), 0)
+        const endingBalance = totalDue - totalPaid
+
+        if (month === selectedMonth) {
+          return {
+            ...property,
+            effectiveTenant,
+            effectiveRent,
+            balanceForward,
+            startingBalance,
+            moveInDate: override?.move_in_date || '',
+            moveOutDate: override?.move_out_date || '',
+            notes: override?.notes || '',
+            totalDue,
+            totalPaid,
+            balanceRemaining: endingBalance,
+            managementFee: totalPaid * 0.1,
+            currentOverride: override || null,
+          }
+        }
+
+        balanceForward = endingBalance
+      }
+
       return {
         ...property,
-        totalPaid,
-        totalDue,
-        balanceRemaining,
+        effectiveTenant: property.tenant,
+        effectiveRent: Number(property.monthly_rent || 0),
+        balanceForward: 0,
+        startingBalance: 0,
+        moveInDate: '',
+        moveOutDate: '',
+        notes: '',
+        totalDue: Number(property.monthly_rent || 0) + Number(property.late_fee || 0),
+        totalPaid: 0,
+        balanceRemaining: Number(property.monthly_rent || 0) + Number(property.late_fee || 0),
+        managementFee: 0,
+        currentOverride: null,
       }
     })
-  }, [companyProperties, paymentLookup])
+  }, [companyProperties, companyOverrides, companyPayments, selectedMonth])
 
-  const totalMonthlyRent = companyProperties.reduce((sum, property) => sum + Number(property.monthly_rent || 0), 0)
-  const totalLateFees = companyProperties.reduce((sum, property) => sum + Number(property.late_fee || 0), 0)
   const totalProperties = companyProperties.length
-  const totalCollected = monthlyPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0)
+  const totalMonthlyRent = ledgerRows.reduce((sum, row) => sum + Number(row.effectiveRent || 0), 0)
+  const totalLateFees = ledgerRows.reduce((sum, row) => sum + Number(row.late_fee || 0), 0)
+  const totalCollected = ledgerRows.reduce((sum, row) => sum + Number(row.totalPaid || 0), 0)
+  const totalOutstanding = ledgerRows.reduce((sum, row) => sum + Number(row.balanceRemaining || 0), 0)
   const managementFeeCollected = totalCollected * 0.1
-  const totalOutstanding = propertyLedgerRows.reduce((sum, row) => sum + Number(row.balanceRemaining || 0), 0)
 
   if (loading) {
     return (
@@ -393,24 +499,14 @@ export default function App() {
       <div style={styles.authPage}>
         <div style={styles.authCard}>
           <h1 style={styles.authTitle}>Rent Tracker</h1>
-          <p style={styles.authSubtitle}>Sign in to manage companies, properties, and monthly reporting.</p>
+          <p style={styles.authSubtitle}>Sign in to manage companies, properties, payments, and reports.</p>
 
           <form onSubmit={signIn}>
             <label style={styles.label}>Email</label>
-            <input
-              style={styles.input}
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
+            <input style={styles.input} type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
 
             <label style={styles.label}>Password</label>
-            <input
-              style={styles.input}
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-            />
+            <input style={styles.input} type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
 
             <div style={styles.buttonRow}>
               <button style={styles.primaryButton} type="submit">Sign In</button>
@@ -433,6 +529,7 @@ export default function App() {
         </div>
 
         <div style={styles.headerActions}>
+          <button style={styles.secondaryButton} onClick={() => window.print()}>Print Report</button>
           <button style={styles.secondaryButton} onClick={signOut}>Sign Out</button>
         </div>
       </div>
@@ -440,11 +537,7 @@ export default function App() {
       <div style={styles.topControls}>
         <div style={styles.controlBlock}>
           <label style={styles.label}>Company</label>
-          <select
-            style={styles.input}
-            value={selectedCompanyId}
-            onChange={(e) => setSelectedCompanyId(e.target.value)}
-          >
+          <select style={styles.input} value={selectedCompanyId} onChange={(e) => setSelectedCompanyId(e.target.value)}>
             <option value="">Select a company</option>
             {companies.map((company) => (
               <option key={company.id} value={company.id}>
@@ -456,39 +549,19 @@ export default function App() {
 
         <div style={styles.controlBlock}>
           <label style={styles.label}>Month</label>
-          <select
-            style={styles.input}
-            value={selectedMonth}
-            onChange={(e) => setSelectedMonth(e.target.value)}
-          >
+          <select style={styles.input} value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)}>
             {monthOptions.map((month) => (
-              <option key={month} value={month}>
-                {monthLabel(month)}
-              </option>
+              <option key={month} value={month}>{monthLabel(month)}</option>
             ))}
           </select>
         </div>
       </div>
 
       <div style={styles.tabRow}>
-        <button
-          style={activeTab === 'dashboard' ? styles.activeTabButton : styles.tabButton}
-          onClick={() => setActiveTab('dashboard')}
-        >
-          Dashboard
-        </button>
-        <button
-          style={activeTab === 'properties' ? styles.activeTabButton : styles.tabButton}
-          onClick={() => setActiveTab('properties')}
-        >
-          Properties
-        </button>
-        <button
-          style={activeTab === 'payments' ? styles.activeTabButton : styles.tabButton}
-          onClick={() => setActiveTab('payments')}
-        >
-          Payments
-        </button>
+        <button style={activeTab === 'dashboard' ? styles.activeTabButton : styles.tabButton} onClick={() => setActiveTab('dashboard')}>Dashboard</button>
+        <button style={activeTab === 'properties' ? styles.activeTabButton : styles.tabButton} onClick={() => setActiveTab('properties')}>Properties</button>
+        <button style={activeTab === 'payments' ? styles.activeTabButton : styles.tabButton} onClick={() => setActiveTab('payments')}>Payments</button>
+        <button style={activeTab === 'overrides' ? styles.activeTabButton : styles.tabButton} onClick={() => setActiveTab('overrides')}>Overrides</button>
       </div>
 
       <div style={styles.cardGrid}>
@@ -496,27 +569,22 @@ export default function App() {
           <div style={styles.kpiLabel}>Company</div>
           <div style={styles.kpiValueSmall}>{selectedCompanyName}</div>
         </div>
-
         <div style={styles.kpiCard}>
           <div style={styles.kpiLabel}>Properties</div>
           <div style={styles.kpiValue}>{totalProperties}</div>
         </div>
-
         <div style={styles.kpiCard}>
           <div style={styles.kpiLabel}>Monthly Rent</div>
           <div style={styles.kpiValue}>{currency(totalMonthlyRent)}</div>
         </div>
-
         <div style={styles.kpiCard}>
           <div style={styles.kpiLabel}>Collected</div>
           <div style={styles.kpiValue}>{currency(totalCollected)}</div>
         </div>
-
         <div style={styles.kpiCard}>
           <div style={styles.kpiLabel}>Outstanding</div>
           <div style={styles.kpiValue}>{currency(totalOutstanding)}</div>
         </div>
-
         <div style={styles.kpiCard}>
           <div style={styles.kpiLabel}>10% Mgmt Fee</div>
           <div style={styles.kpiValue}>{currency(managementFeeCollected)}</div>
@@ -526,12 +594,10 @@ export default function App() {
       {message ? <div style={styles.messageBanner}>{message}</div> : null}
 
       {activeTab === 'dashboard' && (
-        <div style={styles.sectionGrid}>
+        <div style={styles.sectionGridSingle}>
           <div style={styles.card}>
-            <h2 style={styles.cardTitle}>Monthly Ledger</h2>
-            <p style={styles.smallMuted}>
-              {selectedCompanyName} — {monthLabel(selectedMonth)}
-            </p>
+            <h2 style={styles.cardTitle}>Owner Summary</h2>
+            <p style={styles.smallMuted}>{selectedCompanyName} — {monthLabel(selectedMonth)}</p>
 
             <div style={styles.tableWrap}>
               <table style={styles.table}>
@@ -540,25 +606,19 @@ export default function App() {
                     <th style={styles.th}>Property</th>
                     <th style={styles.th}>Tenant</th>
                     <th style={styles.th}>Rent</th>
-                    <th style={styles.th}>Late Fee</th>
-                    <th style={styles.th}>Total Due</th>
                     <th style={styles.th}>Collected</th>
                     <th style={styles.th}>Balance</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {propertyLedgerRows.length === 0 ? (
-                    <tr>
-                      <td style={styles.td} colSpan="7">No properties yet for this company.</td>
-                    </tr>
+                  {ledgerRows.length === 0 ? (
+                    <tr><td style={styles.td} colSpan="5">No properties yet for this company.</td></tr>
                   ) : (
-                    propertyLedgerRows.map((row) => (
+                    ledgerRows.map((row) => (
                       <tr key={row.id}>
                         <td style={styles.td}>{row.address}</td>
-                        <td style={styles.td}>{row.tenant}</td>
-                        <td style={styles.td}>{currency(row.monthly_rent)}</td>
-                        <td style={styles.td}>{currency(row.late_fee)}</td>
-                        <td style={styles.td}>{currency(row.totalDue)}</td>
+                        <td style={styles.td}>{row.effectiveTenant}</td>
+                        <td style={styles.td}>{currency(row.effectiveRent)}</td>
                         <td style={styles.td}>{currency(row.totalPaid)}</td>
                         <td style={styles.td}>{currency(row.balanceRemaining)}</td>
                       </tr>
@@ -567,27 +627,52 @@ export default function App() {
                 </tbody>
               </table>
             </div>
+
+            <div style={styles.notesBox}>
+              <strong>Notes:</strong> Balances reflect prior unpaid amounts carried forward. Prorated rents and tenant changes are applied where applicable. Management fee is calculated at 10% of collected rent.
+            </div>
           </div>
 
           <div style={styles.card}>
-            <h2 style={styles.cardTitle}>Add Company</h2>
-            <form onSubmit={addCompany}>
-              <label style={styles.label}>Company Name</label>
-              <input
-                style={styles.input}
-                value={companyForm.companyName}
-                onChange={(e) => setCompanyForm({ ...companyForm, companyName: e.target.value })}
-              />
-
-              <label style={styles.label}>Owner Email</label>
-              <input
-                style={styles.input}
-                value={companyForm.ownerEmail}
-                onChange={(e) => setCompanyForm({ ...companyForm, ownerEmail: e.target.value })}
-              />
-
-              <button style={styles.primaryButton} type="submit">Save Company</button>
-            </form>
+            <h2 style={styles.cardTitle}>Detailed Monthly Ledger</h2>
+            <div style={styles.tableWrap}>
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th style={styles.th}>Property</th>
+                    <th style={styles.th}>Tenant</th>
+                    <th style={styles.th}>Bal Fwd</th>
+                    <th style={styles.th}>Start Bal</th>
+                    <th style={styles.th}>Rent</th>
+                    <th style={styles.th}>Late Fee</th>
+                    <th style={styles.th}>Total Due</th>
+                    <th style={styles.th}>Collected</th>
+                    <th style={styles.th}>Mgmt Fee</th>
+                    <th style={styles.th}>Balance</th>
+                    <th style={styles.th}>Move In</th>
+                    <th style={styles.th}>Move Out</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {ledgerRows.map((row) => (
+                    <tr key={`ledger-${row.id}`}>
+                      <td style={styles.td}>{row.address}</td>
+                      <td style={styles.td}>{row.effectiveTenant}</td>
+                      <td style={styles.td}>{currency(row.balanceForward)}</td>
+                      <td style={styles.td}>{currency(row.startingBalance)}</td>
+                      <td style={styles.td}>{currency(row.effectiveRent)}</td>
+                      <td style={styles.td}>{currency(row.late_fee)}</td>
+                      <td style={styles.td}>{currency(row.totalDue)}</td>
+                      <td style={styles.td}>{currency(row.totalPaid)}</td>
+                      <td style={styles.td}>{currency(row.managementFee)}</td>
+                      <td style={styles.td}>{currency(row.balanceRemaining)}</td>
+                      <td style={styles.td}>{row.moveInDate || '—'}</td>
+                      <td style={styles.td}>{row.moveOutDate || '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
         </div>
       )}
@@ -596,7 +681,6 @@ export default function App() {
         <div style={styles.sectionGrid}>
           <div style={styles.card}>
             <h2 style={styles.cardTitle}>Properties</h2>
-
             <div style={styles.tableWrap}>
               <table style={styles.table}>
                 <thead>
@@ -611,105 +695,46 @@ export default function App() {
                 </thead>
                 <tbody>
                   {companyProperties.length === 0 ? (
-                    <tr>
-                      <td style={styles.td} colSpan="6">No properties yet for this company.</td>
-                    </tr>
+                    <tr><td style={styles.td} colSpan="6">No properties yet for this company.</td></tr>
                   ) : (
                     companyProperties.map((property) => (
                       <tr key={property.id}>
                         <td style={styles.td}>
                           {editingPropertyId === property.id ? (
-                            <input
-                              style={styles.tableInput}
-                              value={editPropertyForm.address}
-                              onChange={(e) => setEditPropertyForm({ ...editPropertyForm, address: e.target.value })}
-                            />
-                          ) : (
-                            property.address
-                          )}
+                            <input style={styles.tableInput} value={editPropertyForm.address} onChange={(e) => setEditPropertyForm({ ...editPropertyForm, address: e.target.value })} />
+                          ) : property.address}
                         </td>
                         <td style={styles.td}>
                           {editingPropertyId === property.id ? (
-                            <input
-                              style={styles.tableInput}
-                              value={editPropertyForm.tenant}
-                              onChange={(e) => setEditPropertyForm({ ...editPropertyForm, tenant: e.target.value })}
-                            />
-                          ) : (
-                            property.tenant
-                          )}
+                            <input style={styles.tableInput} value={editPropertyForm.tenant} onChange={(e) => setEditPropertyForm({ ...editPropertyForm, tenant: e.target.value })} />
+                          ) : property.tenant}
                         </td>
                         <td style={styles.td}>
                           {editingPropertyId === property.id ? (
-                            <input
-                              style={styles.tableInput}
-                              type="number"
-                              value={editPropertyForm.monthlyRent}
-                              onChange={(e) => setEditPropertyForm({ ...editPropertyForm, monthlyRent: e.target.value })}
-                            />
-                          ) : (
-                            currency(property.monthly_rent)
-                          )}
+                            <input style={styles.tableInput} type="number" value={editPropertyForm.monthlyRent} onChange={(e) => setEditPropertyForm({ ...editPropertyForm, monthlyRent: e.target.value })} />
+                          ) : currency(property.monthly_rent)}
                         </td>
                         <td style={styles.td}>
                           {editingPropertyId === property.id ? (
-                            <input
-                              style={styles.tableInput}
-                              type="number"
-                              value={editPropertyForm.dueDay}
-                              onChange={(e) => setEditPropertyForm({ ...editPropertyForm, dueDay: e.target.value })}
-                            />
-                          ) : (
-                            property.due_day
-                          )}
+                            <input style={styles.tableInput} type="number" value={editPropertyForm.dueDay} onChange={(e) => setEditPropertyForm({ ...editPropertyForm, dueDay: e.target.value })} />
+                          ) : property.due_day}
                         </td>
                         <td style={styles.td}>
                           {editingPropertyId === property.id ? (
-                            <input
-                              style={styles.tableInput}
-                              type="number"
-                              value={editPropertyForm.lateFee}
-                              onChange={(e) => setEditPropertyForm({ ...editPropertyForm, lateFee: e.target.value })}
-                            />
-                          ) : (
-                            currency(property.late_fee)
-                          )}
+                            <input style={styles.tableInput} type="number" value={editPropertyForm.lateFee} onChange={(e) => setEditPropertyForm({ ...editPropertyForm, lateFee: e.target.value })} />
+                          ) : currency(property.late_fee)}
                         </td>
                         <td style={styles.td}>
                           <div style={styles.actionRow}>
                             {editingPropertyId === property.id ? (
                               <>
-                                <button
-                                  style={styles.smallPrimaryButton}
-                                  type="button"
-                                  onClick={() => saveEditedProperty(property.id)}
-                                >
-                                  Save
-                                </button>
-                                <button
-                                  style={styles.smallSecondaryButton}
-                                  type="button"
-                                  onClick={cancelEditingProperty}
-                                >
-                                  Cancel
-                                </button>
+                                <button style={styles.smallPrimaryButton} type="button" onClick={() => saveEditedProperty(property.id)}>Save</button>
+                                <button style={styles.smallSecondaryButton} type="button" onClick={cancelEditingProperty}>Cancel</button>
                               </>
                             ) : (
                               <>
-                                <button
-                                  style={styles.smallSecondaryButton}
-                                  type="button"
-                                  onClick={() => startEditingProperty(property)}
-                                >
-                                  Edit
-                                </button>
-                                <button
-                                  style={styles.smallDangerButton}
-                                  type="button"
-                                  onClick={() => deleteProperty(property.id, property.address)}
-                                >
-                                  Delete
-                                </button>
+                                <button style={styles.smallSecondaryButton} type="button" onClick={() => startEditingProperty(property)}>Edit</button>
+                                <button style={styles.smallDangerButton} type="button" onClick={() => deleteProperty(property.id, property.address)}>Delete</button>
                               </>
                             )}
                           </div>
@@ -726,43 +751,15 @@ export default function App() {
             <h2 style={styles.cardTitle}>Add Property</h2>
             <form onSubmit={addProperty}>
               <label style={styles.label}>Address</label>
-              <input
-                style={styles.input}
-                value={propertyForm.address}
-                onChange={(e) => setPropertyForm({ ...propertyForm, address: e.target.value })}
-              />
-
+              <input style={styles.input} value={propertyForm.address} onChange={(e) => setPropertyForm({ ...propertyForm, address: e.target.value })} />
               <label style={styles.label}>Tenant</label>
-              <input
-                style={styles.input}
-                value={propertyForm.tenant}
-                onChange={(e) => setPropertyForm({ ...propertyForm, tenant: e.target.value })}
-              />
-
+              <input style={styles.input} value={propertyForm.tenant} onChange={(e) => setPropertyForm({ ...propertyForm, tenant: e.target.value })} />
               <label style={styles.label}>Monthly Rent</label>
-              <input
-                style={styles.input}
-                type="number"
-                value={propertyForm.monthlyRent}
-                onChange={(e) => setPropertyForm({ ...propertyForm, monthlyRent: e.target.value })}
-              />
-
+              <input style={styles.input} type="number" value={propertyForm.monthlyRent} onChange={(e) => setPropertyForm({ ...propertyForm, monthlyRent: e.target.value })} />
               <label style={styles.label}>Due Day</label>
-              <input
-                style={styles.input}
-                type="number"
-                value={propertyForm.dueDay}
-                onChange={(e) => setPropertyForm({ ...propertyForm, dueDay: e.target.value })}
-              />
-
+              <input style={styles.input} type="number" value={propertyForm.dueDay} onChange={(e) => setPropertyForm({ ...propertyForm, dueDay: e.target.value })} />
               <label style={styles.label}>Late Fee</label>
-              <input
-                style={styles.input}
-                type="number"
-                value={propertyForm.lateFee}
-                onChange={(e) => setPropertyForm({ ...propertyForm, lateFee: e.target.value })}
-              />
-
+              <input style={styles.input} type="number" value={propertyForm.lateFee} onChange={(e) => setPropertyForm({ ...propertyForm, lateFee: e.target.value })} />
               <button style={styles.primaryButton} type="submit">Save Property</button>
             </form>
           </div>
@@ -773,10 +770,7 @@ export default function App() {
         <div style={styles.sectionGrid}>
           <div style={styles.card}>
             <h2 style={styles.cardTitle}>Payments This Month</h2>
-            <p style={styles.smallMuted}>
-              {selectedCompanyName} — {monthLabel(selectedMonth)}
-            </p>
-
+            <p style={styles.smallMuted}>{selectedCompanyName} — {monthLabel(selectedMonth)}</p>
             <div style={styles.tableWrap}>
               <table style={styles.table}>
                 <thead>
@@ -790,9 +784,7 @@ export default function App() {
                 </thead>
                 <tbody>
                   {monthlyPayments.length === 0 ? (
-                    <tr>
-                      <td style={styles.td} colSpan="5">No payments entered for this month.</td>
-                    </tr>
+                    <tr><td style={styles.td} colSpan="5">No payments entered for this month.</td></tr>
                   ) : (
                     monthlyPayments.map((payment) => {
                       const property = companyProperties.find((p) => p.id === payment.property_id)
@@ -816,41 +808,18 @@ export default function App() {
             <h2 style={styles.cardTitle}>Add Payment</h2>
             <form onSubmit={addPayment}>
               <label style={styles.label}>Property</label>
-              <select
-                style={styles.input}
-                value={paymentForm.propertyId}
-                onChange={(e) => setPaymentForm({ ...paymentForm, propertyId: e.target.value })}
-              >
+              <select style={styles.input} value={paymentForm.propertyId} onChange={(e) => setPaymentForm({ ...paymentForm, propertyId: e.target.value })}>
                 <option value="">Select property</option>
                 {companyProperties.map((property) => (
-                  <option key={property.id} value={property.id}>
-                    {property.address}
-                  </option>
+                  <option key={property.id} value={property.id}>{property.address}</option>
                 ))}
               </select>
-
               <label style={styles.label}>Payment Date</label>
-              <input
-                style={styles.input}
-                type="date"
-                value={paymentForm.paymentDate}
-                onChange={(e) => setPaymentForm({ ...paymentForm, paymentDate: e.target.value })}
-              />
-
+              <input style={styles.input} type="date" value={paymentForm.paymentDate} onChange={(e) => setPaymentForm({ ...paymentForm, paymentDate: e.target.value })} />
               <label style={styles.label}>Amount</label>
-              <input
-                style={styles.input}
-                type="number"
-                value={paymentForm.amount}
-                onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })}
-              />
-
+              <input style={styles.input} type="number" value={paymentForm.amount} onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })} />
               <label style={styles.label}>Method</label>
-              <select
-                style={styles.input}
-                value={paymentForm.method}
-                onChange={(e) => setPaymentForm({ ...paymentForm, method: e.target.value })}
-              >
+              <select style={styles.input} value={paymentForm.method} onChange={(e) => setPaymentForm({ ...paymentForm, method: e.target.value })}>
                 <option value="Cash">Cash</option>
                 <option value="Bank Deposit">Bank Deposit</option>
                 <option value="Check">Check</option>
@@ -859,16 +828,103 @@ export default function App() {
                 <option value="Zelle">Zelle</option>
                 <option value="Venmo">Venmo</option>
               </select>
-
               <label style={styles.label}>Note</label>
-              <input
-                style={styles.input}
-                value={paymentForm.note}
-                onChange={(e) => setPaymentForm({ ...paymentForm, note: e.target.value })}
-              />
-
+              <input style={styles.input} value={paymentForm.note} onChange={(e) => setPaymentForm({ ...paymentForm, note: e.target.value })} />
               <button style={styles.primaryButton} type="submit">Save Payment</button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'overrides' && (
+        <div style={styles.card}>
+          <h2 style={styles.cardTitle}>Monthly Overrides</h2>
+          <p style={styles.smallMuted}>Use this for prorated rent, monthly tenant changes, move-in / move-out dates, starting balances, and notes.</p>
+
+          <div style={styles.tableWrap}>
+            <table style={styles.table}>
+              <thead>
+                <tr>
+                  <th style={styles.th}>Property</th>
+                  <th style={styles.th}>Tenant Override</th>
+                  <th style={styles.th}>Override Rent</th>
+                  <th style={styles.th}>Start Bal</th>
+                  <th style={styles.th}>Move In</th>
+                  <th style={styles.th}>Move Out</th>
+                  <th style={styles.th}>Notes</th>
+                  <th style={styles.th}>Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {companyProperties.map((property) => {
+                  const current = companyOverrides.find(
+                    (item) => item.property_id === property.id && item.month_key === selectedMonth
+                  )
+
+                  const isEditing = editingOverrideId === property.id
+
+                  return (
+                    <tr key={`override-${property.id}`}>
+                      <td style={styles.td}>{property.address}</td>
+                      <td style={styles.td}>
+                        {isEditing ? (
+                          <input style={styles.tableInput} value={overrideForm.tenantOverride} onChange={(e) => setOverrideForm({ ...overrideForm, tenantOverride: e.target.value })} />
+                        ) : (
+                          current?.tenant_override || '—'
+                        )}
+                      </td>
+                      <td style={styles.td}>
+                        {isEditing ? (
+                          <input style={styles.tableInput} type="number" value={overrideForm.overrideRent} onChange={(e) => setOverrideForm({ ...overrideForm, overrideRent: e.target.value })} />
+                        ) : (
+                          current?.override_rent !== null && current?.override_rent !== undefined ? currency(current.override_rent) : '—'
+                        )}
+                      </td>
+                      <td style={styles.td}>
+                        {isEditing ? (
+                          <input style={styles.tableInput} type="number" value={overrideForm.startingBalance} onChange={(e) => setOverrideForm({ ...overrideForm, startingBalance: e.target.value })} />
+                        ) : (
+                          current?.starting_balance ? currency(current.starting_balance) : '—'
+                        )}
+                      </td>
+                      <td style={styles.td}>
+                        {isEditing ? (
+                          <input style={styles.tableInput} type="date" value={overrideForm.moveInDate} onChange={(e) => setOverrideForm({ ...overrideForm, moveInDate: e.target.value })} />
+                        ) : (
+                          current?.move_in_date || '—'
+                        )}
+                      </td>
+                      <td style={styles.td}>
+                        {isEditing ? (
+                          <input style={styles.tableInput} type="date" value={overrideForm.moveOutDate} onChange={(e) => setOverrideForm({ ...overrideForm, moveOutDate: e.target.value })} />
+                        ) : (
+                          current?.move_out_date || '—'
+                        )}
+                      </td>
+                      <td style={styles.td}>
+                        {isEditing ? (
+                          <input style={styles.tableInput} value={overrideForm.notes} onChange={(e) => setOverrideForm({ ...overrideForm, notes: e.target.value })} />
+                        ) : (
+                          current?.notes || '—'
+                        )}
+                      </td>
+                      <td style={styles.td}>
+                        <div style={styles.actionRow}>
+                          {isEditing ? (
+                            <>
+                              <button style={styles.smallPrimaryButton} type="button" onClick={() => saveOverride(property.id)}>Save</button>
+                              <button style={styles.smallSecondaryButton} type="button" onClick={cancelEditingOverride}>Cancel</button>
+                            </>
+                          ) : (
+                            <button style={styles.smallSecondaryButton} type="button" onClick={() => startEditingOverride(property.id, current)}>Edit</button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
           </div>
         </div>
       )}
@@ -877,275 +933,46 @@ export default function App() {
 }
 
 const styles = {
-  page: {
-    minHeight: '100vh',
-    background: '#f8fafc',
-    padding: '20px',
-    fontFamily: 'Arial, sans-serif',
-    color: '#0f172a',
-  },
-  authPage: {
-    minHeight: '100vh',
-    background: '#f8fafc',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: '20px',
-    fontFamily: 'Arial, sans-serif',
-  },
-  authCard: {
-    width: '100%',
-    maxWidth: '420px',
-    background: '#ffffff',
-    border: '1px solid #e2e8f0',
-    borderRadius: '18px',
-    padding: '24px',
-    boxShadow: '0 10px 30px rgba(15, 23, 42, 0.06)',
-  },
-  authTitle: {
-    margin: '0 0 8px 0',
-    fontSize: '34px',
-  },
-  authSubtitle: {
-    margin: '0 0 20px 0',
-    color: '#64748b',
-    fontSize: '14px',
-  },
-  loadingCard: {
-    maxWidth: '500px',
-    margin: '40px auto',
-    background: '#fff',
-    borderRadius: '16px',
-    border: '1px solid #e2e8f0',
-    padding: '24px',
-  },
-  header: {
-    display: 'flex',
-    justifyContent: 'space-between',
-    gap: '16px',
-    alignItems: 'center',
-    flexWrap: 'wrap',
-    marginBottom: '20px',
-  },
-  title: {
-    margin: 0,
-    fontSize: '42px',
-    lineHeight: 1.1,
-  },
-  subtitle: {
-    margin: '8px 0 0 0',
-    color: '#64748b',
-    fontSize: '15px',
-  },
-  headerActions: {
-    display: 'flex',
-    gap: '10px',
-    flexWrap: 'wrap',
-  },
-  topControls: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
-    gap: '14px',
-    marginBottom: '18px',
-  },
-  controlBlock: {
-    background: '#ffffff',
-    border: '1px solid #e2e8f0',
-    borderRadius: '16px',
-    padding: '16px',
-  },
-  tabRow: {
-    display: 'flex',
-    gap: '10px',
-    flexWrap: 'wrap',
-    marginBottom: '18px',
-  },
-  tabButton: {
-    background: '#e2e8f0',
-    color: '#0f172a',
-    border: 'none',
-    borderRadius: '12px',
-    padding: '10px 16px',
-    cursor: 'pointer',
-    fontWeight: 600,
-  },
-  activeTabButton: {
-    background: '#0f172a',
-    color: '#ffffff',
-    border: 'none',
-    borderRadius: '12px',
-    padding: '10px 16px',
-    cursor: 'pointer',
-    fontWeight: 600,
-  },
-  cardGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
-    gap: '14px',
-    marginBottom: '18px',
-  },
-  kpiCard: {
-    background: '#ffffff',
-    border: '1px solid #e2e8f0',
-    borderRadius: '18px',
-    padding: '18px',
-    boxShadow: '0 4px 14px rgba(15, 23, 42, 0.04)',
-  },
-  kpiLabel: {
-    color: '#64748b',
-    fontSize: '13px',
-    marginBottom: '8px',
-    textTransform: 'uppercase',
-    letterSpacing: '.04em',
-  },
-  kpiValue: {
-    fontSize: '28px',
-    fontWeight: 700,
-  },
-  kpiValueSmall: {
-    fontSize: '18px',
-    fontWeight: 700,
-    lineHeight: 1.3,
-  },
-  sectionGrid: {
-    display: 'grid',
-    gridTemplateColumns: 'minmax(0, 2fr) minmax(320px, 1fr)',
-    gap: '16px',
-  },
-  card: {
-    background: '#ffffff',
-    border: '1px solid #e2e8f0',
-    borderRadius: '18px',
-    padding: '18px',
-    boxShadow: '0 6px 18px rgba(15, 23, 42, 0.04)',
-  },
-  cardTitle: {
-    marginTop: 0,
-    marginBottom: '12px',
-    fontSize: '22px',
-  },
-  label: {
-    display: 'block',
-    marginBottom: '6px',
-    marginTop: '12px',
-    fontSize: '14px',
-    fontWeight: 600,
-  },
-  input: {
-    width: '100%',
-    boxSizing: 'border-box',
-    padding: '11px 12px',
-    borderRadius: '12px',
-    border: '1px solid #cbd5e1',
-    background: '#fff',
-    fontSize: '14px',
-  },
-  tableInput: {
-    width: '100%',
-    boxSizing: 'border-box',
-    padding: '8px 10px',
-    borderRadius: '10px',
-    border: '1px solid #cbd5e1',
-    background: '#fff',
-    fontSize: '14px',
-  },
-  primaryButton: {
-    marginTop: '16px',
-    background: '#0f172a',
-    color: '#fff',
-    border: 'none',
-    borderRadius: '12px',
-    padding: '11px 16px',
-    cursor: 'pointer',
-    fontWeight: 600,
-  },
-  secondaryButton: {
-    background: '#e2e8f0',
-    color: '#0f172a',
-    border: 'none',
-    borderRadius: '12px',
-    padding: '11px 16px',
-    cursor: 'pointer',
-    fontWeight: 600,
-  },
-  smallPrimaryButton: {
-    background: '#0f172a',
-    color: '#fff',
-    border: 'none',
-    borderRadius: '10px',
-    padding: '8px 12px',
-    cursor: 'pointer',
-    fontWeight: 600,
-    fontSize: '13px',
-  },
-  smallSecondaryButton: {
-    background: '#e2e8f0',
-    color: '#0f172a',
-    border: 'none',
-    borderRadius: '10px',
-    padding: '8px 12px',
-    cursor: 'pointer',
-    fontWeight: 600,
-    fontSize: '13px',
-  },
-  smallDangerButton: {
-    background: '#dc2626',
-    color: '#fff',
-    border: 'none',
-    borderRadius: '10px',
-    padding: '8px 12px',
-    cursor: 'pointer',
-    fontWeight: 600,
-    fontSize: '13px',
-  },
-  buttonRow: {
-    display: 'flex',
-    gap: '10px',
-    flexWrap: 'wrap',
-    marginTop: '14px',
-  },
-  actionRow: {
-    display: 'flex',
-    gap: '8px',
-    flexWrap: 'wrap',
-  },
-  tableWrap: {
-    overflowX: 'auto',
-  },
-  table: {
-    width: '100%',
-    borderCollapse: 'collapse',
-  },
-  th: {
-    textAlign: 'left',
-    padding: '10px 8px',
-    borderBottom: '1px solid #e2e8f0',
-    fontSize: '13px',
-    color: '#475569',
-    whiteSpace: 'nowrap',
-  },
-  td: {
-    padding: '12px 8px',
-    borderBottom: '1px solid #e2e8f0',
-    fontSize: '14px',
-    verticalAlign: 'top',
-  },
-  smallMuted: {
-    color: '#64748b',
-    fontSize: '14px',
-  },
-  message: {
-    marginTop: '16px',
-    color: '#b91c1c',
-    fontSize: '14px',
-  },
-  messageBanner: {
-    marginBottom: '18px',
-    background: '#fff7ed',
-    border: '1px solid #fdba74',
-    color: '#9a3412',
-    borderRadius: '12px',
-    padding: '12px 14px',
-    fontSize: '14px',
-  },
+  page: { minHeight: '100vh', background: '#f8fafc', padding: '20px', fontFamily: 'Arial, sans-serif', color: '#0f172a' },
+  authPage: { minHeight: '100vh', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', fontFamily: 'Arial, sans-serif' },
+  authCard: { width: '100%', maxWidth: '420px', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '18px', padding: '24px', boxShadow: '0 10px 30px rgba(15, 23, 42, 0.06)' },
+  authTitle: { margin: '0 0 8px 0', fontSize: '34px' },
+  authSubtitle: { margin: '0 0 20px 0', color: '#64748b', fontSize: '14px' },
+  loadingCard: { maxWidth: '500px', margin: '40px auto', background: '#fff', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '24px' },
+  header: { display: 'flex', justifyContent: 'space-between', gap: '16px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '20px' },
+  title: { margin: 0, fontSize: '42px', lineHeight: 1.1 },
+  subtitle: { margin: '8px 0 0 0', color: '#64748b', fontSize: '15px' },
+  headerActions: { display: 'flex', gap: '10px', flexWrap: 'wrap' },
+  topControls: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '14px', marginBottom: '18px' },
+  controlBlock: { background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '16px' },
+  tabRow: { display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '18px' },
+  tabButton: { background: '#e2e8f0', color: '#0f172a', border: 'none', borderRadius: '12px', padding: '10px 16px', cursor: 'pointer', fontWeight: 600 },
+  activeTabButton: { background: '#0f172a', color: '#ffffff', border: 'none', borderRadius: '12px', padding: '10px 16px', cursor: 'pointer', fontWeight: 600 },
+  cardGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px', marginBottom: '18px' },
+  kpiCard: { background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '18px', padding: '18px', boxShadow: '0 4px 14px rgba(15, 23, 42, 0.04)' },
+  kpiLabel: { color: '#64748b', fontSize: '13px', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '.04em' },
+  kpiValue: { fontSize: '28px', fontWeight: 700 },
+  kpiValueSmall: { fontSize: '18px', fontWeight: 700, lineHeight: 1.3 },
+  sectionGrid: { display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(320px, 1fr)', gap: '16px' },
+  sectionGridSingle: { display: 'grid', gap: '16px' },
+  card: { background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '18px', padding: '18px', boxShadow: '0 6px 18px rgba(15, 23, 42, 0.04)' },
+  cardTitle: { marginTop: 0, marginBottom: '12px', fontSize: '22px' },
+  label: { display: 'block', marginBottom: '6px', marginTop: '12px', fontSize: '14px', fontWeight: 600 },
+  input: { width: '100%', boxSizing: 'border-box', padding: '11px 12px', borderRadius: '12px', border: '1px solid #cbd5e1', background: '#fff', fontSize: '14px' },
+  tableInput: { width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: '10px', border: '1px solid #cbd5e1', background: '#fff', fontSize: '14px' },
+  primaryButton: { marginTop: '16px', background: '#0f172a', color: '#fff', border: 'none', borderRadius: '12px', padding: '11px 16px', cursor: 'pointer', fontWeight: 600 },
+  secondaryButton: { background: '#e2e8f0', color: '#0f172a', border: 'none', borderRadius: '12px', padding: '11px 16px', cursor: 'pointer', fontWeight: 600 },
+  smallPrimaryButton: { background: '#0f172a', color: '#fff', border: 'none', borderRadius: '10px', padding: '8px 12px', cursor: 'pointer', fontWeight: 600, fontSize: '13px' },
+  smallSecondaryButton: { background: '#e2e8f0', color: '#0f172a', border: 'none', borderRadius: '10px', padding: '8px 12px', cursor: 'pointer', fontWeight: 600, fontSize: '13px' },
+  smallDangerButton: { background: '#dc2626', color: '#fff', border: 'none', borderRadius: '10px', padding: '8px 12px', cursor: 'pointer', fontWeight: 600, fontSize: '13px' },
+  buttonRow: { display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '14px' },
+  actionRow: { display: 'flex', gap: '8px', flexWrap: 'wrap' },
+  tableWrap: { overflowX: 'auto' },
+  table: { width: '100%', borderCollapse: 'collapse' },
+  th: { textAlign: 'left', padding: '10px 8px', borderBottom: '1px solid #e2e8f0', fontSize: '13px', color: '#475569', whiteSpace: 'nowrap' },
+  td: { padding: '12px 8px', borderBottom: '1px solid #e2e8f0', fontSize: '14px', verticalAlign: 'top' },
+  smallMuted: { color: '#64748b', fontSize: '14px' },
+  message: { marginTop: '16px', color: '#b91c1c', fontSize: '14px' },
+  messageBanner: { marginBottom: '18px', background: '#fff7ed', border: '1px solid #fdba74', color: '#9a3412', borderRadius: '12px', padding: '12px 14px', fontSize: '14px' },
+  notesBox: { marginTop: '16px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px 14px', fontSize: '14px', color: '#334155' },
 }
