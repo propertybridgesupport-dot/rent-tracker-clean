@@ -28,6 +28,14 @@ function formatDate(value) {
   return d.toLocaleDateString('en-US')
 }
 
+function isWithinDateRange(dateValue, startDate, endDate) {
+  if (!dateValue) return false
+  const dateOnly = String(dateValue).slice(0, 10)
+  if (startDate && dateOnly < startDate) return false
+  if (endDate && dateOnly > endDate) return false
+  return true
+}
+
 export default function App() {
   const [session, setSession] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -45,8 +53,17 @@ export default function App() {
   const [selectedCompanyId, setSelectedCompanyId] = useState('')
   const [selectedMonth, setSelectedMonth] = useState('2026-03')
   const [selectedReportPropertyId, setSelectedReportPropertyId] = useState('')
+  const [selectedTenantName, setSelectedTenantName] = useState('')
+  const [reportStartDate, setReportStartDate] = useState('')
+  const [reportEndDate, setReportEndDate] = useState('')
 
   const [companyForm, setCompanyForm] = useState({
+    companyName: '',
+    ownerEmail: '',
+  })
+
+  const [editingCompanyId, setEditingCompanyId] = useState(null)
+  const [editCompanyForm, setEditCompanyForm] = useState({
     companyName: '',
     ownerEmail: '',
   })
@@ -197,6 +214,69 @@ export default function App() {
     }
 
     setCompanyForm({ companyName: '', ownerEmail: '' })
+    await loadData()
+  }
+
+  function startEditingCompany(company) {
+    setEditingCompanyId(company.id)
+    setEditCompanyForm({
+      companyName: company.company_name || company.name || '',
+      ownerEmail: company.owner_email || '',
+    })
+  }
+
+  function cancelEditingCompany() {
+    setEditingCompanyId(null)
+    setEditCompanyForm({
+      companyName: '',
+      ownerEmail: '',
+    })
+  }
+
+  async function saveEditedCompany(companyId) {
+    setMessage('')
+
+    const { error } = await supabase
+      .from('companies')
+      .update({
+        company_name: editCompanyForm.companyName,
+        owner_email: editCompanyForm.ownerEmail || null,
+      })
+      .eq('id', companyId)
+
+    if (error) {
+      setMessage(error.message)
+      return
+    }
+
+    cancelEditingCompany()
+    await loadData()
+  }
+
+  async function deleteCompany(companyId, companyName) {
+    const confirmed = window.confirm(`Delete company: ${companyName}?\n\nThis may also remove related properties and records.`)
+    if (!confirmed) return
+
+    setMessage('')
+
+    const { error } = await supabase
+      .from('companies')
+      .delete()
+      .eq('id', companyId)
+
+    if (error) {
+      setMessage(error.message)
+      return
+    }
+
+    if (editingCompanyId === companyId) {
+      cancelEditingCompany()
+    }
+
+    if (selectedCompanyId === companyId) {
+      setSelectedCompanyId('')
+    }
+
     await loadData()
   }
 
@@ -467,9 +547,7 @@ export default function App() {
   useEffect(() => {
     if (companyProperties.length > 0) {
       const exists = companyProperties.find((p) => p.id === selectedReportPropertyId)
-      if (!exists) {
-        setSelectedReportPropertyId(companyProperties[0].id)
-      }
+      if (!exists) setSelectedReportPropertyId(companyProperties[0].id)
     } else {
       setSelectedReportPropertyId('')
     }
@@ -559,6 +637,30 @@ export default function App() {
 
   const selectedReportProperty = companyProperties.find((p) => p.id === selectedReportPropertyId) || null
 
+  const companyTenantNames = useMemo(() => {
+    const names = new Set()
+
+    companyProperties.forEach((property) => {
+      if (property.tenant) names.add(property.tenant)
+    })
+
+    companyOverrides.forEach((override) => {
+      if (override.tenant_override) names.add(override.tenant_override)
+    })
+
+    return Array.from(names).sort((a, b) => a.localeCompare(b))
+  }, [companyProperties, companyOverrides])
+
+  useEffect(() => {
+    if (companyTenantNames.length > 0) {
+      if (!selectedTenantName || !companyTenantNames.includes(selectedTenantName)) {
+        setSelectedTenantName(companyTenantNames[0])
+      }
+    } else {
+      setSelectedTenantName('')
+    }
+  }, [companyTenantNames, selectedTenantName])
+
   const selectedPropertyStatementRows = useMemo(() => {
     if (!selectedReportProperty) return []
 
@@ -579,23 +681,96 @@ export default function App() {
           : Number(selectedReportProperty.monthly_rent || 0)
 
       const chargeAmount = effectiveRent + Number(selectedReportProperty.late_fee || 0)
+      const chargeDate = `${month}-01`
 
-      statement.push({
-        type: 'charge',
-        month,
-        date: `${month}-01`,
-        description: `Monthly charge`,
-        amount: chargeAmount,
-      })
+      if (isWithinDateRange(chargeDate, reportStartDate, reportEndDate)) {
+        statement.push({
+          type: 'charge',
+          month,
+          date: chargeDate,
+          description: 'Monthly charge',
+          amount: chargeAmount,
+          note: override?.notes || '',
+        })
+      }
 
       propertyPayments.forEach((payment) => {
-        statement.push({
-          type: 'payment',
-          month,
-          date: payment.payment_date,
-          description: `Payment - ${payment.method || 'Method not listed'}`,
-          amount: -Number(payment.amount || 0),
-          note: payment.note || '',
+        if (isWithinDateRange(payment.payment_date, reportStartDate, reportEndDate)) {
+          statement.push({
+            type: 'payment',
+            month,
+            date: payment.payment_date,
+            description: `Payment - ${payment.method || 'Method not listed'}`,
+            amount: -Number(payment.amount || 0),
+            note: payment.note || '',
+          })
+        }
+      })
+    })
+
+    statement.sort((a, b) => String(a.date).localeCompare(String(b.date)))
+
+    let runningBalance = 0
+
+    return statement.map((item) => {
+      runningBalance += Number(item.amount || 0)
+      return {
+        ...item,
+        runningBalance,
+      }
+    })
+  }, [selectedReportProperty, companyOverrides, companyPayments, reportStartDate, reportEndDate])
+
+  const selectedTenantStatementRows = useMemo(() => {
+    if (!selectedTenantName) return []
+
+    const statement = []
+
+    monthOptions.forEach((month) => {
+      companyProperties.forEach((property) => {
+        const override = companyOverrides.find(
+          (item) => item.property_id === property.id && item.month_key === month
+        )
+
+        const effectiveTenant = override?.tenant_override || property.tenant
+        if (effectiveTenant !== selectedTenantName) return
+
+        const effectiveRent =
+          override?.override_rent !== null && override?.override_rent !== undefined
+            ? Number(override.override_rent)
+            : Number(property.monthly_rent || 0)
+
+        const chargeAmount = effectiveRent + Number(property.late_fee || 0)
+        const chargeDate = `${month}-01`
+
+        if (isWithinDateRange(chargeDate, reportStartDate, reportEndDate)) {
+          statement.push({
+            type: 'charge',
+            propertyAddress: property.address,
+            tenantName: effectiveTenant,
+            date: chargeDate,
+            description: 'Monthly charge',
+            amount: chargeAmount,
+            note: override?.notes || '',
+          })
+        }
+
+        const tenantPayments = companyPayments
+          .filter((payment) => payment.property_id === property.id && String(payment.payment_date).startsWith(month))
+          .sort((a, b) => String(a.payment_date).localeCompare(String(b.payment_date)))
+
+        tenantPayments.forEach((payment) => {
+          if (isWithinDateRange(payment.payment_date, reportStartDate, reportEndDate)) {
+            statement.push({
+              type: 'payment',
+              propertyAddress: property.address,
+              tenantName: effectiveTenant,
+              date: payment.payment_date,
+              description: `Payment - ${payment.method || 'Method not listed'}`,
+              amount: -Number(payment.amount || 0),
+              note: payment.note || '',
+            })
+          }
         })
       })
     })
@@ -611,7 +786,7 @@ export default function App() {
         runningBalance,
       }
     })
-  }, [selectedReportProperty, companyOverrides, companyPayments])
+  }, [selectedTenantName, companyProperties, companyOverrides, companyPayments, reportStartDate, reportEndDate])
 
   const totalProperties = companyProperties.length
   const totalMonthlyRent = ledgerRows.reduce((sum, row) => sum + Number(row.effectiveRent || 0), 0)
@@ -723,6 +898,7 @@ export default function App() {
 
       <div style={styles.tabRow}>
         <button style={activeTab === 'dashboard' ? styles.activeTabButton : styles.tabButton} onClick={() => setActiveTab('dashboard')}>Dashboard</button>
+        <button style={activeTab === 'companies' ? styles.activeTabButton : styles.tabButton} onClick={() => setActiveTab('companies')}>Companies</button>
         <button style={activeTab === 'properties' ? styles.activeTabButton : styles.tabButton} onClick={() => setActiveTab('properties')}>Properties</button>
         <button style={activeTab === 'payments' ? styles.activeTabButton : styles.tabButton} onClick={() => setActiveTab('payments')}>Payments</button>
         <button style={activeTab === 'overrides' ? styles.activeTabButton : styles.tabButton} onClick={() => setActiveTab('overrides')}>Overrides</button>
@@ -794,6 +970,115 @@ export default function App() {
             <div style={styles.notesBox}>
               <strong>Notes:</strong> Balances reflect prior unpaid amounts carried forward. Prorated rents and tenant changes are applied where applicable. Management fee is calculated at 10% of collected rent.
             </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'companies' && (
+        <div style={styles.sectionGrid}>
+          <div style={styles.card}>
+            <h2 style={styles.cardTitle}>Companies</h2>
+            <div style={styles.tableWrap}>
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th style={styles.th}>Company Name</th>
+                    <th style={styles.th}>Owner Email</th>
+                    <th style={styles.th}>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {companies.length === 0 ? (
+                    <tr><td style={styles.td} colSpan="3">No companies yet.</td></tr>
+                  ) : (
+                    companies.map((company) => (
+                      <tr key={company.id}>
+                        <td style={styles.td}>
+                          {editingCompanyId === company.id ? (
+                            <input
+                              style={styles.tableInput}
+                              value={editCompanyForm.companyName}
+                              onChange={(e) => setEditCompanyForm({ ...editCompanyForm, companyName: e.target.value })}
+                            />
+                          ) : (
+                            company.company_name || company.name
+                          )}
+                        </td>
+                        <td style={styles.td}>
+                          {editingCompanyId === company.id ? (
+                            <input
+                              style={styles.tableInput}
+                              value={editCompanyForm.ownerEmail}
+                              onChange={(e) => setEditCompanyForm({ ...editCompanyForm, ownerEmail: e.target.value })}
+                            />
+                          ) : (
+                            company.owner_email || '—'
+                          )}
+                        </td>
+                        <td style={styles.td}>
+                          <div style={styles.actionRow}>
+                            {editingCompanyId === company.id ? (
+                              <>
+                                <button
+                                  style={styles.smallPrimaryButton}
+                                  type="button"
+                                  onClick={() => saveEditedCompany(company.id)}
+                                >
+                                  Save
+                                </button>
+                                <button
+                                  style={styles.smallSecondaryButton}
+                                  type="button"
+                                  onClick={cancelEditingCompany}
+                                >
+                                  Cancel
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <button
+                                  style={styles.smallSecondaryButton}
+                                  type="button"
+                                  onClick={() => startEditingCompany(company)}
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  style={styles.smallDangerButton}
+                                  type="button"
+                                  onClick={() => deleteCompany(company.id, company.company_name || company.name || 'this company')}
+                                >
+                                  Delete
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div style={styles.card}>
+            <h2 style={styles.cardTitle}>Add Company</h2>
+            <form onSubmit={addCompany}>
+              <label style={styles.label}>Company Name</label>
+              <input
+                style={styles.input}
+                value={companyForm.companyName}
+                onChange={(e) => setCompanyForm({ ...companyForm, companyName: e.target.value })}
+              />
+              <label style={styles.label}>Owner Email</label>
+              <input
+                style={styles.input}
+                value={companyForm.ownerEmail}
+                onChange={(e) => setCompanyForm({ ...companyForm, ownerEmail: e.target.value })}
+              />
+              <button style={styles.primaryButton} type="submit">Save Company</button>
+            </form>
           </div>
         </div>
       )}
@@ -914,32 +1199,18 @@ export default function App() {
                         <tr key={payment.id}>
                           <td style={styles.td}>
                             {editingPaymentId === payment.id ? (
-                              <input
-                                style={styles.tableInput}
-                                type="date"
-                                value={editPaymentForm.paymentDate}
-                                onChange={(e) => setEditPaymentForm({ ...editPaymentForm, paymentDate: e.target.value })}
-                              />
+                              <input style={styles.tableInput} type="date" value={editPaymentForm.paymentDate} onChange={(e) => setEditPaymentForm({ ...editPaymentForm, paymentDate: e.target.value })} />
                             ) : payment.payment_date}
                           </td>
                           <td style={styles.td}>{property?.address || '—'}</td>
                           <td style={styles.td}>
                             {editingPaymentId === payment.id ? (
-                              <input
-                                style={styles.tableInput}
-                                type="number"
-                                value={editPaymentForm.amount}
-                                onChange={(e) => setEditPaymentForm({ ...editPaymentForm, amount: e.target.value })}
-                              />
+                              <input style={styles.tableInput} type="number" value={editPaymentForm.amount} onChange={(e) => setEditPaymentForm({ ...editPaymentForm, amount: e.target.value })} />
                             ) : currency(payment.amount)}
                           </td>
                           <td style={styles.td}>
                             {editingPaymentId === payment.id ? (
-                              <select
-                                style={styles.tableInput}
-                                value={editPaymentForm.method}
-                                onChange={(e) => setEditPaymentForm({ ...editPaymentForm, method: e.target.value })}
-                              >
+                              <select style={styles.tableInput} value={editPaymentForm.method} onChange={(e) => setEditPaymentForm({ ...editPaymentForm, method: e.target.value })}>
                                 <option value="Cash">Cash</option>
                                 <option value="Bank Deposit">Bank Deposit</option>
                                 <option value="Check">Check</option>
@@ -952,11 +1223,7 @@ export default function App() {
                           </td>
                           <td style={styles.td}>
                             {editingPaymentId === payment.id ? (
-                              <input
-                                style={styles.tableInput}
-                                value={editPaymentForm.note}
-                                onChange={(e) => setEditPaymentForm({ ...editPaymentForm, note: e.target.value })}
-                              />
+                              <input style={styles.tableInput} value={editPaymentForm.note} onChange={(e) => setEditPaymentForm({ ...editPaymentForm, note: e.target.value })} />
                             ) : (payment.note || '—')}
                           </td>
                           <td style={styles.td}>
@@ -1152,21 +1419,68 @@ export default function App() {
           </div>
 
           <div style={styles.card}>
-            <h2 style={styles.cardTitle}>Property Statement</h2>
+            <h2 style={styles.cardTitle}>Statement Filters</h2>
 
-            <label style={styles.label}>Property</label>
-            <select
-              style={styles.input}
-              value={selectedReportPropertyId}
-              onChange={(e) => setSelectedReportPropertyId(e.target.value)}
-            >
-              <option value="">Select property</option>
-              {companyProperties.map((property) => (
-                <option key={property.id} value={property.id}>
-                  {property.address}
-                </option>
-              ))}
-            </select>
+            <div style={styles.statementFilterGrid}>
+              <div>
+                <label style={styles.label}>Property</label>
+                <select
+                  style={styles.input}
+                  value={selectedReportPropertyId}
+                  onChange={(e) => setSelectedReportPropertyId(e.target.value)}
+                >
+                  <option value="">Select property</option>
+                  {companyProperties.map((property) => (
+                    <option key={property.id} value={property.id}>
+                      {property.address}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label style={styles.label}>Tenant</label>
+                <select
+                  style={styles.input}
+                  value={selectedTenantName}
+                  onChange={(e) => setSelectedTenantName(e.target.value)}
+                >
+                  <option value="">Select tenant</option>
+                  {companyTenantNames.map((tenantName) => (
+                    <option key={tenantName} value={tenantName}>
+                      {tenantName}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label style={styles.label}>Start Date</label>
+                <input
+                  style={styles.input}
+                  type="date"
+                  value={reportStartDate}
+                  onChange={(e) => setReportStartDate(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label style={styles.label}>End Date</label>
+                <input
+                  style={styles.input}
+                  type="date"
+                  value={reportEndDate}
+                  onChange={(e) => setReportEndDate(e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div style={styles.card}>
+            <h2 style={styles.cardTitle}>Property Statement</h2>
+            <p style={styles.smallMuted}>
+              {selectedReportProperty ? selectedReportProperty.address : 'Select a property'}
+            </p>
 
             <div style={styles.tableWrap}>
               <table style={styles.table}>
@@ -1183,7 +1497,7 @@ export default function App() {
                   {!selectedReportProperty ? (
                     <tr><td style={styles.td} colSpan="5">Select a property to view its statement.</td></tr>
                   ) : selectedPropertyStatementRows.length === 0 ? (
-                    <tr><td style={styles.td} colSpan="5">No statement activity yet.</td></tr>
+                    <tr><td style={styles.td} colSpan="5">No statement activity for the selected date range.</td></tr>
                   ) : (
                     selectedPropertyStatementRows.map((row, index) => (
                       <tr key={`${row.type}-${row.date}-${index}`}>
@@ -1193,7 +1507,58 @@ export default function App() {
                           {row.description}
                           {row.note ? <div style={styles.smallMuted}>Note: {row.note}</div> : null}
                         </td>
-                        <td style={styles.td}>{row.type === 'payment' ? `(${currency(Math.abs(row.amount))})` : currency(row.amount)}</td>
+                        <td style={styles.td}>
+                          {row.type === 'payment'
+                            ? `(${currency(Math.abs(row.amount))})`
+                            : currency(row.amount)}
+                        </td>
+                        <td style={styles.td}>{currency(row.runningBalance)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <div style={styles.card}>
+            <h2 style={styles.cardTitle}>Tenant Statement</h2>
+            <p style={styles.smallMuted}>
+              {selectedTenantName || 'Select a tenant'}
+            </p>
+
+            <div style={styles.tableWrap}>
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th style={styles.th}>Date</th>
+                    <th style={styles.th}>Property</th>
+                    <th style={styles.th}>Type</th>
+                    <th style={styles.th}>Description</th>
+                    <th style={styles.th}>Amount</th>
+                    <th style={styles.th}>Running Balance</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {!selectedTenantName ? (
+                    <tr><td style={styles.td} colSpan="6">Select a tenant to view the tenant statement.</td></tr>
+                  ) : selectedTenantStatementRows.length === 0 ? (
+                    <tr><td style={styles.td} colSpan="6">No tenant activity for the selected date range.</td></tr>
+                  ) : (
+                    selectedTenantStatementRows.map((row, index) => (
+                      <tr key={`${row.propertyAddress}-${row.type}-${row.date}-${index}`}>
+                        <td style={styles.td}>{formatDate(row.date)}</td>
+                        <td style={styles.td}>{row.propertyAddress}</td>
+                        <td style={styles.td}>{row.type === 'charge' ? 'Charge' : 'Payment'}</td>
+                        <td style={styles.td}>
+                          {row.description}
+                          {row.note ? <div style={styles.smallMuted}>Note: {row.note}</div> : null}
+                        </td>
+                        <td style={styles.td}>
+                          {row.type === 'payment'
+                            ? `(${currency(Math.abs(row.amount))})`
+                            : currency(row.amount)}
+                        </td>
                         <td style={styles.td}>{currency(row.runningBalance)}</td>
                       </tr>
                     ))
@@ -1245,6 +1610,7 @@ const styles = {
   actionRow: { display: 'flex', gap: '8px', flexWrap: 'wrap' },
   reportHeaderRow: { display: 'flex', justifyContent: 'space-between', gap: '16px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '12px' },
   reportTotals: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px', marginTop: '16px', fontSize: '14px' },
+  statementFilterGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' },
   tableWrap: { overflowX: 'auto' },
   table: { width: '100%', borderCollapse: 'collapse' },
   th: { textAlign: 'left', padding: '10px 8px', borderBottom: '1px solid #e2e8f0', fontSize: '13px', color: '#475569', whiteSpace: 'nowrap' },
