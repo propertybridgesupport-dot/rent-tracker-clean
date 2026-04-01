@@ -1428,49 +1428,65 @@ const effectiveTenant = getTenantForMonth(
                 <p style={styles.smallMuted}>{selectedCompanyName} — {monthLabel(selectedMonth)}</p>
               </div>
               <div style={styles.actionRow}>
-                <button style={styles.smallSecondaryButton} type="button" onClick={printOwnerReport}>Print Owner Report</button>
-                <button style={styles.smallPrimaryButton} type="button" onClick={emailOwnerReport}>Email Owner Report</button>
+                <button
+                  style={styles.smallSecondaryButton}
+                  type="button"
+                  onClick={() => printSection(ownerReportRef, 'Owner Monthly Report')}
+                >
+                  Print Owner Report
+                </button>
+                <button
+                  style={styles.smallPrimaryButton}
+                  type="button"
+                  onClick={emailOwnerReport}
+                >
+                  Email Owner Report
+                </button>
               </div>
             </div>
 
-            <div style={styles.tableWrap}>
-              <table style={styles.table}>
-                <thead>
-                  <tr>
-                    <th style={styles.th}>Property</th>
-                    <th style={styles.th}>Tenant</th>
-                    <th style={styles.th}>Rent</th>
-                    <th style={styles.th}>Collected</th>
-                    <th style={styles.th}>Balance</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {ledgerRows.length === 0 ? (
-                    <tr><td style={styles.td} colSpan="5">No properties yet for this company.</td></tr>
-                  ) : (
-                    ledgerRows.map((row) => (
-                      <tr key={`report-${row.id}`}>
-                        <td style={styles.td}>{row.address}</td>
-                        <td style={styles.td}>{row.effectiveTenant}</td>
-                        <td style={styles.td}>{currency(row.effectiveRent)}</td>
-                        <td style={styles.td}>{currency(row.totalPaid)}</td>
-                        <td style={styles.td}>{currency(row.balanceRemaining)}</td>
+            <div ref={ownerReportRef}>
+              <div style={styles.tableWrap}>
+                <table style={styles.table}>
+                  <thead>
+                    <tr>
+                      <th style={styles.th}>Property</th>
+                      <th style={styles.th}>Tenant</th>
+                      <th style={styles.th}>Rent</th>
+                      <th style={styles.th}>Collected</th>
+                      <th style={styles.th}>Balance</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {ledgerRows.length === 0 ? (
+                      <tr>
+                        <td style={styles.td} colSpan="5">No properties yet for this company.</td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
+                    ) : (
+                      ledgerRows.map((row) => (
+                        <tr key={`report-${row.id}`}>
+                          <td style={styles.td}>{row.address}</td>
+                          <td style={styles.td}>{row.effectiveTenant}</td>
+                          <td style={styles.td}>{currency(row.effectiveRent)}</td>
+                          <td style={styles.td}>{currency(row.totalPaid)}</td>
+                          <td style={styles.td}>{currency(row.balanceRemaining)}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
 
-            <div style={styles.reportTotals}>
-              <div><strong>Monthly Rent:</strong> {currency(totalMonthlyRent)}</div>
-              <div><strong>Collected:</strong> {currency(totalCollected)}</div>
-              <div><strong>Outstanding:</strong> {currency(totalOutstanding)}</div>
-              <div><strong>10% Management Fee:</strong> {currency(managementFeeCollected)}</div>
-            </div>
+              <div style={styles.reportTotals}>
+                <div><strong>Monthly Rent:</strong> {currency(totalMonthlyRent)}</div>
+                <div><strong>Collected:</strong> {currency(totalCollected)}</div>
+                <div><strong>Outstanding:</strong> {currency(totalOutstanding)}</div>
+                <div><strong>10% Management Fee:</strong> {currency(managementFeeCollected)}</div>
+              </div>
 
-            <div style={styles.notesBox}>
-              <strong>Notes:</strong> Balances reflect prior unpaid amounts carried forward. Prorated rents and tenant changes are applied where applicable. Management fee is calculated at 10% of collected rent.
+              <div style={styles.notesBox}>
+                <strong>Notes:</strong> Balances reflect prior unpaid amounts carried forward. Prorated rents and tenant changes are applied where applicable. Management fee is calculated at 10% of collected rent.
+              </div>
             </div>
           </div>
 
@@ -1532,260 +1548,151 @@ const effectiveTenant = getTenantForMonth(
             </div>
           </div>
 
-         
-              <table style={styles.table}>
-                <thead>
-                  <tr>
-                    <th style={styles.th}>Date</th>
-                    <th style={styles.th}>Type</th>
-                    <th style={styles.th}>Description</th>
-                    <th style={styles.th}>Amount</th>
-                    <th style={styles.th}>Running Balance</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {!selectedReportProperty ? (
-                    <tr><td style={styles.td} colSpan="5">Select a property to view its statement.</td></tr>
-                  ) : selectedPropertyStatementRows.length === 0 ? (
-                    <tr><td style={styles.td} colSpan="5">No statement activity for the selected date range.</td></tr>
-                  ) : (
-                    selectedPropertyStatementRows.map((row, index) => (
-                      <tr key={`${row.type}-${row.date}-${index}`}>
-                        <td style={styles.td}>{formatDate(row.date)}</td>
-                        <td style={styles.td}>{row.type === 'charge' ? 'Charge' : 'Payment'}</td>
-                        <td style={styles.td}>
-                          {row.description}
-                          {row.note ? <div style={styles.smallMuted}>Note: {row.note}</div> : null}
-                        </td>
-                        <td style={styles.td}>
-                          {row.type === 'payment'
-                            ? `(${currency(Math.abs(row.amount))})`
-                            : currency(row.amount)}
-                        </td>
-                        <td style={styles.td}>{currency(row.runningBalance)}</td>
+          <div style={styles.card}>
+            <div style={styles.reportHeaderRow}>
+              <div>
+                <h2 style={styles.cardTitle}>Property Statement</h2>
+                <p style={styles.smallMuted}>
+                  {selectedReportProperty ? selectedReportProperty.address : 'Select a property'}
+                </p>
+              </div>
+              <div style={styles.actionRow}>
+                <button
+                  style={styles.smallSecondaryButton}
+                  type="button"
+                  onClick={() => printSection(propertyStatementRef, 'Property Statement')}
+                >
+                  Print Property Statement
+                </button>
+                <button
+                  style={styles.smallPrimaryButton}
+                  type="button"
+                  onClick={exportPropertyStatementCsv}
+                >
+                  Export Property CSV
+                </button>
+              </div>
+            </div>
+
+            <div ref={propertyStatementRef}>
+              <div style={styles.tableWrap}>
+                <table style={styles.table}>
+                  <thead>
+                    <tr>
+                      <th style={styles.th}>Date</th>
+                      <th style={styles.th}>Type</th>
+                      <th style={styles.th}>Description</th>
+                      <th style={styles.th}>Amount</th>
+                      <th style={styles.th}>Running Balance</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {!selectedReportProperty ? (
+                      <tr>
+                        <td style={styles.td} colSpan="5">Select a property to view its statement.</td>
                       </tr>
-                    ))
-                  )}
-                </tbody>
-<div style={styles.card}>
-  <div style={styles.reportHeaderRow}>
-    <div>
-      <h2 style={styles.cardTitle}>Property Statement</h2>
-      <p style={styles.smallMuted}>
-        {selectedReportProperty ? selectedReportProperty.address : 'Select a property'}
-      </p>
-    </div>
-    <div style={styles.actionRow}>
-      <button
-        style={styles.smallSecondaryButton}
-        type="button"
-        onClick={() => printSection(propertyStatementRef, 'Property Statement')}
-      >
-        Print Property Statement
-      </button>
-      <button
-        style={styles.smallPrimaryButton}
-        type="button"
-        onClick={exportPropertyStatementCsv}
-      >
-        Export Property CSV
-      </button>
-    </div>
-  </div>
+                    ) : selectedPropertyStatementRows.length === 0 ? (
+                      <tr>
+                        <td style={styles.td} colSpan="5">No statement activity for the selected date range.</td>
+                      </tr>
+                    ) : (
+                      selectedPropertyStatementRows.map((row, index) => (
+                        <tr key={`${row.type}-${row.date}-${index}`}>
+                          <td style={styles.td}>{formatDate(row.date)}</td>
+                          <td style={styles.td}>{row.type === 'charge' ? 'Charge' : 'Payment'}</td>
+                          <td style={styles.td}>
+                            {row.description}
+                            {row.note ? <div style={styles.smallMuted}>Note: {row.note}</div> : null}
+                          </td>
+                          <td style={styles.td}>
+                            {row.type === 'payment'
+                              ? `(${currency(Math.abs(row.amount))})`
+                              : currency(row.amount)}
+                          </td>
+                          <td style={styles.td}>{currency(row.runningBalance)}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
 
-  <div ref={propertyStatementRef}>
-    <div style={styles.tableWrap}>
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th style={styles.th}>Date</th>
-            <th style={styles.th}>Type</th>
-            <th style={styles.th}>Description</th>
-            <th style={styles.th}>Amount</th>
-            <th style={styles.th}>Running Balance</th>
-          </tr>
-        </thead>
-        <tbody>
-          {!selectedReportProperty ? (
-            <tr>
-              <td style={styles.td} colSpan="5">Select a property to view its statement.</td>
-            </tr>
-          ) : selectedPropertyStatementRows.length === 0 ? (
-            <tr>
-              <td style={styles.td} colSpan="5">No statement activity for the selected date range.</td>
-            </tr>
-          ) : (
-            selectedPropertyStatementRows.map((row, index) => (
-              <tr key={`${row.type}-${row.date}-${index}`}>
-                <td style={styles.td}>{formatDate(row.date)}</td>
-                <td style={styles.td}>{row.type === 'charge' ? 'Charge' : 'Payment'}</td>
-                <td style={styles.td}>
-                  {row.description}
-                  {row.note ? <div style={styles.smallMuted}>Note: {row.note}</div> : null}
-                </td>
-                <td style={styles.td}>
-                  {row.type === 'payment'
-                    ? `(${currency(Math.abs(row.amount))})`
-                    : currency(row.amount)}
-                </td>
-                <td style={styles.td}>{currency(row.runningBalance)}</td>
-              </tr>
-            ))
-          )}
-        </tbody>
-      </table>
-    </div>
-  </div>
-</div>
-    <div>
-<div style={styles.card}>
-  <div style={styles.reportHeaderRow}>
-    <div>
-      <h2 style={styles.cardTitle}>Property Statement</h2>
-      <p style={styles.smallMuted}>
-        {selectedReportProperty ? selectedReportProperty.address : 'Select a property'}
-      </p>
-    </div>
-    <div style={styles.actionRow}>
-      <button
-        style={styles.smallSecondaryButton}
-        type="button"
-        onClick={() => printSection(propertyStatementRef, 'Property Statement')}
-      >
-        Print Property Statement
-      </button>
-      <button
-        style={styles.smallPrimaryButton}
-        type="button"
-        onClick={exportPropertyStatementCsv}
-      >
-        Export Property CSV
-      </button>
-    </div>
-  </div>
+          <div style={styles.card}>
+            <div style={styles.reportHeaderRow}>
+              <div>
+                <h2 style={styles.cardTitle}>Tenant Statement</h2>
+                <p style={styles.smallMuted}>
+                  {selectedTenantName || 'Select a tenant'}
+                </p>
+              </div>
+              <div style={styles.actionRow}>
+                <button
+                  style={styles.smallSecondaryButton}
+                  type="button"
+                  onClick={() => printSection(tenantStatementRef, 'Tenant Statement')}
+                >
+                  Print Tenant Statement
+                </button>
+                <button
+                  style={styles.smallPrimaryButton}
+                  type="button"
+                  onClick={exportTenantStatementCsv}
+                >
+                  Export Tenant CSV
+                </button>
+              </div>
+            </div>
 
-  <div ref={propertyStatementRef}>
-    <div style={styles.tableWrap}>
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th style={styles.th}>Date</th>
-            <th style={styles.th}>Type</th>
-            <th style={styles.th}>Description</th>
-            <th style={styles.th}>Amount</th>
-            <th style={styles.th}>Running Balance</th>
-          </tr>
-        </thead>
-        <tbody>
-          {!selectedReportProperty ? (
-            <tr>
-              <td style={styles.td} colSpan="5">Select a property to view its statement.</td>
-            </tr>
-          ) : selectedPropertyStatementRows.length === 0 ? (
-            <tr>
-              <td style={styles.td} colSpan="5">No statement activity for the selected date range.</td>
-            </tr>
-          ) : (
-            selectedPropertyStatementRows.map((row, index) => (
-              <tr key={`${row.type}-${row.date}-${index}`}>
-                <td style={styles.td}>{formatDate(row.date)}</td>
-                <td style={styles.td}>{row.type === 'charge' ? 'Charge' : 'Payment'}</td>
-                <td style={styles.td}>
-                  {row.description}
-                  {row.note ? <div style={styles.smallMuted}>Note: {row.note}</div> : null}
-                </td>
-                <td style={styles.td}>
-                  {row.type === 'payment'
-                    ? `(${currency(Math.abs(row.amount))})`
-                    : currency(row.amount)}
-                </td>
-                <td style={styles.td}>{currency(row.runningBalance)}</td>
-              </tr>
-            ))
-          )}
-        </tbody>
-      </table>
-    </div>
-  </div>
-</div>
-<div style={styles.card}>
-  <div style={styles.reportHeaderRow}>
-    <div>
-      <h2 style={styles.cardTitle}>Tenant Statement</h2>
-      <p style={styles.smallMuted}>
-        {selectedTenantName || 'Select a tenant'}
-      </p>
-    </div>
-    <div style={styles.actionRow}>
-      <button
-        style={styles.smallSecondaryButton}
-        type="button"
-        onClick={() => printSection(tenantStatementRef, 'Tenant Statement')}
-      >
-        Print Tenant Statement
-      </button>
-      <button
-        style={styles.smallPrimaryButton}
-        type="button"
-        onClick={exportTenantStatementCsv}
-      >
-        Export Tenant CSV
-      </button>
-    </div>
-  </div>
-
-  <div ref={tenantStatementRef}>
-    <div style={styles.tableWrap}>
-      <table style={styles.table}>
-        <thead>
-          <tr>
-            <th style={styles.th}>Date</th>
-            <th style={styles.th}>Property</th>
-            <th style={styles.th}>Type</th>
-            <th style={styles.th}>Description</th>
-            <th style={styles.th}>Amount</th>
-            <th style={styles.th}>Running Balance</th>
-          </tr>
-        </thead>
-        <tbody>
-          {!selectedTenantName ? (
-            <tr>
-              <td style={styles.td} colSpan="6">Select a tenant to view the tenant statement.</td>
-            </tr>
-          ) : selectedTenantStatementRows.length === 0 ? (
-            <tr>
-              <td style={styles.td} colSpan="6">No tenant activity for the selected date range.</td>
-            </tr>
-          ) : (
-            selectedTenantStatementRows.map((row, index) => (
-              <tr key={`${row.propertyAddress}-${row.type}-${row.date}-${index}`}>
-                <td style={styles.td}>{formatDate(row.date)}</td>
-                <td style={styles.td}>{row.propertyAddress}</td>
-                <td style={styles.td}>{row.type === 'charge' ? 'Charge' : 'Payment'}</td>
-                <td style={styles.td}>
-                  {row.description}
-                  {row.note ? <div style={styles.smallMuted}>Note: {row.note}</div> : null}
-                </td>
-                <td style={styles.td}>
-                                   {row.type === 'payment'
-                    ? `(${currency(Math.abs(row.amount))})`
-                    : currency(row.amount)}
-                </td>
-                <td style={styles.td}>{currency(row.runningBalance)}</td>
-              </tr>
-            ))
-          )}
-        </tbody>
-      </table>
-    </div>
-  </div>
-</div>
-</div>
+            <div ref={tenantStatementRef}>
+              <div style={styles.tableWrap}>
+                <table style={styles.table}>
+                  <thead>
+                    <tr>
+                      <th style={styles.th}>Date</th>
+                      <th style={styles.th}>Property</th>
+                      <th style={styles.th}>Type</th>
+                      <th style={styles.th}>Description</th>
+                      <th style={styles.th}>Amount</th>
+                      <th style={styles.th}>Running Balance</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {!selectedTenantName ? (
+                      <tr>
+                        <td style={styles.td} colSpan="6">Select a tenant to view the tenant statement.</td>
+                      </tr>
+                    ) : selectedTenantStatementRows.length === 0 ? (
+                      <tr>
+                        <td style={styles.td} colSpan="6">No tenant activity for the selected date range.</td>
+                      </tr>
+                    ) : (
+                      selectedTenantStatementRows.map((row, index) => (
+                        <tr key={`${row.propertyAddress}-${row.type}-${row.date}-${index}`}>
+                          <td style={styles.td}>{formatDate(row.date)}</td>
+                          <td style={styles.td}>{row.propertyAddress}</td>
+                          <td style={styles.td}>{row.type === 'charge' ? 'Charge' : 'Payment'}</td>
+                          <td style={styles.td}>
+                            {row.description}
+                            {row.note ? <div style={styles.smallMuted}>Note: {row.note}</div> : null}
+                          </td>
+                          <td style={styles.td}>
+                            {row.type === 'payment'
+                              ? `(${currency(Math.abs(row.amount))})`
+                              : currency(row.amount)}
+                          </td>
+                          <td style={styles.td}>{currency(row.runningBalance)}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
-    </div>
-  )
-}
-
 const styles = {
   page: { minHeight: '100vh', background: '#f8fafc', padding: '20px', fontFamily: 'Arial, sans-serif', color: '#0f172a' },
   authPage: { minHeight: '100vh', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', fontFamily: 'Arial, sans-serif' },
