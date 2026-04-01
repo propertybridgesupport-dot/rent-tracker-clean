@@ -151,6 +151,10 @@ export default function App() {
     notes: '',
   })
 
+  const ownerReportRef = useRef(null)
+  const propertyStatementRef = useRef(null)
+  const tenantStatementRef = useRef(null)
+
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session ?? null)
@@ -881,6 +885,110 @@ const effectiveTenant = getTenantForMonth(
     ]
 
     window.location.href = `mailto:${selectedCompanyEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(lines.join('\n'))}`
+  }
+
+
+  function escapeCsv(value) {
+    const safeValue = value ?? ''
+    const text = String(safeValue)
+    if (text.includes(',') || text.includes('"') || text.includes('\n')) {
+      return `"${text.replace(/"/g, '""')}"`
+    }
+    return text
+  }
+
+  function downloadCsv(filename, rows) {
+    const csv = rows.map((row) => row.map(escapeCsv).join(',')).join('\n')
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+    const url = window.URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.setAttribute('download', filename)
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    window.URL.revokeObjectURL(url)
+  }
+
+  function printSection(sectionRef, title) {
+    const sectionHtml = sectionRef?.current?.innerHTML
+
+    if (!sectionHtml) {
+      setMessage(`Nothing to print for ${title}.`)
+      return
+    }
+
+    const printWindow = window.open('', '_blank', 'width=1000,height=800')
+    if (!printWindow) {
+      setMessage('Your browser blocked the print window. Please allow pop-ups and try again.')
+      return
+    }
+
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>${title}</title>
+          <style>
+            body { font-family: Arial, sans-serif; padding: 24px; color: #0f172a; }
+            h1 { margin: 0 0 16px 0; }
+            table { width: 100%; border-collapse: collapse; margin-top: 16px; }
+            th, td { border: 1px solid #cbd5e1; padding: 10px; text-align: left; vertical-align: top; }
+            th { background: #f8fafc; }
+          </style>
+        </head>
+        <body>
+          <h1>${title}</h1>
+          ${sectionHtml}
+        </body>
+      </html>
+    `)
+    printWindow.document.close()
+    printWindow.focus()
+    printWindow.print()
+    printWindow.close()
+  }
+
+  function exportPropertyStatementCsv() {
+    if (!selectedReportProperty) {
+      setMessage('Please select a property first.')
+      return
+    }
+
+    const rows = [
+      ['Date', 'Type', 'Description', 'Amount', 'Running Balance', 'Note'],
+      ...selectedPropertyStatementRows.map((row) => [
+        formatDate(row.date),
+        row.type === 'charge' ? 'Charge' : 'Payment',
+        row.description,
+        row.type === 'payment' ? `-${Math.abs(Number(row.amount || 0)).toFixed(2)}` : Number(row.amount || 0).toFixed(2),
+        Number(row.runningBalance || 0).toFixed(2),
+        row.note || '',
+      ]),
+    ]
+
+    downloadCsv(`${(selectedReportProperty.address || 'property_statement').replace(/[^a-z0-9]+/gi, '_')}_${selectedMonth}.csv`, rows)
+  }
+
+  function exportTenantStatementCsv() {
+    if (!selectedTenantName) {
+      setMessage('Please select a tenant first.')
+      return
+    }
+
+    const rows = [
+      ['Date', 'Property', 'Type', 'Description', 'Amount', 'Running Balance', 'Note'],
+      ...selectedTenantStatementRows.map((row) => [
+        formatDate(row.date),
+        row.propertyAddress,
+        row.type === 'charge' ? 'Charge' : 'Payment',
+        row.description,
+        row.type === 'payment' ? `-${Math.abs(Number(row.amount || 0)).toFixed(2)}` : Number(row.amount || 0).toFixed(2),
+        Number(row.runningBalance || 0).toFixed(2),
+        row.note || '',
+      ]),
+    ]
+
+    downloadCsv(`${selectedTenantName.replace(/[^a-z0-9]+/gi, '_')}_${selectedMonth}.csv`, rows)
   }
 
   if (loading) {
@@ -1693,6 +1801,10 @@ const effectiveTenant = getTenantForMonth(
           </div>
         </div>
       )}
+    </div>
+  )
+}
+
 const styles = {
   page: { minHeight: '100vh', background: '#f8fafc', padding: '20px', fontFamily: 'Arial, sans-serif', color: '#0f172a' },
   authPage: { minHeight: '100vh', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', fontFamily: 'Arial, sans-serif' },
