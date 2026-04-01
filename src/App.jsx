@@ -1567,16 +1567,147 @@ const effectiveTenant = getTenantForMonth(
                     ))
                   )}
                 </tbody>
-            </table>
-</div>
-</div>
-</div>
-
 <div style={styles.card}>
-
-          <div style={styles.card}>
   <div style={styles.reportHeaderRow}>
     <div>
+      <h2 style={styles.cardTitle}>Property Statement</h2>
+      <p style={styles.smallMuted}>
+        {selectedReportProperty ? selectedReportProperty.address : 'Select a property'}
+      </p>
+    </div>
+    <div style={styles.actionRow}>
+      <button
+        style={styles.smallSecondaryButton}
+        type="button"
+        onClick={() => printSection(propertyStatementRef, 'Property Statement')}
+      >
+        Print Property Statement
+      </button>
+      <button
+        style={styles.smallPrimaryButton}
+        type="button"
+        onClick={exportPropertyStatementCsv}
+      >
+        Export Property CSV
+      </button>
+    </div>
+  </div>
+
+  <div ref={propertyStatementRef}>
+    <div style={styles.tableWrap}>
+      <table style={styles.table}>
+        <thead>
+          <tr>
+            <th style={styles.th}>Date</th>
+            <th style={styles.th}>Type</th>
+            <th style={styles.th}>Description</th>
+            <th style={styles.th}>Amount</th>
+            <th style={styles.th}>Running Balance</th>
+          </tr>
+        </thead>
+        <tbody>
+          {!selectedReportProperty ? (
+            <tr>
+              <td style={styles.td} colSpan="5">Select a property to view its statement.</td>
+            </tr>
+          ) : selectedPropertyStatementRows.length === 0 ? (
+            <tr>
+              <td style={styles.td} colSpan="5">No statement activity for the selected date range.</td>
+            </tr>
+          ) : (
+            selectedPropertyStatementRows.map((row, index) => (
+              <tr key={`${row.type}-${row.date}-${index}`}>
+                <td style={styles.td}>{formatDate(row.date)}</td>
+                <td style={styles.td}>{row.type === 'charge' ? 'Charge' : 'Payment'}</td>
+                <td style={styles.td}>
+                  {row.description}
+                  {row.note ? <div style={styles.smallMuted}>Note: {row.note}</div> : null}
+                </td>
+                <td style={styles.td}>
+                  {row.type === 'payment'
+                    ? `(${currency(Math.abs(row.amount))})`
+                    : currency(row.amount)}
+                </td>
+                <td style={styles.td}>{currency(row.runningBalance)}</td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+    <div>
+<div style={styles.card}>
+  <div style={styles.reportHeaderRow}>
+    <div>
+      <h2 style={styles.cardTitle}>Property Statement</h2>
+      <p style={styles.smallMuted}>
+        {selectedReportProperty ? selectedReportProperty.address : 'Select a property'}
+      </p>
+    </div>
+    <div style={styles.actionRow}>
+      <button
+        style={styles.smallSecondaryButton}
+        type="button"
+        onClick={() => printSection(propertyStatementRef, 'Property Statement')}
+      >
+        Print Property Statement
+      </button>
+      <button
+        style={styles.smallPrimaryButton}
+        type="button"
+        onClick={exportPropertyStatementCsv}
+      >
+        Export Property CSV
+      </button>
+    </div>
+  </div>
+
+  <div ref={propertyStatementRef}>
+    <div style={styles.tableWrap}>
+      <table style={styles.table}>
+        <thead>
+          <tr>
+            <th style={styles.th}>Date</th>
+            <th style={styles.th}>Type</th>
+            <th style={styles.th}>Description</th>
+            <th style={styles.th}>Amount</th>
+            <th style={styles.th}>Running Balance</th>
+          </tr>
+        </thead>
+        <tbody>
+          {!selectedReportProperty ? (
+            <tr>
+              <td style={styles.td} colSpan="5">Select a property to view its statement.</td>
+            </tr>
+          ) : selectedPropertyStatementRows.length === 0 ? (
+            <tr>
+              <td style={styles.td} colSpan="5">No statement activity for the selected date range.</td>
+            </tr>
+          ) : (
+            selectedPropertyStatementRows.map((row, index) => (
+              <tr key={`${row.type}-${row.date}-${index}`}>
+                <td style={styles.td}>{formatDate(row.date)}</td>
+                <td style={styles.td}>{row.type === 'charge' ? 'Charge' : 'Payment'}</td>
+                <td style={styles.td}>
+                  {row.description}
+                  {row.note ? <div style={styles.smallMuted}>Note: {row.note}</div> : null}
+                </td>
+                <td style={styles.td}>
+                  {row.type === 'payment'
+                    ? `(${currency(Math.abs(row.amount))})`
+                    : currency(row.amount)}
+                </td>
+                <td style={styles.td}>{currency(row.runningBalance)}</td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
       <h2 style={styles.cardTitle}>Tenant Statement</h2>
       <p style={styles.smallMuted}>
         {selectedTenantName || 'Select a tenant'}
