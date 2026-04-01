@@ -34,6 +34,22 @@ function formatDate(value) {
   return d.toLocaleDateString('en-US')
 }
 
+function getReportDateRangeLabel(startDate, endDate) {
+  const start = startDate ? formatDate(startDate) : 'Beginning'
+  const end = endDate ? formatDate(endDate) : 'Present'
+  return `${start} - ${end}`
+}
+
+function getGeneratedOnLabel() {
+  return new Date().toLocaleString('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit',
+  })
+}
+
 function getTodayDateInput() {
   const today = new Date()
   const year = today.getFullYear()
@@ -811,6 +827,8 @@ This keeps the record for reporting but removes it from your active list.`
 
   const selectedCompanyName = selectedCompany?.company_name || selectedCompany?.name || 'No company selected'
   const selectedCompanyEmail = selectedCompany?.owner_email || ''
+  const reportDateRangeLabel = getReportDateRangeLabel(reportStartDate, reportEndDate)
+  const generatedOnLabel = getGeneratedOnLabel()
   const nextMonthKey = useMemo(() => getNextMonthKey(selectedMonth), [selectedMonth])
 
   const companyProperties = useMemo(() => {
@@ -1277,16 +1295,35 @@ This keeps the record for reporting but removes it from your active list.`
         <head>
           <title>${title}</title>
           <style>
-            body { font-family: Arial, sans-serif; padding: 24px; color: #0f172a; }
-            h1 { margin: 0 0 16px 0; }
+            body { font-family: Arial, sans-serif; padding: 28px; color: #0f172a; }
+            .print-shell { max-width: 1100px; margin: 0 auto; }
+            .print-banner { margin-bottom: 18px; padding-bottom: 14px; border-bottom: 2px solid #0f172a; }
+            .print-company { font-size: 26px; font-weight: 700; margin-bottom: 4px; }
+            .print-subtitle { font-size: 14px; color: #475569; }
+            .report-print-header { margin-bottom: 16px; }
+            .report-print-title { font-size: 24px; font-weight: 700; margin-bottom: 6px; }
+            .report-print-meta { font-size: 14px; color: #334155; margin-bottom: 4px; }
+            .report-print-footer { margin-top: 18px; padding-top: 12px; border-top: 1px solid #cbd5e1; font-size: 12px; color: #64748b; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+            .notes-box { margin-top: 16px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px 14px; font-size: 14px; color: #334155; }
+            .report-totals { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-top: 16px; font-size: 14px; }
+            .small-muted { color: #64748b; font-size: 14px; }
             table { width: 100%; border-collapse: collapse; margin-top: 16px; }
             th, td { border: 1px solid #cbd5e1; padding: 10px; text-align: left; vertical-align: top; }
             th { background: #f8fafc; }
+            @media print {
+              body { padding: 0; }
+              .print-shell { max-width: none; }
+            }
           </style>
         </head>
         <body>
-          <h1>${title}</h1>
-          ${sectionHtml}
+          <div class="print-shell">
+            <div class="print-banner">
+              <div class="print-company">${selectedCompanyName}</div>
+              <div class="print-subtitle">Rent Tracker Report</div>
+            </div>
+            ${sectionHtml}
+          </div>
         </body>
       </html>
     `)
@@ -2171,6 +2208,17 @@ This keeps the record for reporting but removes it from your active list.`
             </div>
 
             <div ref={ownerReportRef}>
+              <div style={styles.reportPrintHeader}>
+                <div style={styles.reportPrintCompany}>{selectedCompanyName}</div>
+                <div style={styles.reportPrintTitle}>Owner Monthly Report</div>
+                <div style={styles.reportPrintMeta}>
+                  <strong>Reporting Month:</strong> {monthLabel(selectedMonth)}
+                </div>
+                <div style={styles.reportPrintMeta}>
+                  <strong>Generated:</strong> {generatedOnLabel}
+                </div>
+              </div>
+
               <div style={styles.tableWrap}>
                 <table style={styles.table}>
                   <thead>
@@ -2211,6 +2259,11 @@ This keeps the record for reporting but removes it from your active list.`
 
               <div style={styles.notesBox}>
                 <strong>Notes:</strong> Balances reflect prior unpaid amounts carried forward. Prorated rents and tenant changes are applied where applicable. Management fee is calculated at 10% of collected rent.
+              </div>
+
+              <div style={styles.reportPrintFooter}>
+                <span>{selectedCompanyName}</span>
+                <span>Generated {generatedOnLabel}</span>
               </div>
             </div>
           </div>
@@ -2301,12 +2354,16 @@ This keeps the record for reporting but removes it from your active list.`
 
             <div ref={propertyStatementRef}>
               <div style={styles.reportPrintHeader}>
-                <div style={styles.reportPrintTitle}>Property Statement</div>
+                <div style={styles.reportPrintCompany}>{selectedCompanyName}</div>
+                <div style={styles.reportPrintTitle}>Property Account Statement</div>
                 <div style={styles.reportPrintMeta}>
                   <strong>Property:</strong> {selectedReportProperty ? selectedReportProperty.address : '—'}
                 </div>
                 <div style={styles.reportPrintMeta}>
-                  <strong>Date Range:</strong> {reportStartDate ? formatDate(reportStartDate) : 'Beginning'} - {reportEndDate ? formatDate(reportEndDate) : 'Present'}
+                  <strong>Date Range:</strong> {reportDateRangeLabel}
+                </div>
+                <div style={styles.reportPrintMeta}>
+                  <strong>Generated:</strong> {generatedOnLabel}
                 </div>
               </div>
               <div style={styles.tableWrap}>
@@ -2346,6 +2403,11 @@ This keeps the record for reporting but removes it from your active list.`
                   </tbody>
                 </table>
               </div>
+
+              <div style={styles.reportPrintFooter}>
+                <span>{selectedCompanyName}</span>
+                <span>Generated {generatedOnLabel}</span>
+              </div>
             </div>
           </div>
 
@@ -2377,12 +2439,16 @@ This keeps the record for reporting but removes it from your active list.`
 
             <div ref={tenantStatementRef}>
               <div style={styles.reportPrintHeader}>
-                <div style={styles.reportPrintTitle}>Tenant Statement</div>
+                <div style={styles.reportPrintCompany}>{selectedCompanyName}</div>
+                <div style={styles.reportPrintTitle}>Tenant Account Statement</div>
                 <div style={styles.reportPrintMeta}>
                   <strong>Tenant:</strong> {selectedTenantName || '—'}
                 </div>
                 <div style={styles.reportPrintMeta}>
-                  <strong>Date Range:</strong> {reportStartDate ? formatDate(reportStartDate) : 'Beginning'} - {reportEndDate ? formatDate(reportEndDate) : 'Present'}
+                  <strong>Date Range:</strong> {reportDateRangeLabel}
+                </div>
+                <div style={styles.reportPrintMeta}>
+                  <strong>Generated:</strong> {generatedOnLabel}
                 </div>
               </div>
               <div style={styles.tableWrap}>
@@ -2423,6 +2489,11 @@ This keeps the record for reporting but removes it from your active list.`
                     )}
                   </tbody>
                 </table>
+              </div>
+
+              <div style={styles.reportPrintFooter}>
+                <span>{selectedCompanyName}</span>
+                <span>Generated {generatedOnLabel}</span>
               </div>
             </div>
           </div>
@@ -2485,7 +2556,9 @@ const styles = {
   messageBanner: { marginBottom: '18px', background: '#fff7ed', border: '1px solid #fdba74', color: '#9a3412', borderRadius: '12px', padding: '12px 14px', fontSize: '14px' },
   successBanner: { marginBottom: '16px', background: '#ecfdf5', border: '1px solid #86efac', color: '#166534', borderRadius: '12px', padding: '12px 14px', fontSize: '14px' },
   notesBox: { marginTop: '16px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px 14px', fontSize: '14px', color: '#334155' },
-  reportPrintHeader: { marginBottom: '14px' },
+  reportPrintHeader: { marginBottom: '14px', paddingBottom: '12px', borderBottom: '1px solid #e2e8f0' },
+  reportPrintCompany: { fontSize: '18px', fontWeight: 700, marginBottom: '6px' },
   reportPrintTitle: { fontSize: '24px', fontWeight: 700, marginBottom: '6px' },
   reportPrintMeta: { fontSize: '14px', color: '#334155', marginBottom: '4px' },
+  reportPrintFooter: { marginTop: '16px', paddingTop: '12px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', color: '#64748b', fontSize: '12px' },
 }
