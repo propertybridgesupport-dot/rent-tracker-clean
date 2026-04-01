@@ -1708,6 +1708,9 @@ const effectiveTenant = getTenantForMonth(
     </div>
   </div>
 </div>
+<div style={styles.card}>
+  <div style={styles.reportHeaderRow}>
+    <div>
       <h2 style={styles.cardTitle}>Tenant Statement</h2>
       <p style={styles.smallMuted}>
         {selectedTenantName || 'Select a tenant'}
@@ -1734,45 +1737,49 @@ const effectiveTenant = getTenantForMonth(
   <div ref={tenantStatementRef}>
     <div style={styles.tableWrap}>
       <table style={styles.table}>
-                <thead>
-                  <tr>
-                    <th style={styles.th}>Date</th>
-                    <th style={styles.th}>Property</th>
-                    <th style={styles.th}>Type</th>
-                    <th style={styles.th}>Description</th>
-                    <th style={styles.th}>Amount</th>
-                    <th style={styles.th}>Running Balance</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {!selectedTenantName ? (
-                    <tr><td style={styles.td} colSpan="6">Select a tenant to view the tenant statement.</td></tr>
-                  ) : selectedTenantStatementRows.length === 0 ? (
-                    <tr><td style={styles.td} colSpan="6">No tenant activity for the selected date range.</td></tr>
-                  ) : (
-                    selectedTenantStatementRows.map((row, index) => (
-                      <tr key={`${row.propertyAddress}-${row.type}-${row.date}-${index}`}>
-                        <td style={styles.td}>{formatDate(row.date)}</td>
-                        <td style={styles.td}>{row.propertyAddress}</td>
-                        <td style={styles.td}>{row.type === 'charge' ? 'Charge' : 'Payment'}</td>
-                        <td style={styles.td}>
-                          {row.description}
-                          {row.note ? <div style={styles.smallMuted}>Note: {row.note}</div> : null}
-                        </td>
-                        <td style={styles.td}>
-                          {row.type === 'payment'
-                            ? `(${currency(Math.abs(row.amount))})`
-                            : currency(row.amount)}
-                        </td>
-                        <td style={styles.td}>{currency(row.runningBalance)}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
+        <thead>
+          <tr>
+            <th style={styles.th}>Date</th>
+            <th style={styles.th}>Property</th>
+            <th style={styles.th}>Type</th>
+            <th style={styles.th}>Description</th>
+            <th style={styles.th}>Amount</th>
+            <th style={styles.th}>Running Balance</th>
+          </tr>
+        </thead>
+        <tbody>
+          {!selectedTenantName ? (
+            <tr>
+              <td style={styles.td} colSpan="6">Select a tenant to view the tenant statement.</td>
+            </tr>
+          ) : selectedTenantStatementRows.length === 0 ? (
+            <tr>
+              <td style={styles.td} colSpan="6">No tenant activity for the selected date range.</td>
+            </tr>
+          ) : (
+            selectedTenantStatementRows.map((row, index) => (
+              <tr key={`${row.propertyAddress}-${row.type}-${row.date}-${index}`}>
+                <td style={styles.td}>{formatDate(row.date)}</td>
+                <td style={styles.td}>{row.propertyAddress}</td>
+                <td style={styles.td}>{row.type === 'charge' ? 'Charge' : 'Payment'}</td>
+                <td style={styles.td}>
+                  {row.description}
+                  {row.note ? <div style={styles.smallMuted}>Note: {row.note}</div> : null}
+                </td>
+                <td style={styles.td}>
+                  {row.type === 'payment'
+                    ? `(${currency(Math.abs(row.amount))})`
+                    : currency(row.amount)}
+                </td>
+                <td style={styles.td}>{currency(row.runningBalance)}</td>
+              </tr>
+            ))
+          )}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
       )}
     </div>
   )
