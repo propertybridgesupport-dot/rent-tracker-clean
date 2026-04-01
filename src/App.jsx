@@ -1683,6 +1683,18 @@ const effectiveTenant = getTenantForMonth(
             </div>
 
             <div ref={propertyStatementRef}>
+              <div style={styles.reportPrintHeader}>
+                <div style={styles.reportPrintTitle}>Property Statement</div>
+                <div style={styles.reportPrintMeta}>
+                  Property: {selectedReportProperty ? selectedReportProperty.address : 'No property selected'}
+                </div>
+                {(reportStartDate || reportEndDate) ? (
+                  <div style={styles.reportPrintMeta}>
+                    Date Range: {reportStartDate ? formatDate(reportStartDate) : 'Beginning'} - {reportEndDate ? formatDate(reportEndDate) : 'Present'}
+                  </div>
+                ) : null}
+              </div>
+
               <div style={styles.tableWrap}>
                 <table style={styles.table}>
                   <thead>
@@ -1851,4 +1863,18 @@ const styles = {
   message: { marginTop: '16px', color: '#b91c1c', fontSize: '14px' },
   messageBanner: { marginBottom: '18px', background: '#fff7ed', border: '1px solid #fdba74', color: '#9a3412', borderRadius: '12px', padding: '12px 14px', fontSize: '14px' },
   notesBox: { marginTop: '16px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px 14px', fontSize: '14px', color: '#334155' },
+,
+  reportPrintHeader: {
+    marginBottom: '12px',
+  },
+  reportPrintTitle: {
+    fontSize: '20px',
+    fontWeight: 700,
+    marginBottom: '4px',
+  },
+  reportPrintMeta: {
+    fontSize: '14px',
+    color: '#475569',
+    marginBottom: '2px',
+  }
 }
