@@ -1776,6 +1776,7 @@ const effectiveTenant = getTenantForMonth(
             ))
           )}
         </tbody>
+              </tbody>
       </table>
     </div>
   </div>
