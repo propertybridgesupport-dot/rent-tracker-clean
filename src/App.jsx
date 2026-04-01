@@ -1767,7 +1767,7 @@ const effectiveTenant = getTenantForMonth(
                   {row.note ? <div style={styles.smallMuted}>Note: {row.note}</div> : null}
                 </td>
                 <td style={styles.td}>
-                  {row.type === 'payment'
+                                   {row.type === 'payment'
                     ? `(${currency(Math.abs(row.amount))})`
                     : currency(row.amount)}
                 </td>
@@ -1776,7 +1776,6 @@ const effectiveTenant = getTenantForMonth(
             ))
           )}
         </tbody>
-              </tbody>
       </table>
     </div>
   </div>
