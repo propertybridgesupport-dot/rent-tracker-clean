@@ -34,6 +34,14 @@ function formatDate(value) {
   return d.toLocaleDateString('en-US')
 }
 
+function getTodayDateInput() {
+  const today = new Date()
+  const year = today.getFullYear()
+  const month = String(today.getMonth() + 1).padStart(2, '0')
+  const day = String(today.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
 function isWithinDateRange(dateValue, startDate, endDate) {
   if (!dateValue) return false
   const dateOnly = String(dateValue).slice(0, 10)
@@ -183,11 +191,12 @@ export default function App() {
 
   const [paymentForm, setPaymentForm] = useState({
     propertyId: '',
-    paymentDate: '',
+    paymentDate: getTodayDateInput(),
     amount: '',
     method: 'Cash',
     note: '',
   })
+  const [paymentSuccessMessage, setPaymentSuccessMessage] = useState('')
 
   const [editingPropertyId, setEditingPropertyId] = useState(null)
   const [editPropertyForm, setEditPropertyForm] = useState({
@@ -239,6 +248,18 @@ export default function App() {
   useEffect(() => {
     if (session) loadData()
   }, [session])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const savedMethod = window.localStorage.getItem('rentTrackerLastPaymentMethod')
+    if (savedMethod) {
+      setPaymentForm((current) => ({
+        ...current,
+        method: current.method || savedMethod,
+      }))
+    }
+  }, [])
 
   async function loadData() {
     setLoading(true)
@@ -427,12 +448,22 @@ export default function App() {
     await loadData()
   }
 
-  async function addPayment(e) {
-    e.preventDefault()
+  async function savePayment({ addAnother = false } = {}) {
     setMessage('')
+    setPaymentSuccessMessage('')
 
     if (!paymentForm.propertyId) {
       setMessage('Please select a property.')
+      return
+    }
+
+    if (!paymentForm.paymentDate) {
+      setMessage('Please enter a payment date.')
+      return
+    }
+
+    if (!paymentForm.amount || Number(paymentForm.amount) <= 0) {
+      setMessage('Please enter a payment amount greater than zero.')
       return
     }
 
@@ -451,15 +482,32 @@ export default function App() {
       return
     }
 
-    setPaymentForm({
-      propertyId: '',
-      paymentDate: '',
+    const property = companyProperties.find((item) => item.id === paymentForm.propertyId)
+
+    if (typeof window !== 'undefined') {
+      window.localStorage.setItem('rentTrackerLastPaymentMethod', paymentForm.method)
+    }
+
+    setPaymentSuccessMessage(`Payment saved for ${property?.address || 'selected property'} — ${currency(paymentForm.amount)} on ${formatDate(paymentForm.paymentDate)}.`)
+
+    setPaymentForm((current) => ({
+      propertyId: addAnother ? current.propertyId : '',
+      paymentDate: getTodayDateInput(),
       amount: '',
-      method: 'Cash',
+      method: current.method || 'Cash',
       note: '',
-    })
+    }))
 
     await loadData()
+  }
+
+  async function addPayment(e) {
+    e.preventDefault()
+    await savePayment({ addAnother: false })
+  }
+
+  async function addPaymentAndContinue() {
+    await savePayment({ addAnother: true })
   }
 
   function startEditingProperty(property) {
@@ -732,6 +780,25 @@ export default function App() {
   }, [companyProperties, selectedReportPropertyId])
 
   const companyPropertyIds = useMemo(() => companyProperties.map((property) => property.id), [companyProperties])
+
+  useEffect(() => {
+    if (companyProperties.length === 0) {
+      setPaymentForm((current) => ({
+        ...current,
+        propertyId: '',
+      }))
+      return
+    }
+
+    const propertyStillExists = companyProperties.some((property) => property.id === paymentForm.propertyId)
+
+    if (!propertyStillExists) {
+      setPaymentForm((current) => ({
+        ...current,
+        propertyId: companyProperties[0].id,
+      }))
+    }
+  }, [companyProperties, paymentForm.propertyId])
 
   const companyPayments = useMemo(() => {
     return payments.filter((payment) => companyPropertyIds.includes(payment.property_id))
@@ -1667,21 +1734,61 @@ export default function App() {
           </div>
 
           <div style={styles.card}>
-            <h2 style={styles.cardTitle}>Add Payment</h2>
+            <h2 style={styles.cardTitle}>Quick Payment Entry</h2>
+            <p style={styles.smallMuted}>Default date starts on today, the last saved payment method is remembered, and you can save another payment without rebuilding the form.</p>
+
+            {paymentSuccessMessage ? (
+              <div style={styles.successBanner}>{paymentSuccessMessage}</div>
+            ) : null}
+
             <form onSubmit={addPayment}>
               <label style={styles.label}>Property</label>
-              <select style={styles.input} value={paymentForm.propertyId} onChange={(e) => setPaymentForm({ ...paymentForm, propertyId: e.target.value })}>
+              <select
+                style={styles.input}
+                value={paymentForm.propertyId}
+                onChange={(e) => {
+                  setPaymentSuccessMessage('')
+                  setPaymentForm({ ...paymentForm, propertyId: e.target.value })
+                }}
+              >
                 <option value="">Select property</option>
                 {companyProperties.map((property) => (
                   <option key={property.id} value={property.id}>{property.address}</option>
                 ))}
               </select>
+
               <label style={styles.label}>Payment Date</label>
-              <input style={styles.input} type="date" value={paymentForm.paymentDate} onChange={(e) => setPaymentForm({ ...paymentForm, paymentDate: e.target.value })} />
+              <input
+                style={styles.input}
+                type="date"
+                value={paymentForm.paymentDate}
+                onChange={(e) => {
+                  setPaymentSuccessMessage('')
+                  setPaymentForm({ ...paymentForm, paymentDate: e.target.value })
+                }}
+              />
+
               <label style={styles.label}>Amount</label>
-              <input style={styles.input} type="number" value={paymentForm.amount} onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })} />
+              <input
+                style={styles.input}
+                type="number"
+                step="0.01"
+                value={paymentForm.amount}
+                onChange={(e) => {
+                  setPaymentSuccessMessage('')
+                  setPaymentForm({ ...paymentForm, amount: e.target.value })
+                }}
+              />
+
               <label style={styles.label}>Method</label>
-              <select style={styles.input} value={paymentForm.method} onChange={(e) => setPaymentForm({ ...paymentForm, method: e.target.value })}>
+              <select
+                style={styles.input}
+                value={paymentForm.method}
+                onChange={(e) => {
+                  setPaymentSuccessMessage('')
+                  setPaymentForm({ ...paymentForm, method: e.target.value })
+                }}
+              >
                 <option value="Cash">Cash</option>
                 <option value="Bank Deposit">Bank Deposit</option>
                 <option value="Check">Check</option>
@@ -1690,9 +1797,23 @@ export default function App() {
                 <option value="Zelle">Zelle</option>
                 <option value="Venmo">Venmo</option>
               </select>
+
+              <div style={styles.smallMuted}>Last used method will carry forward after you save.</div>
+
               <label style={styles.label}>Note</label>
-              <input style={styles.input} value={paymentForm.note} onChange={(e) => setPaymentForm({ ...paymentForm, note: e.target.value })} />
-              <button style={styles.primaryButton} type="submit">Save Payment</button>
+              <input
+                style={styles.input}
+                value={paymentForm.note}
+                onChange={(e) => {
+                  setPaymentSuccessMessage('')
+                  setPaymentForm({ ...paymentForm, note: e.target.value })
+                }}
+              />
+
+              <div style={styles.buttonRow}>
+                <button style={styles.primaryButton} type="submit">Save Payment</button>
+                <button style={styles.secondaryButton} type="button" onClick={addPaymentAndContinue}>Save + Add Another</button>
+              </div>
             </form>
           </div>
         </div>
@@ -2280,6 +2401,7 @@ const styles = {
   smallMuted: { color: '#64748b', fontSize: '14px' },
   message: { marginTop: '16px', color: '#b91c1c', fontSize: '14px' },
   messageBanner: { marginBottom: '18px', background: '#fff7ed', border: '1px solid #fdba74', color: '#9a3412', borderRadius: '12px', padding: '12px 14px', fontSize: '14px' },
+  successBanner: { marginBottom: '16px', background: '#ecfdf5', border: '1px solid #86efac', color: '#166534', borderRadius: '12px', padding: '12px 14px', fontSize: '14px' },
   notesBox: { marginTop: '16px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px 14px', fontSize: '14px', color: '#334155' },
   reportPrintHeader: { marginBottom: '14px' },
   reportPrintTitle: { fontSize: '24px', fontWeight: 700, marginBottom: '6px' },
