@@ -1780,6 +1780,7 @@ const effectiveTenant = getTenantForMonth(
     </div>
   </div>
 </div>
+</div>
       )}
     </div>
   )
