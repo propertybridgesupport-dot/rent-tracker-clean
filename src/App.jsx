@@ -40,41 +40,100 @@ function monthKeyFromDate(dateValue) {
   return String(dateValue).slice(0, 7)
 }
 
-function getTenantForMonth(property, propertyOverrides, month) {
-  const sortedOverrides = [...propertyOverrides].sort((a, b) =>
-    String(a.month_key).localeCompare(String(b.month_key))
-  )
+function startOfMonth(month) {
+  return `${month}-01`
+}
+
+function endOfMonth(month) {
+  const [year, mon] = month.split('-').map(Number)
+  return new Date(year, mon, 0).toISOString().slice(0, 10)
+}
+
+function addDays(dateValue, days) {
+  const date = new Date(`${dateValue}T12:00:00`)
+  date.setDate(date.getDate() + days)
+  return date.toISOString().slice(0, 10)
+}
+
+function normalizeTimelineDate(value, fallbackMonth) {
+  if (value) return String(value).slice(0, 10)
+  if (fallbackMonth) return `${fallbackMonth}-01`
+  return ''
+}
+
+function getTenantForDate(property, propertyOverrides, dateValue) {
+  const dateOnly = String(dateValue || '').slice(0, 10)
+  if (!dateOnly) return ''
+
+  const sortedOverrides = [...propertyOverrides].sort((a, b) => {
+    const aDate = normalizeTimelineDate(a.move_in_date, a.month_key)
+    const bDate = normalizeTimelineDate(b.move_in_date, b.month_key)
+    return aDate.localeCompare(bDate)
+  })
 
   let tenant = property.tenant || ''
 
   const moveInOverrides = sortedOverrides
-    .filter((o) => o.move_in_date)
+    .filter((item) => item.move_in_date)
     .sort((a, b) => String(a.move_in_date).localeCompare(String(b.move_in_date)))
 
-  if (moveInOverrides.length > 0) {
-    const firstMoveInMonth = monthKeyFromDate(moveInOverrides[0].move_in_date)
-    if (month < firstMoveInMonth) {
-      tenant = ''
-    }
+  if (moveInOverrides.length > 0 && dateOnly < String(moveInOverrides[0].move_in_date).slice(0, 10)) {
+    tenant = ''
   }
 
   for (const override of sortedOverrides) {
-    const overrideMonth = String(override.month_key || '')
-    const moveInMonth = monthKeyFromDate(override.move_in_date)
-    const moveOutMonth = monthKeyFromDate(override.move_out_date)
+    const effectiveDate = normalizeTimelineDate(override.move_in_date, override.month_key)
+    if (!effectiveDate || effectiveDate > dateOnly) continue
 
-    if (moveInMonth && month >= moveInMonth) {
-      tenant = override.tenant_override || property.tenant || tenant || ''
-    } else if (!moveInMonth && override.tenant_override && month >= overrideMonth) {
+    if (override.tenant_override) {
       tenant = override.tenant_override
+    } else if (override.move_in_date) {
+      tenant = property.tenant || tenant || ''
     }
 
-    if (moveOutMonth && month > moveOutMonth) {
-      tenant = ''
+    if (override.move_out_date) {
+      const moveOutDate = String(override.move_out_date).slice(0, 10)
+      if (dateOnly > moveOutDate) {
+        tenant = ''
+      }
     }
   }
 
   return tenant
+}
+
+function getOccupancyForMonth(property, propertyOverrides, month) {
+  const monthStart = startOfMonth(month)
+  const monthEnd = endOfMonth(month)
+  const tenantsSeen = new Map()
+  let firstOccupiedDate = ''
+  let lastOccupiedDate = ''
+
+  for (let current = monthStart; current <= monthEnd; current = addDays(current, 1)) {
+    const tenant = getTenantForDate(property, propertyOverrides, current)
+    if (!tenant) continue
+
+    tenantsSeen.set(tenant, (tenantsSeen.get(tenant) || 0) + 1)
+    if (!firstOccupiedDate) firstOccupiedDate = current
+    lastOccupiedDate = current
+  }
+
+  const sortedTenants = [...tenantsSeen.entries()].sort((a, b) => b[1] - a[1])
+  const primaryTenant = sortedTenants[0]?.[0] || ''
+  const occupiedDays = sortedTenants.reduce((sum, [, count]) => sum + count, 0)
+
+  return {
+    isOccupied: occupiedDays > 0,
+    occupiedDays,
+    primaryTenant,
+    firstOccupiedDate,
+    lastOccupiedDate,
+    vacancy: occupiedDays === 0,
+  }
+}
+
+function getTenantForMonth(property, propertyOverrides, month) {
+  return getOccupancyForMonth(property, propertyOverrides, month).primaryTenant
 }
 export default function App() {
   const [session, setSession] = useState(null)
@@ -611,97 +670,215 @@ export default function App() {
     return companyPayments.filter((payment) => String(payment.payment_date).startsWith(selectedMonth))
   }, [companyPayments, selectedMonth])
 
-  const ledgerRows = useMemo(() => {
-    const selectedIndex = monthOptions.indexOf(selectedMonth)
+  function buildPropertyLedger(property, monthsToInclude) {
+    const propertyOverrides = companyOverrides.filter((item) => item.property_id === property.id)
+    const propertyPayments = companyPayments
+      .filter((payment) => payment.property_id === property.id)
+      .sort((a, b) => String(a.payment_date).localeCompare(String(b.payment_date)))
 
-    return companyProperties.map((property) => {
-      let balanceForward = 0
+    let runningBalance = 0
+    const entries = []
+    const monthlySummaries = []
 
-      for (let i = 0; i <= selectedIndex; i += 1) {
-        const month = monthOptions[i]
+    monthsToInclude.forEach((month) => {
+      const override = propertyOverrides.find(
+        (item) => item.property_id === property.id && item.month_key === month
+      )
+      const occupancy = getOccupancyForMonth(property, propertyOverrides, month)
+      const effectiveTenant = occupancy.primaryTenant || ''
+      const effectiveRent =
+        override?.override_rent !== null && override?.override_rent !== undefined
+          ? Number(override.override_rent)
+          : Number(property.monthly_rent || 0)
+      const lateFee = occupancy.isOccupied ? Number(property.late_fee || 0) : 0
+      const startingBalance = Number(override?.starting_balance || 0)
+      const monthPaymentsForProperty = propertyPayments.filter(
+        (payment) => String(payment.payment_date).startsWith(month)
+      )
+      const monthStart = startOfMonth(month)
+      const balanceForward = runningBalance
 
-        const override = companyOverrides.find(
-          (item) => item.property_id === property.id && item.month_key === month
-        )
-
-        const monthPaymentsForProperty = companyPayments.filter(
-          (payment) => payment.property_id === property.id && String(payment.payment_date).startsWith(month)
-        )
-
-        const effectiveRent =
-          override?.override_rent !== null && override?.override_rent !== undefined
-            ? Number(override.override_rent)
-            : Number(property.monthly_rent || 0)
-
-        const propertyOverridesForThisProperty = companyOverrides.filter(
-  (item) => item.property_id === property.id
-)
-
-const effectiveTenant = getTenantForMonth(
-  property,
-  propertyOverridesForThisProperty,
-  month
-)
-        const startingBalance = Number(override?.starting_balance || 0)
-        const lateFee = Number(property.late_fee || 0)
-        const totalDue = balanceForward + startingBalance + effectiveRent + lateFee
-        const totalPaid = monthPaymentsForProperty.reduce((sum, payment) => sum + Number(payment.amount || 0), 0)
-        const endingBalance = totalDue - totalPaid
-
-        if (month === selectedMonth) {
-          return {
-            ...property,
-            effectiveTenant,
-            effectiveRent,
-            balanceForward,
-            startingBalance,
-            moveInDate: override?.move_in_date || '',
-            moveOutDate: override?.move_out_date || '',
-            notes: override?.notes || '',
-            totalDue,
-            totalPaid,
-            balanceRemaining: endingBalance,
-            managementFee: totalPaid * 0.1,
-            currentOverride: override || null,
-          }
-        }
-
-        balanceForward = endingBalance
+      if (balanceForward !== 0) {
+        entries.push({
+          propertyId: property.id,
+          propertyAddress: property.address,
+          tenantName: effectiveTenant,
+          month,
+          date: monthStart,
+          type: 'balance_forward',
+          description: 'Balance forward',
+          amount: balanceForward,
+          note: '',
+          runningBalance,
+        })
       }
+
+      if (startingBalance !== 0) {
+        runningBalance += startingBalance
+        entries.push({
+          propertyId: property.id,
+          propertyAddress: property.address,
+          tenantName: effectiveTenant,
+          month,
+          date: monthStart,
+          type: 'adjustment',
+          description: 'Starting balance / adjustment',
+          amount: startingBalance,
+          note: override?.notes || '',
+          runningBalance,
+        })
+      }
+
+      if (occupancy.isOccupied && effectiveRent !== 0) {
+        runningBalance += effectiveRent
+        entries.push({
+          propertyId: property.id,
+          propertyAddress: property.address,
+          tenantName: effectiveTenant,
+          month,
+          date: occupancy.firstOccupiedDate || monthStart,
+          type: 'charge',
+          description: occupancy.occupiedDays < 28 ? 'Rent charge (partial occupancy month)' : 'Rent charge',
+          amount: effectiveRent,
+          note: override?.notes || '',
+          occupancyStart: occupancy.firstOccupiedDate,
+          occupancyEnd: occupancy.lastOccupiedDate,
+          runningBalance,
+        })
+      }
+
+      if (occupancy.isOccupied && lateFee !== 0) {
+        runningBalance += lateFee
+        entries.push({
+          propertyId: property.id,
+          propertyAddress: property.address,
+          tenantName: effectiveTenant,
+          month,
+          date: occupancy.firstOccupiedDate || monthStart,
+          type: 'late_fee',
+          description: 'Late fee',
+          amount: lateFee,
+          note: '',
+          runningBalance,
+        })
+      }
+
+      monthPaymentsForProperty.forEach((payment) => {
+        runningBalance -= Number(payment.amount || 0)
+        entries.push({
+          propertyId: property.id,
+          propertyAddress: property.address,
+          tenantName: getTenantForDate(property, propertyOverrides, payment.payment_date) || effectiveTenant,
+          month,
+          date: payment.payment_date,
+          type: 'payment',
+          description: `Payment - ${payment.method || 'Method not listed'}`,
+          amount: -Number(payment.amount || 0),
+          note: payment.note || '',
+          paymentId: payment.id,
+          runningBalance,
+        })
+      })
+
+      monthlySummaries.push({
+        month,
+        effectiveTenant,
+        effectiveRent: occupancy.isOccupied ? effectiveRent : 0,
+        occupancy,
+        balanceForward,
+        startingBalance,
+        lateFee,
+        totalPaid: monthPaymentsForProperty.reduce((sum, payment) => sum + Number(payment.amount || 0), 0),
+        endingBalance: runningBalance,
+        notes: override?.notes || '',
+        currentOverride: override || null,
+        moveInDate: override?.move_in_date || occupancy.firstOccupiedDate || '',
+        moveOutDate: override?.move_out_date || '',
+      })
+    })
+
+    return {
+      propertyId: property.id,
+      entries,
+      monthlySummaries,
+    }
+  }
+
+  const propertyLedgers = useMemo(() => {
+    return companyProperties.map((property) => ({
+      property,
+      ...buildPropertyLedger(property, monthOptions),
+    }))
+  }, [companyProperties, companyOverrides, companyPayments])
+
+  const propertyLedgerMap = useMemo(() => {
+    return Object.fromEntries(propertyLedgers.map((item) => [item.propertyId, item]))
+  }, [propertyLedgers])
+
+  const ledgerRows = useMemo(() => {
+    return companyProperties.map((property) => {
+      const ledger = propertyLedgerMap[property.id]
+      const monthSummary = ledger?.monthlySummaries.find((item) => item.month === selectedMonth)
+
+      if (!monthSummary) {
+        return {
+          ...property,
+          effectiveTenant: '',
+          effectiveRent: 0,
+          balanceForward: 0,
+          startingBalance: 0,
+          moveInDate: '',
+          moveOutDate: '',
+          notes: '',
+          totalDue: 0,
+          totalPaid: 0,
+          balanceRemaining: 0,
+          managementFee: 0,
+          currentOverride: null,
+          isVacant: true,
+        }
+      }
+
+      const totalDue =
+        Number(monthSummary.balanceForward || 0) +
+        Number(monthSummary.startingBalance || 0) +
+        Number(monthSummary.effectiveRent || 0) +
+        Number(monthSummary.lateFee || 0)
 
       return {
         ...property,
-        effectiveTenant: property.tenant,
-        effectiveRent: Number(property.monthly_rent || 0),
-        balanceForward: 0,
-        startingBalance: 0,
-        moveInDate: '',
-        moveOutDate: '',
-        notes: '',
-        totalDue: Number(property.monthly_rent || 0) + Number(property.late_fee || 0),
-        totalPaid: 0,
-        balanceRemaining: Number(property.monthly_rent || 0) + Number(property.late_fee || 0),
-        managementFee: 0,
-        currentOverride: null,
+        effectiveTenant: monthSummary.effectiveTenant,
+        effectiveRent: monthSummary.effectiveRent,
+        balanceForward: monthSummary.balanceForward,
+        startingBalance: monthSummary.startingBalance,
+        moveInDate: monthSummary.moveInDate,
+        moveOutDate: monthSummary.moveOutDate,
+        notes: monthSummary.notes,
+        totalDue,
+        totalPaid: monthSummary.totalPaid,
+        balanceRemaining: monthSummary.endingBalance,
+        managementFee: monthSummary.totalPaid * 0.1,
+        currentOverride: monthSummary.currentOverride,
+        isVacant: monthSummary.occupancy?.vacancy ?? true,
       }
     })
-  }, [companyProperties, companyOverrides, companyPayments, selectedMonth])
+  }, [companyProperties, propertyLedgerMap, selectedMonth])
 
   const selectedReportProperty = companyProperties.find((p) => p.id === selectedReportPropertyId) || null
-
   const companyTenantNames = useMemo(() => {
     const names = new Set()
 
-    companyProperties.forEach((property) => {
-      if (property.tenant) names.add(property.tenant)
-    })
-
-    companyOverrides.forEach((override) => {
-      if (override.tenant_override) names.add(override.tenant_override)
+    propertyLedgers.forEach((ledger) => {
+      ledger.entries.forEach((entry) => {
+        if (entry.tenantName) names.add(entry.tenantName)
+      })
+      ledger.monthlySummaries.forEach((summary) => {
+        if (summary.effectiveTenant) names.add(summary.effectiveTenant)
+      })
     })
 
     return Array.from(names).sort((a, b) => a.localeCompare(b))
-  }, [companyProperties, companyOverrides])
+  }, [propertyLedgers])
 
   useEffect(() => {
     if (companyTenantNames.length > 0) {
@@ -716,137 +893,49 @@ const effectiveTenant = getTenantForMonth(
   const selectedPropertyStatementRows = useMemo(() => {
     if (!selectedReportProperty) return []
 
-    const statement = []
+    const ledger = propertyLedgerMap[selectedReportProperty.id]
+    if (!ledger) return []
 
-    monthOptions.forEach((month) => {
-      const override = companyOverrides.find(
-        (item) => item.property_id === selectedReportProperty.id && item.month_key === month
-      )
-
-      const propertyPayments = companyPayments
-        .filter((payment) => payment.property_id === selectedReportProperty.id && String(payment.payment_date).startsWith(month))
-        .sort((a, b) => String(a.payment_date).localeCompare(String(b.payment_date)))
-
-      const effectiveRent =
-        override?.override_rent !== null && override?.override_rent !== undefined
-          ? Number(override.override_rent)
-          : Number(selectedReportProperty.monthly_rent || 0)
-
-      const chargeAmount = effectiveRent + Number(selectedReportProperty.late_fee || 0)
-      const chargeDate = `${month}-01`
-
-      if (isWithinDateRange(chargeDate, reportStartDate, reportEndDate)) {
-        statement.push({
-          type: 'charge',
-          month,
-          date: chargeDate,
-          description: 'Monthly charge',
-          amount: chargeAmount,
-          note: override?.notes || '',
-        })
-      }
-
-      propertyPayments.forEach((payment) => {
-        if (isWithinDateRange(payment.payment_date, reportStartDate, reportEndDate)) {
-          statement.push({
-            type: 'payment',
-            month,
-            date: payment.payment_date,
-            description: `Payment - ${payment.method || 'Method not listed'}`,
-            amount: -Number(payment.amount || 0),
-            note: payment.note || '',
-          })
-        }
-      })
+    return ledger.entries.filter((entry) => {
+      if (entry.type === 'balance_forward') return true
+      return isWithinDateRange(entry.date, reportStartDate, reportEndDate)
     })
-
-    statement.sort((a, b) => String(a.date).localeCompare(String(b.date)))
-
-    let runningBalance = 0
-
-    return statement.map((item) => {
-      runningBalance += Number(item.amount || 0)
-      return {
-        ...item,
-        runningBalance,
-      }
-    })
-  }, [selectedReportProperty, companyOverrides, companyPayments, reportStartDate, reportEndDate])
+  }, [selectedReportProperty, propertyLedgerMap, reportStartDate, reportEndDate])
 
   const selectedTenantStatementRows = useMemo(() => {
     if (!selectedTenantName) return []
 
-    const statement = []
-
-    monthOptions.forEach((month) => {
-      companyProperties.forEach((property) => {
-        const override = companyOverrides.find(
-          (item) => item.property_id === property.id && item.month_key === month
-        )
-
-       const propertyOverridesForThisProperty = companyOverrides.filter(
-  (item) => item.property_id === property.id
-)
-
-const effectiveTenant = getTenantForMonth(
-  property,
-  propertyOverridesForThisProperty,
-  month
-)
-        if (effectiveTenant !== selectedTenantName) return
-
-        const effectiveRent =
-          override?.override_rent !== null && override?.override_rent !== undefined
-            ? Number(override.override_rent)
-            : Number(property.monthly_rent || 0)
-
-        const chargeAmount = effectiveRent + Number(property.late_fee || 0)
-        const chargeDate = `${month}-01`
-
-        if (isWithinDateRange(chargeDate, reportStartDate, reportEndDate)) {
-          statement.push({
-            type: 'charge',
-            propertyAddress: property.address,
-            tenantName: effectiveTenant,
-            date: chargeDate,
-            description: 'Monthly charge',
-            amount: chargeAmount,
-            note: override?.notes || '',
-          })
-        }
-
-        const tenantPayments = companyPayments
-          .filter((payment) => payment.property_id === property.id && String(payment.payment_date).startsWith(month))
-          .sort((a, b) => String(a.payment_date).localeCompare(String(b.payment_date)))
-
-        tenantPayments.forEach((payment) => {
-          if (isWithinDateRange(payment.payment_date, reportStartDate, reportEndDate)) {
-            statement.push({
-              type: 'payment',
-              propertyAddress: property.address,
-              tenantName: effectiveTenant,
-              date: payment.payment_date,
-              description: `Payment - ${payment.method || 'Method not listed'}`,
-              amount: -Number(payment.amount || 0),
-              note: payment.note || '',
-            })
-          }
-        })
+    const rows = propertyLedgers
+      .flatMap((ledger) => ledger.entries)
+      .filter((entry) => entry.tenantName === selectedTenantName)
+      .filter((entry) => {
+        if (entry.type === 'balance_forward') return true
+        return isWithinDateRange(entry.date, reportStartDate, reportEndDate)
       })
-    })
-
-    statement.sort((a, b) => String(a.date).localeCompare(String(b.date)))
+      .sort((a, b) => {
+        const dateCompare = String(a.date).localeCompare(String(b.date))
+        if (dateCompare !== 0) return dateCompare
+        return String(a.propertyAddress || '').localeCompare(String(b.propertyAddress || ''))
+      })
 
     let runningBalance = 0
 
-    return statement.map((item) => {
-      runningBalance += Number(item.amount || 0)
+    return rows.map((row) => {
+      if (row.type === 'balance_forward') {
+        runningBalance = Number(row.amount || 0)
+        return {
+          ...row,
+          runningBalance,
+        }
+      }
+
+      runningBalance += Number(row.amount || 0)
       return {
-        ...item,
+        ...row,
         runningBalance,
       }
     })
-  }, [selectedTenantName, companyProperties, companyOverrides, companyPayments, reportStartDate, reportEndDate])
+  }, [selectedTenantName, propertyLedgers, reportStartDate, reportEndDate])
 
   const totalProperties = companyProperties.length
   const totalMonthlyRent = ledgerRows.reduce((sum, row) => sum + Number(row.effectiveRent || 0), 0)
@@ -887,6 +976,26 @@ const effectiveTenant = getTenantForMonth(
     window.location.href = `mailto:${selectedCompanyEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(lines.join('\n'))}`
   }
 
+
+  function formatLedgerEntryType(type) {
+    const labels = {
+      charge: 'Charge',
+      payment: 'Payment',
+      late_fee: 'Late Fee',
+      balance_forward: 'Balance Forward',
+      adjustment: 'Adjustment',
+    }
+
+    return labels[type] || type
+  }
+
+  function formatLedgerAmount(row) {
+    if (row.type === 'payment') {
+      return `(${currency(Math.abs(row.amount))})`
+    }
+
+    return currency(row.amount)
+  }
 
   function escapeCsv(value) {
     const safeValue = value ?? ''
@@ -958,7 +1067,7 @@ const effectiveTenant = getTenantForMonth(
       ['Date', 'Type', 'Description', 'Amount', 'Running Balance', 'Note'],
       ...selectedPropertyStatementRows.map((row) => [
         formatDate(row.date),
-        row.type === 'charge' ? 'Charge' : 'Payment',
+        formatLedgerEntryType(row.type),
         row.description,
         row.type === 'payment' ? `-${Math.abs(Number(row.amount || 0)).toFixed(2)}` : Number(row.amount || 0).toFixed(2),
         Number(row.runningBalance || 0).toFixed(2),
@@ -980,7 +1089,7 @@ const effectiveTenant = getTenantForMonth(
       ...selectedTenantStatementRows.map((row) => [
         formatDate(row.date),
         row.propertyAddress,
-        row.type === 'charge' ? 'Charge' : 'Payment',
+        formatLedgerEntryType(row.type),
         row.description,
         row.type === 'payment' ? `-${Math.abs(Number(row.amount || 0)).toFixed(2)}` : Number(row.amount || 0).toFixed(2),
         Number(row.runningBalance || 0).toFixed(2),
@@ -1716,16 +1825,12 @@ const effectiveTenant = getTenantForMonth(
                       selectedPropertyStatementRows.map((row, index) => (
                         <tr key={`${row.type}-${row.date}-${index}`}>
                           <td style={styles.td}>{formatDate(row.date)}</td>
-                          <td style={styles.td}>{row.type === 'charge' ? 'Charge' : 'Payment'}</td>
+                          <td style={styles.td}>{formatLedgerEntryType(row.type)}</td>
                           <td style={styles.td}>
                             {row.description}
                             {row.note ? <div style={styles.smallMuted}>Note: {row.note}</div> : null}
                           </td>
-                          <td style={styles.td}>
-                            {row.type === 'payment'
-                              ? `(${currency(Math.abs(row.amount))})`
-                              : currency(row.amount)}
-                          </td>
+                          <td style={styles.td}>{formatLedgerAmount(row)}</td>
                           <td style={styles.td}>{currency(row.runningBalance)}</td>
                         </tr>
                       ))
@@ -1798,16 +1903,12 @@ const effectiveTenant = getTenantForMonth(
                         <tr key={`${row.propertyAddress}-${row.type}-${row.date}-${index}`}>
                           <td style={styles.td}>{formatDate(row.date)}</td>
                           <td style={styles.td}>{row.propertyAddress}</td>
-                          <td style={styles.td}>{row.type === 'charge' ? 'Charge' : 'Payment'}</td>
+                          <td style={styles.td}>{formatLedgerEntryType(row.type)}</td>
                           <td style={styles.td}>
                             {row.description}
                             {row.note ? <div style={styles.smallMuted}>Note: {row.note}</div> : null}
                           </td>
-                          <td style={styles.td}>
-                            {row.type === 'payment'
-                              ? `(${currency(Math.abs(row.amount))})`
-                              : currency(row.amount)}
-                          </td>
+                          <td style={styles.td}>{formatLedgerAmount(row)}</td>
                           <td style={styles.td}>{currency(row.runningBalance)}</td>
                         </tr>
                       ))
