@@ -210,6 +210,9 @@ export default function App() {
   const [reportEndDate, setReportEndDate] = useState('')
   const [showArchivedProperties, setShowArchivedProperties] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [propertyNotes, setPropertyNotes] = useState({})
+  const [selectedNotesPropertyId, setSelectedNotesPropertyId] = useState('')
+  const [notesDraft, setNotesDraft] = useState('')
 
   const [companyForm, setCompanyForm] = useState({
     companyName: '',
@@ -301,6 +304,24 @@ export default function App() {
       }))
     }
   }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    try {
+      const savedNotes = window.localStorage.getItem('rentTrackerPropertyNotes')
+      if (savedNotes) {
+        setPropertyNotes(JSON.parse(savedNotes))
+      }
+    } catch (error) {
+      console.error('Unable to load saved property notes.', error)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem('rentTrackerPropertyNotes', JSON.stringify(propertyNotes))
+  }, [propertyNotes])
 
   async function loadData() {
     setLoading(true)
@@ -644,6 +665,45 @@ This keeps the record for reporting but removes it from your active list.`
     setMessage(`Property restored: ${address}.`)
   }
 
+  function savePropertyNote() {
+    if (!selectedNotesPropertyId) {
+      setMessage('Please select a property for notes.')
+      return
+    }
+
+    const trimmed = notesDraft.trim()
+
+    setPropertyNotes((current) => ({
+      ...current,
+      [selectedNotesPropertyId]: {
+        text: trimmed,
+        updatedAt: new Date().toISOString(),
+      },
+    }))
+
+    const property = companyProperties.find((item) => item.id === selectedNotesPropertyId)
+    setMessage(`Notes saved for ${property?.address || 'selected property'}.`)
+  }
+
+  function clearPropertyNote() {
+    if (!selectedNotesPropertyId) {
+      setMessage('Please select a property for notes.')
+      return
+    }
+
+    const property = companyProperties.find((item) => item.id === selectedNotesPropertyId)
+    const confirmed = window.confirm(`Clear saved notes for ${property?.address || 'this property'}?`)
+    if (!confirmed) return
+
+    setPropertyNotes((current) => {
+      const next = { ...current }
+      delete next[selectedNotesPropertyId]
+      return next
+    })
+    setNotesDraft('')
+    setMessage(`Notes cleared for ${property?.address || 'selected property'}.`)
+  }
+
   function startEditingPayment(payment) {
     setEditingPaymentId(payment.id)
     setEditPaymentForm({
@@ -888,6 +948,16 @@ This keeps the record for reporting but removes it from your active list.`
     })
   }, [visibleProperties, monthlyOverrides, normalizedSearchQuery, selectedCompanyName])
 
+  const notesProperty = useMemo(() => {
+    return companyProperties.find((property) => property.id === selectedNotesPropertyId) || null
+  }, [companyProperties, selectedNotesPropertyId])
+
+  const notesPropertyTenant = useMemo(() => {
+    if (!notesProperty) return ''
+    const propertyOverrides = monthlyOverrides.filter((item) => item.property_id === notesProperty.id)
+    return getTenantForDate(notesProperty, propertyOverrides, getTodayDateInput())
+  }, [notesProperty, monthlyOverrides])
+
   useEffect(() => {
     if (companyProperties.length > 0) {
       const exists = companyProperties.find((p) => p.id === selectedReportPropertyId)
@@ -896,6 +966,28 @@ This keeps the record for reporting but removes it from your active list.`
       setSelectedReportPropertyId('')
     }
   }, [companyProperties, selectedReportPropertyId])
+
+  useEffect(() => {
+    if (companyProperties.length === 0) {
+      setSelectedNotesPropertyId('')
+      setNotesDraft('')
+      return
+    }
+
+    const stillExists = companyProperties.some((property) => property.id === selectedNotesPropertyId)
+    if (!stillExists) {
+      setSelectedNotesPropertyId(companyProperties[0].id)
+    }
+  }, [companyProperties, selectedNotesPropertyId])
+
+  useEffect(() => {
+    if (!selectedNotesPropertyId) {
+      setNotesDraft('')
+      return
+    }
+
+    setNotesDraft(propertyNotes[selectedNotesPropertyId]?.text || '')
+  }, [selectedNotesPropertyId, propertyNotes])
 
   const companyPropertyIds = useMemo(() => companyProperties.map((property) => property.id), [companyProperties])
 
@@ -1279,6 +1371,81 @@ This keeps the record for reporting but removes it from your active list.`
     })
   }, [selectedTenantName, propertyLedgers, reportStartDate, reportEndDate])
 
+  const companyAlerts = useMemo(() => {
+    const upcomingMoveOutDays = 30
+    const today = getTodayDateInput()
+    const upcomingCutoff = addDays(today, upcomingMoveOutDays)
+    const items = []
+
+    ledgerRows.forEach((row) => {
+      if (Number(row.balanceRemaining || 0) > 0) {
+        items.push({
+          id: `balance-${row.id}`,
+          category: 'Unpaid balance',
+          severity: 'high',
+          propertyId: row.id,
+          title: row.address,
+          detail: `${currency(row.balanceRemaining)} still due${row.effectiveTenant ? ` for ${row.effectiveTenant}` : ''}.`,
+        })
+      }
+
+      if (Number(row.totalPaid || 0) > 0 && Number(row.balanceRemaining || 0) > 0) {
+        items.push({
+          id: `partial-${row.id}`,
+          category: 'Partial payment',
+          severity: 'medium',
+          propertyId: row.id,
+          title: row.address,
+          detail: `${currency(row.totalPaid)} collected with ${currency(row.balanceRemaining)} still remaining.`,
+        })
+      }
+
+      if (!row.effectiveTenant) {
+        items.push({
+          id: `vacant-${row.id}`,
+          category: 'Vacant property',
+          severity: 'medium',
+          propertyId: row.id,
+          title: row.address,
+          detail: `No active tenant found for ${monthLabel(selectedMonth)}.`,
+        })
+      }
+    })
+
+    companyOverrides.forEach((override) => {
+      if (!override.move_out_date) return
+
+      const moveOutDate = String(override.move_out_date).slice(0, 10)
+      if (moveOutDate < today || moveOutDate > upcomingCutoff) return
+
+      const property = companyProperties.find((item) => item.id === override.property_id)
+      const tenantName = override.tenant_override || property?.tenant || ''
+
+      items.push({
+        id: `moveout-${override.id || `${override.property_id}-${moveOutDate}`}`,
+        category: 'Upcoming move-out',
+        severity: 'low',
+        propertyId: override.property_id,
+        title: property?.address || 'Property',
+        detail: `${tenantName ? `${tenantName} ` : ''}has a move-out dated ${formatDate(moveOutDate)}.`,
+      })
+    })
+
+    if (!normalizedSearchQuery) return items
+
+    return items.filter((item) => (
+      matchesSearch(selectedCompanyName, normalizedSearchQuery) ||
+      matchesSearch(item.title, normalizedSearchQuery) ||
+      matchesSearch(item.detail, normalizedSearchQuery) ||
+      matchesSearch(item.category, normalizedSearchQuery)
+    ))
+  }, [ledgerRows, companyOverrides, companyProperties, selectedMonth, normalizedSearchQuery, selectedCompanyName])
+
+  const highAlertCount = companyAlerts.filter((item) => item.severity === 'high').length
+  const mediumAlertCount = companyAlerts.filter((item) => item.severity === 'medium').length
+  const lowAlertCount = companyAlerts.filter((item) => item.severity === 'low').length
+  const notesCount = Object.values(propertyNotes).filter((item) => item?.text).length
+
   const totalProperties = filteredLedgerRows.length
   const totalMonthlyRent = filteredLedgerRows.reduce((sum, row) => sum + Number(row.effectiveRent || 0), 0)
   const totalCollected = filteredLedgerRows.reduce((sum, row) => sum + Number(row.totalPaid || 0), 0)
@@ -1581,6 +1748,7 @@ This keeps the record for reporting but removes it from your active list.`
         <button style={activeTab === 'overrides' ? styles.activeTabButton : styles.tabButton} onClick={() => setActiveTab('overrides')}>Overrides</button>
         <button style={activeTab === 'ledger' ? styles.activeTabButton : styles.tabButton} onClick={() => setActiveTab('ledger')}>Ledger</button>
         <button style={activeTab === 'reports' ? styles.activeTabButton : styles.tabButton} onClick={() => setActiveTab('reports')}>Reports</button>
+        <button style={activeTab === 'notesAlerts' ? styles.activeTabButton : styles.tabButton} onClick={() => setActiveTab('notesAlerts')}>Notes & Alerts</button>
       </div>
 
       <div style={styles.cardGrid}>
@@ -1648,6 +1816,48 @@ This keeps the record for reporting but removes it from your active list.`
             <div style={styles.notesBox}>
               <strong>Notes:</strong> Balances reflect prior unpaid amounts carried forward. Prorated rents and tenant changes are applied where applicable. Management fee is calculated at 10% of collected rent.
             </div>
+          </div>
+
+          <div style={styles.card}>
+            <div style={styles.reportHeaderRow}>
+              <div>
+                <h2 style={styles.cardTitle}>Dashboard Alerts</h2>
+                <p style={styles.smallMuted}>Quick watch list for balances, vacancies, and move-outs.</p>
+              </div>
+              <div style={styles.alertSummaryInline}>
+                <span style={styles.alertBadgeHigh}>{highAlertCount} high</span>
+                <span style={styles.alertBadgeMedium}>{mediumAlertCount} medium</span>
+                <span style={styles.alertBadgeLow}>{lowAlertCount} low</span>
+              </div>
+            </div>
+
+            {companyAlerts.length === 0 ? (
+              <div style={styles.notesBox}>No alerts for the current company and month.</div>
+            ) : (
+              <div style={styles.alertList}>
+                {companyAlerts.slice(0, 8).map((alert) => (
+                  <div key={alert.id} style={styles.alertCard}>
+                    <div style={styles.alertCardTopRow}>
+                      <span style={alert.severity === 'high' ? styles.alertBadgeHigh : alert.severity === 'medium' ? styles.alertBadgeMedium : styles.alertBadgeLow}>
+                        {alert.category}
+                      </span>
+                      <button
+                        style={styles.linkButton}
+                        type="button"
+                        onClick={() => {
+                          setSelectedNotesPropertyId(alert.propertyId || '')
+                          setActiveTab('notesAlerts')
+                        }}
+                      >
+                        Open notes
+                      </button>
+                    </div>
+                    <div style={styles.alertCardTitle}>{alert.title}</div>
+                    <div style={styles.smallMuted}>{alert.detail}</div>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -2283,6 +2493,110 @@ This keeps the record for reporting but removes it from your active list.`
         </div>
       )}
 
+
+      {activeTab === 'notesAlerts' && (
+        <div style={styles.sectionGrid}>
+          <div style={styles.card}>
+            <div style={styles.reportHeaderRow}>
+              <div>
+                <h2 style={styles.cardTitle}>Property Notes</h2>
+                <p style={styles.smallMuted}>Use this for payment-plan details, move-out promises, special agreements, or anything you want attached to the property record.</p>
+              </div>
+              <div style={styles.alertSummaryInline}>
+                <span style={styles.notesCountPill}>{notesCount} saved note{notesCount === 1 ? '' : 's'}</span>
+              </div>
+            </div>
+
+            <label style={styles.label}>Property</label>
+            <select
+              style={styles.input}
+              value={selectedNotesPropertyId}
+              onChange={(e) => setSelectedNotesPropertyId(e.target.value)}
+            >
+              <option value="">Select property</option>
+              {filteredPropertyOptions.map((property) => (
+                <option key={`notes-${property.id}`} value={property.id}>
+                  {property.address}
+                </option>
+              ))}
+            </select>
+
+            {notesProperty ? (
+              <div style={styles.notesMetaGrid}>
+                <div style={styles.ledgerMiniCard}>
+                  <div style={styles.kpiLabel}>Current Tenant</div>
+                  <div style={styles.kpiValueSmall}>{notesPropertyTenant || 'Vacant'}</div>
+                </div>
+                <div style={styles.ledgerMiniCard}>
+                  <div style={styles.kpiLabel}>Status</div>
+                  <div style={styles.kpiValueSmall}>{notesProperty.is_active === false ? 'Archived' : 'Active'}</div>
+                </div>
+                <div style={styles.ledgerMiniCard}>
+                  <div style={styles.kpiLabel}>Last Updated</div>
+                  <div style={styles.kpiValueSmall}>
+                    {propertyNotes[selectedNotesPropertyId]?.updatedAt ? formatDate(propertyNotes[selectedNotesPropertyId].updatedAt) : 'No saved note yet'}
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            <label style={styles.label}>Property Notes</label>
+            <textarea
+              style={styles.textarea}
+              value={notesDraft}
+              onChange={(e) => setNotesDraft(e.target.value)}
+              placeholder="Examples: agreed payment plan, move-out date promise, approved rent adjustment, maintenance-related credit, follow-up reminders."
+            />
+
+            <div style={styles.buttonRow}>
+              <button style={styles.primaryButton} type="button" onClick={savePropertyNote}>Save Notes</button>
+              <button style={styles.secondaryButton} type="button" onClick={clearPropertyNote}>Clear Notes</button>
+            </div>
+          </div>
+
+          <div style={styles.card}>
+            <div style={styles.reportHeaderRow}>
+              <div>
+                <h2 style={styles.cardTitle}>Alerts Center</h2>
+                <p style={styles.smallMuted}>This flags the things most likely to need attention first.</p>
+              </div>
+              <div style={styles.alertSummaryInline}>
+                <span style={styles.alertBadgeHigh}>{highAlertCount} high</span>
+                <span style={styles.alertBadgeMedium}>{mediumAlertCount} medium</span>
+                <span style={styles.alertBadgeLow}>{lowAlertCount} low</span>
+              </div>
+            </div>
+
+            {companyAlerts.length === 0 ? (
+              <div style={styles.notesBox}>No alerts right now for the selected company and month.</div>
+            ) : (
+              <div style={styles.alertList}>
+                {companyAlerts.map((alert) => (
+                  <div key={`full-${alert.id}`} style={styles.alertCard}>
+                    <div style={styles.alertCardTopRow}>
+                      <span style={alert.severity === 'high' ? styles.alertBadgeHigh : alert.severity === 'medium' ? styles.alertBadgeMedium : styles.alertBadgeLow}>
+                        {alert.category}
+                      </span>
+                      <button
+                        style={styles.linkButton}
+                        type="button"
+                        onClick={() => {
+                          setSelectedNotesPropertyId(alert.propertyId || '')
+                        }}
+                      >
+                        Link to notes
+                      </button>
+                    </div>
+                    <div style={styles.alertCardTitle}>{alert.title}</div>
+                    <div style={styles.smallMuted}>{alert.detail}</div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {activeTab === 'reports' && (
         <div style={styles.sectionGridSingle}>
           <div style={styles.card}>
@@ -2665,4 +2979,15 @@ const styles = {
   reportPrintTitle: { fontSize: '24px', fontWeight: 700, marginBottom: '6px' },
   reportPrintMeta: { fontSize: '14px', color: '#334155', marginBottom: '4px' },
   reportPrintFooter: { marginTop: '16px', paddingTop: '12px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', color: '#64748b', fontSize: '12px' },
+  alertList: { display: 'grid', gap: '12px' },
+  alertCard: { border: '1px solid #e2e8f0', borderRadius: '14px', padding: '14px', background: '#ffffff' },
+  alertCardTopRow: { display: 'flex', justifyContent: 'space-between', gap: '10px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '8px' },
+  alertCardTitle: { fontSize: '16px', fontWeight: 700, marginBottom: '4px' },
+  alertSummaryInline: { display: 'flex', gap: '8px', flexWrap: 'wrap' },
+  alertBadgeHigh: { display: 'inline-block', background: '#fef2f2', border: '1px solid #fca5a5', color: '#b91c1c', borderRadius: '999px', padding: '4px 10px', fontSize: '12px', fontWeight: 700 },
+  alertBadgeMedium: { display: 'inline-block', background: '#fff7ed', border: '1px solid #fdba74', color: '#c2410c', borderRadius: '999px', padding: '4px 10px', fontSize: '12px', fontWeight: 700 },
+  alertBadgeLow: { display: 'inline-block', background: '#eff6ff', border: '1px solid #93c5fd', color: '#1d4ed8', borderRadius: '999px', padding: '4px 10px', fontSize: '12px', fontWeight: 700 },
+  notesCountPill: { display: 'inline-block', background: '#ecfeff', border: '1px solid #67e8f9', color: '#155e75', borderRadius: '999px', padding: '4px 10px', fontSize: '12px', fontWeight: 700 },
+  notesMetaGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px', marginTop: '16px', marginBottom: '8px' },
+  textarea: { width: '100%', minHeight: '180px', boxSizing: 'border-box', padding: '12px', borderRadius: '12px', border: '1px solid #cbd5e1', background: '#fff', fontSize: '14px', fontFamily: 'Arial, sans-serif', resize: 'vertical' },
 }
