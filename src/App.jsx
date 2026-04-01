@@ -21,6 +21,12 @@ function monthLabel(month) {
   })
 }
 
+function getNextMonthKey(month) {
+  const [year, mon] = month.split('-').map(Number)
+  const nextDate = new Date(year, mon, 1)
+  return `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, '0')}`
+}
+
 function formatDate(value) {
   if (!value) return '—'
   const d = new Date(value)
@@ -636,12 +642,80 @@ export default function App() {
     await loadData()
   }
 
+  async function rollMonthForward() {
+    setMessage('')
+
+    if (!selectedCompanyId) {
+      setMessage('Please select a company first.')
+      return
+    }
+
+    const nextMonthStart = startOfMonth(nextMonthKey)
+    const existingNextMonthOverrides = companyOverrides.filter((item) => item.month_key === nextMonthKey)
+    const existingPropertyIds = new Set(existingNextMonthOverrides.map((item) => item.property_id))
+
+    const rowsToInsert = companyProperties
+      .map((property) => {
+        if (existingPropertyIds.has(property.id)) return null
+
+        const propertyOverrides = companyOverrides.filter((item) => item.property_id === property.id)
+        const nextTenant = getTenantForDate(property, propertyOverrides, nextMonthStart)
+        if (!nextTenant) return null
+
+        const monthSummary = propertyLedgerMap[property.id]?.monthlySummaries?.find((item) => item.month === selectedMonth)
+        const endingBalance = Number(monthSummary?.endingBalance || 0)
+
+        return {
+          property_id: property.id,
+          month_key: nextMonthKey,
+          override_rent: null,
+          tenant_override: nextTenant,
+          move_in_date: null,
+          move_out_date: null,
+          starting_balance: endingBalance,
+          notes: `Rolled forward from ${monthLabel(selectedMonth)}`,
+        }
+      })
+      .filter(Boolean)
+
+    const skippedCount = companyProperties.length - rowsToInsert.length
+
+    if (rowsToInsert.length === 0) {
+      setMessage(`Nothing to roll forward. ${monthLabel(nextMonthKey)} already has overrides or no active tenants were found.`)
+      return
+    }
+
+    const confirmed = window.confirm(
+      `Roll ${rowsToInsert.length} active propert${rowsToInsert.length === 1 ? 'y' : 'ies'} from ${monthLabel(selectedMonth)} into ${monthLabel(nextMonthKey)}?
+
+` +
+      `This will create next-month override rows with the active tenant and carried balance. Existing ${monthLabel(nextMonthKey)} overrides will be left alone.`
+    )
+
+    if (!confirmed) return
+
+    const { error } = await supabase.from('monthly_overrides').insert(rowsToInsert)
+
+    if (error) {
+      setMessage(error.message)
+      return
+    }
+
+    setSelectedMonth(nextMonthKey)
+    await loadData()
+    setMessage(
+      `Rolled ${rowsToInsert.length} active propert${rowsToInsert.length === 1 ? 'y' : 'ies'} into ${monthLabel(nextMonthKey)}.` +
+      (skippedCount > 0 ? ` ${skippedCount} ${skippedCount === 1 ? 'property was' : 'properties were'} skipped because they were vacant or already had a setup.` : '')
+    )
+  }
+
   const selectedCompany = useMemo(() => {
     return companies.find((company) => company.id === selectedCompanyId) || null
   }, [companies, selectedCompanyId])
 
   const selectedCompanyName = selectedCompany?.company_name || selectedCompany?.name || 'No company selected'
   const selectedCompanyEmail = selectedCompany?.owner_email || ''
+  const nextMonthKey = useMemo(() => getNextMonthKey(selectedMonth), [selectedMonth])
 
   const companyProperties = useMemo(() => {
     if (!selectedCompanyId) return []
@@ -1626,8 +1700,21 @@ export default function App() {
 
       {activeTab === 'overrides' && (
         <div style={styles.card}>
-          <h2 style={styles.cardTitle}>Monthly Overrides</h2>
-          <p style={styles.smallMuted}>Use this for prorated rent, monthly tenant changes, move-in / move-out dates, starting balances, and notes.</p>
+          <div style={styles.reportHeaderRow}>
+            <div>
+              <h2 style={styles.cardTitle}>Monthly Overrides</h2>
+              <p style={styles.smallMuted}>Use this for prorated rent, monthly tenant changes, move-in / move-out dates, starting balances, and notes.</p>
+            </div>
+            <div style={styles.actionRow}>
+              <button style={styles.smallPrimaryButton} type="button" onClick={rollMonthForward}>
+                Roll Active Properties to {monthLabel(nextMonthKey)}
+              </button>
+            </div>
+          </div>
+
+          <div style={styles.notesBox}>
+            <strong>Quick setup:</strong> This creates next-month override rows only for properties with an active tenant on {formatDate(startOfMonth(nextMonthKey))}. It keeps the standard property rent, carries the ending balance forward, and leaves any existing next-month override rows untouched.
+          </div>
 
           <div style={styles.tableWrap}>
             <table style={styles.table}>
