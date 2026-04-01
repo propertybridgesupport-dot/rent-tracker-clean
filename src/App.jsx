@@ -213,6 +213,7 @@ export default function App() {
   const ownerReportRef = useRef(null)
   const propertyStatementRef = useRef(null)
   const tenantStatementRef = useRef(null)
+  const propertyLedgerRef = useRef(null)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -865,6 +866,47 @@ export default function App() {
   }, [companyProperties, propertyLedgerMap, selectedMonth])
 
   const selectedReportProperty = companyProperties.find((p) => p.id === selectedReportPropertyId) || null
+
+  const selectedPropertyLedger = useMemo(() => {
+    if (!selectedReportPropertyId) return null
+    return propertyLedgerMap[selectedReportPropertyId] || null
+  }, [selectedReportPropertyId, propertyLedgerMap])
+
+  const selectedPropertyLedgerRows = useMemo(() => {
+    if (!selectedPropertyLedger) return []
+
+    return selectedPropertyLedger.entries.filter((entry) => {
+      if (!reportStartDate && !reportEndDate) return true
+      if (entry.type === 'balance_forward') return true
+      return isWithinDateRange(entry.date, reportStartDate, reportEndDate)
+    })
+  }, [selectedPropertyLedger, reportStartDate, reportEndDate])
+
+  const selectedPropertyLedgerTotals = useMemo(() => {
+    return selectedPropertyLedgerRows.reduce(
+      (totals, row) => {
+        if (row.type === 'payment') {
+          totals.credits += Math.abs(Number(row.amount || 0))
+        } else {
+          totals.charges += Number(row.amount || 0)
+        }
+
+        if (row.type === 'late_fee') totals.lateFees += Number(row.amount || 0)
+        if (row.type === 'charge') totals.rentCharges += Number(row.amount || 0)
+        if (row.type === 'adjustment') totals.adjustments += Number(row.amount || 0)
+        totals.endingBalance = Number(row.runningBalance || 0)
+        return totals
+      },
+      {
+        charges: 0,
+        credits: 0,
+        lateFees: 0,
+        rentCharges: 0,
+        adjustments: 0,
+        endingBalance: 0,
+      }
+    )
+  }, [selectedPropertyLedgerRows])
   const companyTenantNames = useMemo(() => {
     const names = new Set()
 
@@ -1057,6 +1099,32 @@ export default function App() {
     printWindow.close()
   }
 
+
+  function exportPropertyLedgerCsv() {
+    if (!selectedReportProperty) {
+      setMessage('Please select a property first.')
+      return
+    }
+
+    const rows = [
+      ['Date', 'Month', 'Property', 'Tenant', 'Type', 'Description', 'Charge', 'Credit', 'Running Balance', 'Note'],
+      ...selectedPropertyLedgerRows.map((row) => [
+        formatDate(row.date),
+        row.month ? monthLabel(row.month) : '',
+        row.propertyAddress || selectedReportProperty.address,
+        row.tenantName || '',
+        formatLedgerEntryType(row.type),
+        row.description,
+        row.type === 'payment' ? '' : Number(row.amount || 0).toFixed(2),
+        row.type === 'payment' ? Math.abs(Number(row.amount || 0)).toFixed(2) : '',
+        Number(row.runningBalance || 0).toFixed(2),
+        row.note || '',
+      ]),
+    ]
+
+    downloadCsv(`${(selectedReportProperty.address || 'property_ledger').replace(/[^a-z0-9]+/gi, '_')}_ledger.csv`, rows)
+  }
+
   function exportPropertyStatementCsv() {
     if (!selectedReportProperty) {
       setMessage('Please select a property first.')
@@ -1175,6 +1243,7 @@ export default function App() {
         <button style={activeTab === 'properties' ? styles.activeTabButton : styles.tabButton} onClick={() => setActiveTab('properties')}>Properties</button>
         <button style={activeTab === 'payments' ? styles.activeTabButton : styles.tabButton} onClick={() => setActiveTab('payments')}>Payments</button>
         <button style={activeTab === 'overrides' ? styles.activeTabButton : styles.tabButton} onClick={() => setActiveTab('overrides')}>Overrides</button>
+        <button style={activeTab === 'ledger' ? styles.activeTabButton : styles.tabButton} onClick={() => setActiveTab('ledger')}>Ledger</button>
         <button style={activeTab === 'reports' ? styles.activeTabButton : styles.tabButton} onClick={() => setActiveTab('reports')}>Reports</button>
       </div>
 
@@ -1636,6 +1705,158 @@ export default function App() {
         </div>
       )}
 
+
+      {activeTab === 'ledger' && (
+        <div style={styles.sectionGridSingle}>
+          <div style={styles.card}>
+            <div style={styles.reportHeaderRow}>
+              <div>
+                <h2 style={styles.cardTitle}>Property Ledger</h2>
+                <p style={styles.smallMuted}>
+                  One running account view for charges, late fees, adjustments, payments, and carried balances.
+                </p>
+              </div>
+              <div style={styles.actionRow}>
+                <button
+                  style={styles.smallSecondaryButton}
+                  type="button"
+                  onClick={() => printSection(propertyLedgerRef, 'Property Ledger')}
+                >
+                  Print Ledger
+                </button>
+                <button
+                  style={styles.smallPrimaryButton}
+                  type="button"
+                  onClick={exportPropertyLedgerCsv}
+                >
+                  Export Ledger CSV
+                </button>
+              </div>
+            </div>
+
+            <div style={styles.statementFilterGrid}>
+              <div>
+                <label style={styles.label}>Property</label>
+                <select
+                  style={styles.input}
+                  value={selectedReportPropertyId}
+                  onChange={(e) => setSelectedReportPropertyId(e.target.value)}
+                >
+                  <option value="">Select property</option>
+                  {companyProperties.map((property) => (
+                    <option key={property.id} value={property.id}>
+                      {property.address}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label style={styles.label}>Start Date</label>
+                <input
+                  style={styles.input}
+                  type="date"
+                  value={reportStartDate}
+                  onChange={(e) => setReportStartDate(e.target.value)}
+                />
+              </div>
+
+              <div>
+                <label style={styles.label}>End Date</label>
+                <input
+                  style={styles.input}
+                  type="date"
+                  value={reportEndDate}
+                  onChange={(e) => setReportEndDate(e.target.value)}
+                />
+              </div>
+            </div>
+          </div>
+
+          <div ref={propertyLedgerRef} style={styles.card}>
+            <div style={styles.reportPrintHeader}>
+              <div style={styles.reportPrintTitle}>Property Ledger</div>
+              <div style={styles.reportPrintMeta}>
+                <strong>Company:</strong> {selectedCompanyName}
+              </div>
+              <div style={styles.reportPrintMeta}>
+                <strong>Property:</strong> {selectedReportProperty ? selectedReportProperty.address : '—'}
+              </div>
+              <div style={styles.reportPrintMeta}>
+                <strong>Date Range:</strong> {reportStartDate ? formatDate(reportStartDate) : 'Beginning'} - {reportEndDate ? formatDate(reportEndDate) : 'Present'}
+              </div>
+            </div>
+
+            <div style={styles.ledgerSummaryGrid}>
+              <div style={styles.ledgerMiniCard}>
+                <div style={styles.kpiLabel}>Rent Charges</div>
+                <div style={styles.ledgerMiniValue}>{currency(selectedPropertyLedgerTotals.rentCharges)}</div>
+              </div>
+              <div style={styles.ledgerMiniCard}>
+                <div style={styles.kpiLabel}>Late Fees</div>
+                <div style={styles.ledgerMiniValue}>{currency(selectedPropertyLedgerTotals.lateFees)}</div>
+              </div>
+              <div style={styles.ledgerMiniCard}>
+                <div style={styles.kpiLabel}>Adjustments</div>
+                <div style={styles.ledgerMiniValue}>{currency(selectedPropertyLedgerTotals.adjustments)}</div>
+              </div>
+              <div style={styles.ledgerMiniCard}>
+                <div style={styles.kpiLabel}>Payments / Credits</div>
+                <div style={styles.ledgerMiniValue}>{currency(selectedPropertyLedgerTotals.credits)}</div>
+              </div>
+              <div style={styles.ledgerMiniCard}>
+                <div style={styles.kpiLabel}>Ending Balance</div>
+                <div style={styles.ledgerMiniValue}>{currency(selectedPropertyLedgerTotals.endingBalance)}</div>
+              </div>
+            </div>
+
+            <div style={styles.tableWrap}>
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th style={styles.th}>Date</th>
+                    <th style={styles.th}>Month</th>
+                    <th style={styles.th}>Tenant</th>
+                    <th style={styles.th}>Type</th>
+                    <th style={styles.th}>Description</th>
+                    <th style={styles.th}>Charge</th>
+                    <th style={styles.th}>Credit</th>
+                    <th style={styles.th}>Running Balance</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {!selectedReportProperty ? (
+                    <tr>
+                      <td style={styles.td} colSpan="8">Select a property to view its ledger.</td>
+                    </tr>
+                  ) : selectedPropertyLedgerRows.length === 0 ? (
+                    <tr>
+                      <td style={styles.td} colSpan="8">No ledger activity for the selected date range.</td>
+                    </tr>
+                  ) : (
+                    selectedPropertyLedgerRows.map((row, index) => (
+                      <tr key={`ledger-${row.type}-${row.date}-${index}`}>
+                        <td style={styles.td}>{formatDate(row.date)}</td>
+                        <td style={styles.td}>{row.month ? monthLabel(row.month) : '—'}</td>
+                        <td style={styles.td}>{row.tenantName || '—'}</td>
+                        <td style={styles.td}>{formatLedgerEntryType(row.type)}</td>
+                        <td style={styles.td}>
+                          {row.description}
+                          {row.note ? <div style={styles.smallMuted}>Note: {row.note}</div> : null}
+                        </td>
+                        <td style={styles.td}>{row.type === 'payment' ? '—' : currency(row.amount)}</td>
+                        <td style={styles.td}>{row.type === 'payment' ? currency(Math.abs(row.amount)) : '—'}</td>
+                        <td style={styles.td}>{currency(row.runningBalance)}</td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
       {activeTab === 'reports' && (
         <div style={styles.sectionGridSingle}>
           <div style={styles.card}>
@@ -1962,6 +2183,9 @@ const styles = {
   reportHeaderRow: { display: 'flex', justifyContent: 'space-between', gap: '16px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '12px' },
   reportTotals: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px', marginTop: '16px', fontSize: '14px' },
   statementFilterGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' },
+  ledgerSummaryGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '16px' },
+  ledgerMiniCard: { background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '14px' },
+  ledgerMiniValue: { fontSize: '22px', fontWeight: 700 },
   tableWrap: { overflowX: 'auto' },
   table: { width: '100%', borderCollapse: 'collapse' },
   th: { textAlign: 'left', padding: '10px 8px', borderBottom: '1px solid #e2e8f0', fontSize: '13px', color: '#475569', whiteSpace: 'nowrap' },
@@ -1970,4 +2194,7 @@ const styles = {
   message: { marginTop: '16px', color: '#b91c1c', fontSize: '14px' },
   messageBanner: { marginBottom: '18px', background: '#fff7ed', border: '1px solid #fdba74', color: '#9a3412', borderRadius: '12px', padding: '12px 14px', fontSize: '14px' },
   notesBox: { marginTop: '16px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px 14px', fontSize: '14px', color: '#334155' },
+  reportPrintHeader: { marginBottom: '14px' },
+  reportPrintTitle: { fontSize: '24px', fontWeight: 700, marginBottom: '6px' },
+  reportPrintMeta: { fontSize: '14px', color: '#334155', marginBottom: '4px' },
 }
