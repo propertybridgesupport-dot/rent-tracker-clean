@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from './lib/supabase'
 
 const monthOptions = [
@@ -1532,13 +1532,7 @@ const effectiveTenant = getTenantForMonth(
             </div>
           </div>
 
-          <div style={styles.card}>
-            <h2 style={styles.cardTitle}>Property Statement</h2>
-            <p style={styles.smallMuted}>
-              {selectedReportProperty ? selectedReportProperty.address : 'Select a property'}
-            </p>
-
-            <div style={styles.tableWrap}>
+         
               <table style={styles.table}>
                 <thead>
                   <tr>
@@ -1578,13 +1572,34 @@ const effectiveTenant = getTenantForMonth(
           </div>
 
           <div style={styles.card}>
-            <h2 style={styles.cardTitle}>Tenant Statement</h2>
-            <p style={styles.smallMuted}>
-              {selectedTenantName || 'Select a tenant'}
-            </p>
+  <div style={styles.reportHeaderRow}>
+    <div>
+      <h2 style={styles.cardTitle}>Tenant Statement</h2>
+      <p style={styles.smallMuted}>
+        {selectedTenantName || 'Select a tenant'}
+      </p>
+    </div>
+    <div style={styles.actionRow}>
+      <button
+        style={styles.smallSecondaryButton}
+        type="button"
+        onClick={() => printSection(tenantStatementRef, 'Tenant Statement')}
+      >
+        Print Tenant Statement
+      </button>
+      <button
+        style={styles.smallPrimaryButton}
+        type="button"
+        onClick={exportTenantStatementCsv}
+      >
+        Export Tenant CSV
+      </button>
+    </div>
+  </div>
 
-            <div style={styles.tableWrap}>
-              <table style={styles.table}>
+  <div ref={tenantStatementRef}>
+    <div style={styles.tableWrap}>
+      <table style={styles.table}>
                 <thead>
                   <tr>
                     <th style={styles.th}>Date</th>
