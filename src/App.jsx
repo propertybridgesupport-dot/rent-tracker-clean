@@ -35,7 +35,47 @@ function isWithinDateRange(dateValue, startDate, endDate) {
   if (endDate && dateOnly > endDate) return false
   return true
 }
+function monthKeyFromDate(dateValue) {
+  if (!dateValue) return ''
+  return String(dateValue).slice(0, 7)
+}
 
+function getTenantForMonth(property, propertyOverrides, month) {
+  const sortedOverrides = [...propertyOverrides].sort((a, b) =>
+    String(a.month_key).localeCompare(String(b.month_key))
+  )
+
+  let tenant = property.tenant || ''
+
+  const moveInOverrides = sortedOverrides
+    .filter((o) => o.move_in_date)
+    .sort((a, b) => String(a.move_in_date).localeCompare(String(b.move_in_date)))
+
+  if (moveInOverrides.length > 0) {
+    const firstMoveInMonth = monthKeyFromDate(moveInOverrides[0].move_in_date)
+    if (month < firstMoveInMonth) {
+      tenant = ''
+    }
+  }
+
+  for (const override of sortedOverrides) {
+    const overrideMonth = String(override.month_key || '')
+    const moveInMonth = monthKeyFromDate(override.move_in_date)
+    const moveOutMonth = monthKeyFromDate(override.move_out_date)
+
+    if (moveInMonth && month >= moveInMonth) {
+      tenant = override.tenant_override || property.tenant || tenant || ''
+    } else if (!moveInMonth && override.tenant_override && month >= overrideMonth) {
+      tenant = override.tenant_override
+    }
+
+    if (moveOutMonth && month > moveOutMonth) {
+      tenant = ''
+    }
+  }
+
+  return tenant
+}
 export default function App() {
   const [session, setSession] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -589,7 +629,15 @@ export default function App() {
             ? Number(override.override_rent)
             : Number(property.monthly_rent || 0)
 
-        const effectiveTenant = override?.tenant_override || property.tenant
+        const propertyOverridesForThisProperty = companyOverrides.filter(
+  (item) => item.property_id === property.id
+)
+
+const effectiveTenant = getTenantForMonth(
+  property,
+  propertyOverridesForThisProperty,
+  month
+)
         const startingBalance = Number(override?.starting_balance || 0)
         const lateFee = Number(property.late_fee || 0)
         const totalDue = balanceForward + startingBalance + effectiveRent + lateFee
@@ -732,7 +780,15 @@ export default function App() {
           (item) => item.property_id === property.id && item.month_key === month
         )
 
-        const effectiveTenant = override?.tenant_override || property.tenant
+       const propertyOverridesForThisProperty = companyOverrides.filter(
+  (item) => item.property_id === property.id
+)
+
+const effectiveTenant = getTenantForMonth(
+  property,
+  propertyOverridesForThisProperty,
+  month
+)
         if (effectiveTenant !== selectedTenantName) return
 
         const effectiveRent =
