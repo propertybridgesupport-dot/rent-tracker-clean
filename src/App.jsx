@@ -178,6 +178,16 @@ function confirmDeleteWithPrompt(message, requiredText = 'DELETE') {
 
   return true
 }
+
+function normalizeSearchText(value) {
+  return String(value || '').toLowerCase().trim()
+}
+
+function matchesSearch(text, search) {
+  if (!search) return true
+  return normalizeSearchText(text).includes(search)
+}
+
 export default function App() {
   const [session, setSession] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -199,6 +209,7 @@ export default function App() {
   const [reportStartDate, setReportStartDate] = useState('')
   const [reportEndDate, setReportEndDate] = useState('')
   const [showArchivedProperties, setShowArchivedProperties] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
 
   const [companyForm, setCompanyForm] = useState({
     companyName: '',
@@ -831,6 +842,20 @@ This keeps the record for reporting but removes it from your active list.`
   const generatedOnLabel = getGeneratedOnLabel()
   const nextMonthKey = useMemo(() => getNextMonthKey(selectedMonth), [selectedMonth])
 
+  const normalizedSearchQuery = useMemo(() => normalizeSearchText(searchQuery), [searchQuery])
+
+  const filteredCompanies = useMemo(() => {
+    if (!normalizedSearchQuery) return companies
+
+    return companies.filter((company) => {
+      const companyName = company.company_name || company.name || ''
+      return (
+        matchesSearch(companyName, normalizedSearchQuery) ||
+        matchesSearch(company.owner_email, normalizedSearchQuery)
+      )
+    })
+  }, [companies, normalizedSearchQuery])
+
   const companyProperties = useMemo(() => {
     if (!selectedCompanyId) return []
     return properties.filter((property) => property.company_id === selectedCompanyId)
@@ -843,6 +868,25 @@ This keeps the record for reporting but removes it from your active list.`
   const visibleProperties = useMemo(() => {
     return showArchivedProperties ? companyProperties : activeCompanyProperties
   }, [companyProperties, activeCompanyProperties, showArchivedProperties])
+
+
+  const filteredVisibleProperties = useMemo(() => {
+    if (!normalizedSearchQuery) return visibleProperties
+
+    return visibleProperties.filter((property) => {
+      const propertyOverrides = monthlyOverrides.filter((item) => item.property_id === property.id)
+      const tenants = [
+        property.tenant,
+        ...propertyOverrides.map((item) => item.tenant_override),
+      ].filter(Boolean)
+
+      return (
+        matchesSearch(selectedCompanyName, normalizedSearchQuery) ||
+        matchesSearch(property.address, normalizedSearchQuery) ||
+        tenants.some((tenant) => matchesSearch(tenant, normalizedSearchQuery))
+      )
+    })
+  }, [visibleProperties, monthlyOverrides, normalizedSearchQuery, selectedCompanyName])
 
   useEffect(() => {
     if (companyProperties.length > 0) {
@@ -885,6 +929,24 @@ This keeps the record for reporting but removes it from your active list.`
   const monthlyPayments = useMemo(() => {
     return companyPayments.filter((payment) => String(payment.payment_date).startsWith(selectedMonth))
   }, [companyPayments, selectedMonth])
+
+
+  const filteredMonthlyPayments = useMemo(() => {
+    if (!normalizedSearchQuery) return monthlyPayments
+
+    return monthlyPayments.filter((payment) => {
+      const property = companyProperties.find((item) => item.id === payment.property_id)
+      const tenantName = property ? getTenantForDate(property, companyOverrides.filter((item) => item.property_id === property.id), payment.payment_date) : ''
+
+      return (
+        matchesSearch(selectedCompanyName, normalizedSearchQuery) ||
+        matchesSearch(property?.address, normalizedSearchQuery) ||
+        matchesSearch(tenantName, normalizedSearchQuery) ||
+        matchesSearch(payment.method, normalizedSearchQuery) ||
+        matchesSearch(payment.note, normalizedSearchQuery)
+      )
+    })
+  }, [monthlyPayments, companyProperties, companyOverrides, normalizedSearchQuery, selectedCompanyName])
 
   function buildPropertyLedger(property, monthsToInclude) {
     const propertyOverrides = companyOverrides.filter((item) => item.property_id === property.id)
@@ -1080,6 +1142,16 @@ This keeps the record for reporting but removes it from your active list.`
     })
   }, [companyProperties, propertyLedgerMap, selectedMonth])
 
+  const filteredLedgerRows = useMemo(() => {
+    if (!normalizedSearchQuery) return ledgerRows
+
+    return ledgerRows.filter((row) => (
+      matchesSearch(selectedCompanyName, normalizedSearchQuery) ||
+      matchesSearch(row.address, normalizedSearchQuery) ||
+      matchesSearch(row.effectiveTenant, normalizedSearchQuery)
+    ))
+  }, [ledgerRows, normalizedSearchQuery, selectedCompanyName])
+
   const selectedReportProperty = companyProperties.find((p) => p.id === selectedReportPropertyId) || null
 
   const selectedPropertyLedger = useMemo(() => {
@@ -1122,6 +1194,19 @@ This keeps the record for reporting but removes it from your active list.`
       }
     )
   }, [selectedPropertyLedgerRows])
+  const filteredPropertyOptions = useMemo(() => {
+    if (!normalizedSearchQuery) return companyProperties
+
+    return companyProperties.filter((property) => {
+      const propertyOverrides = companyOverrides.filter((item) => item.property_id === property.id)
+      const tenants = [property.tenant, ...propertyOverrides.map((item) => item.tenant_override)].filter(Boolean)
+      return (
+        matchesSearch(property.address, normalizedSearchQuery) ||
+        tenants.some((tenant) => matchesSearch(tenant, normalizedSearchQuery))
+      )
+    })
+  }, [companyProperties, companyOverrides, normalizedSearchQuery])
+
   const companyTenantNames = useMemo(() => {
     const names = new Set()
 
@@ -1194,10 +1279,10 @@ This keeps the record for reporting but removes it from your active list.`
     })
   }, [selectedTenantName, propertyLedgers, reportStartDate, reportEndDate])
 
-  const totalProperties = companyProperties.length
-  const totalMonthlyRent = ledgerRows.reduce((sum, row) => sum + Number(row.effectiveRent || 0), 0)
-  const totalCollected = ledgerRows.reduce((sum, row) => sum + Number(row.totalPaid || 0), 0)
-  const totalOutstanding = ledgerRows.reduce((sum, row) => sum + Number(row.balanceRemaining || 0), 0)
+  const totalProperties = filteredLedgerRows.length
+  const totalMonthlyRent = filteredLedgerRows.reduce((sum, row) => sum + Number(row.effectiveRent || 0), 0)
+  const totalCollected = filteredLedgerRows.reduce((sum, row) => sum + Number(row.totalPaid || 0), 0)
+  const totalOutstanding = filteredLedgerRows.reduce((sum, row) => sum + Number(row.balanceRemaining || 0), 0)
   const managementFeeCollected = totalCollected * 0.1
 
   function printOwnerReport() {
@@ -1222,7 +1307,7 @@ This keeps the record for reporting but removes it from your active list.`
       `10% Management Fee: ${currency(managementFeeCollected)}`,
       '',
       'Owner Summary:',
-      ...ledgerRows.map((row) =>
+      ...filteredLedgerRows.map((row) =>
         `${row.address} | ${row.effectiveTenant} | Rent: ${currency(row.effectiveRent)} | Collected: ${currency(row.totalPaid)} | Balance: ${currency(row.balanceRemaining)}`
       ),
       '',
@@ -1453,7 +1538,7 @@ This keeps the record for reporting but removes it from your active list.`
           <label style={styles.label}>Company</label>
           <select style={styles.input} value={selectedCompanyId} onChange={(e) => setSelectedCompanyId(e.target.value)}>
             <option value="">Select a company</option>
-            {companies.map((company) => (
+            {filteredCompanies.map((company) => (
               <option key={company.id} value={company.id}>
                 {company.company_name || company.name}
               </option>
@@ -1469,7 +1554,24 @@ This keeps the record for reporting but removes it from your active list.`
             ))}
           </select>
         </div>
+
+        <div style={styles.controlBlock}>
+          <label style={styles.label}>Search</label>
+          <input
+            style={styles.input}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search company, property, or tenant"
+          />
+        </div>
       </div>
+
+      {searchQuery ? (
+        <div style={styles.searchSummaryBar}>
+          Showing filtered results for <strong>{searchQuery}</strong>.
+          <button style={styles.linkButton} type="button" onClick={() => setSearchQuery('')}>Clear</button>
+        </div>
+      ) : null}
 
       <div style={styles.tabRow}>
         <button style={activeTab === 'dashboard' ? styles.activeTabButton : styles.tabButton} onClick={() => setActiveTab('dashboard')}>Dashboard</button>
@@ -1527,10 +1629,10 @@ This keeps the record for reporting but removes it from your active list.`
                   </tr>
                 </thead>
                 <tbody>
-                  {ledgerRows.length === 0 ? (
-                    <tr><td style={styles.td} colSpan="5">No properties yet for this company.</td></tr>
+                  {filteredLedgerRows.length === 0 ? (
+                    <tr><td style={styles.td} colSpan="5">No matching properties for this view.</td></tr>
                   ) : (
-                    ledgerRows.map((row) => (
+                    filteredLedgerRows.map((row) => (
                       <tr key={row.id}>
                         <td style={styles.td}>{row.address}</td>
                         <td style={styles.td}>{row.effectiveTenant}</td>
@@ -1690,10 +1792,10 @@ This keeps the record for reporting but removes it from your active list.`
                   </tr>
                 </thead>
                 <tbody>
-                  {visibleProperties.length === 0 ? (
-                    <tr><td style={styles.td} colSpan="7">No properties to show for this company.</td></tr>
+                  {filteredVisibleProperties.length === 0 ? (
+                    <tr><td style={styles.td} colSpan="7">No matching properties to show for this company.</td></tr>
                   ) : (
-                    visibleProperties.map((property) => (
+                    filteredVisibleProperties.map((property) => (
                       <tr key={property.id}>
                         <td style={styles.td}>
                           {editingPropertyId === property.id ? (
@@ -1789,10 +1891,10 @@ This keeps the record for reporting but removes it from your active list.`
                   </tr>
                 </thead>
                 <tbody>
-                  {monthlyPayments.length === 0 ? (
-                    <tr><td style={styles.td} colSpan="6">No payments entered for this month.</td></tr>
+                  {filteredMonthlyPayments.length === 0 ? (
+                    <tr><td style={styles.td} colSpan="6">No matching payments entered for this month.</td></tr>
                   ) : (
-                    monthlyPayments.map((payment) => {
+                    filteredMonthlyPayments.map((payment) => {
                       const property = companyProperties.find((p) => p.id === payment.property_id)
                       return (
                         <tr key={payment.id}>
@@ -1868,7 +1970,7 @@ This keeps the record for reporting but removes it from your active list.`
                 }}
               >
                 <option value="">Select property</option>
-                {activeCompanyProperties.map((property) => (
+                {filteredPropertyOptions.filter((property) => property.is_active !== false).map((property) => (
                   <option key={property.id} value={property.id}>{property.address}</option>
                 ))}
               </select>
@@ -2067,7 +2169,7 @@ This keeps the record for reporting but removes it from your active list.`
                   onChange={(e) => setSelectedReportPropertyId(e.target.value)}
                 >
                   <option value="">Select property</option>
-                  {companyProperties.map((property) => (
+                  {filteredPropertyOptions.map((property) => (
                     <option key={property.id} value={property.id}>
                       {property.address}
                     </option>
@@ -2231,12 +2333,12 @@ This keeps the record for reporting but removes it from your active list.`
                     </tr>
                   </thead>
                   <tbody>
-                    {ledgerRows.length === 0 ? (
+                    {filteredLedgerRows.length === 0 ? (
                       <tr>
-                        <td style={styles.td} colSpan="5">No properties yet for this company.</td>
+                        <td style={styles.td} colSpan="5">No matching properties for this report.</td>
                       </tr>
                     ) : (
-                      ledgerRows.map((row) => (
+                      filteredLedgerRows.map((row) => (
                         <tr key={`report-${row.id}`}>
                           <td style={styles.td}>{row.address}</td>
                           <td style={styles.td}>{row.effectiveTenant}</td>
@@ -2280,7 +2382,7 @@ This keeps the record for reporting but removes it from your active list.`
                   onChange={(e) => setSelectedReportPropertyId(e.target.value)}
                 >
                   <option value="">Select property</option>
-                  {companyProperties.map((property) => (
+                  {filteredPropertyOptions.map((property) => (
                     <option key={property.id} value={property.id}>
                       {property.address}
                     </option>
@@ -2515,6 +2617,8 @@ const styles = {
   subtitle: { margin: '8px 0 0 0', color: '#64748b', fontSize: '15px' },
   headerActions: { display: 'flex', gap: '10px', flexWrap: 'wrap' },
   topControls: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '14px', marginBottom: '18px' },
+  searchSummaryBar: { display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '16px', padding: '10px 14px', background: '#f8fafc', border: '1px solid #dbeafe', borderRadius: '12px', color: '#334155' },
+  linkButton: { background: 'transparent', border: 'none', color: '#2563eb', cursor: 'pointer', fontWeight: 600, padding: 0 },
   controlBlock: { background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '16px' },
   tabRow: { display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '18px' },
   tabButton: { background: '#e2e8f0', color: '#0f172a', border: 'none', borderRadius: '12px', padding: '10px 16px', cursor: 'pointer', fontWeight: 600 },
