@@ -149,6 +149,19 @@ function getOccupancyForMonth(property, propertyOverrides, month) {
 function getTenantForMonth(property, propertyOverrides, month) {
   return getOccupancyForMonth(property, propertyOverrides, month).primaryTenant
 }
+
+function confirmDeleteWithPrompt(message, requiredText = 'DELETE') {
+  const initialConfirm = window.confirm(message)
+  if (!initialConfirm) return false
+
+  const typed = window.prompt(`Type ${requiredText} to continue.`)
+  if (typed !== requiredText) {
+    window.alert('Delete canceled.')
+    return false
+  }
+
+  return true
+}
 export default function App() {
   const [session, setSession] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -169,6 +182,7 @@ export default function App() {
   const [selectedTenantName, setSelectedTenantName] = useState('')
   const [reportStartDate, setReportStartDate] = useState('')
   const [reportEndDate, setReportEndDate] = useState('')
+  const [showArchivedProperties, setShowArchivedProperties] = useState(false)
 
   const [companyForm, setCompanyForm] = useState({
     companyName: '',
@@ -385,7 +399,9 @@ export default function App() {
   }
 
   async function deleteCompany(companyId, companyName) {
-    const confirmed = window.confirm(`Delete company: ${companyName}?\n\nThis may also remove related properties and records.`)
+    const confirmed = confirmDeleteWithPrompt(
+      `Delete company: ${companyName}?\n\nThis is permanent and may also remove related properties and records.`
+    )
     if (!confirmed) return
 
     setMessage('')
@@ -409,6 +425,7 @@ export default function App() {
     }
 
     await loadData()
+    setMessage(`Company deleted: ${companyName}.`)
   }
 
   async function addProperty(e) {
@@ -482,7 +499,7 @@ export default function App() {
       return
     }
 
-    const property = companyProperties.find((item) => item.id === paymentForm.propertyId)
+    const property = activeCompanyProperties.find((item) => item.id === paymentForm.propertyId) || companyProperties.find((item) => item.id === paymentForm.propertyId)
 
     if (typeof window !== 'undefined') {
       window.localStorage.setItem('rentTrackerLastPaymentMethod', paymentForm.method)
@@ -555,13 +572,20 @@ export default function App() {
     await loadData()
   }
 
-  async function deleteProperty(propertyId, address) {
-    const confirmed = window.confirm(`Delete property: ${address}?`)
+  async function archiveProperty(propertyId, address) {
+    const confirmed = window.confirm(
+      `Archive property: ${address}?
+
+This keeps the record for reporting but removes it from your active list.`
+    )
     if (!confirmed) return
 
     setMessage('')
 
-    const { error } = await supabase.from('properties').delete().eq('id', propertyId)
+    const { error } = await supabase
+      .from('properties')
+      .update({ is_active: false })
+      .eq('id', propertyId)
 
     if (error) {
       setMessage(error.message)
@@ -570,6 +594,27 @@ export default function App() {
 
     if (editingPropertyId === propertyId) cancelEditingProperty()
     await loadData()
+    setMessage(`Property archived: ${address}.`)
+  }
+
+  async function restoreProperty(propertyId, address) {
+    const confirmed = window.confirm(`Restore property: ${address}?`)
+    if (!confirmed) return
+
+    setMessage('')
+
+    const { error } = await supabase
+      .from('properties')
+      .update({ is_active: true })
+      .eq('id', propertyId)
+
+    if (error) {
+      setMessage(error.message)
+      return
+    }
+
+    await loadData()
+    setMessage(`Property restored: ${address}.`)
   }
 
   function startEditingPayment(payment) {
@@ -615,7 +660,9 @@ export default function App() {
   }
 
   async function deletePayment(paymentId) {
-    const confirmed = window.confirm('Delete this payment?')
+    const confirmed = confirmDeleteWithPrompt(
+      'Delete this payment?\n\nThis permanently removes the payment from the ledger.'
+    )
     if (!confirmed) return
 
     setMessage('')
@@ -629,6 +676,7 @@ export default function App() {
 
     if (editingPaymentId === paymentId) cancelEditingPayment()
     await loadData()
+    setMessage('Payment deleted.')
   }
 
   function startEditingOverride(propertyId, current) {
@@ -770,6 +818,14 @@ export default function App() {
     return properties.filter((property) => property.company_id === selectedCompanyId)
   }, [properties, selectedCompanyId])
 
+  const activeCompanyProperties = useMemo(() => {
+    return companyProperties.filter((property) => property.is_active !== false)
+  }, [companyProperties])
+
+  const visibleProperties = useMemo(() => {
+    return showArchivedProperties ? companyProperties : activeCompanyProperties
+  }, [companyProperties, activeCompanyProperties, showArchivedProperties])
+
   useEffect(() => {
     if (companyProperties.length > 0) {
       const exists = companyProperties.find((p) => p.id === selectedReportPropertyId)
@@ -782,7 +838,7 @@ export default function App() {
   const companyPropertyIds = useMemo(() => companyProperties.map((property) => property.id), [companyProperties])
 
   useEffect(() => {
-    if (companyProperties.length === 0) {
+    if (activeCompanyProperties.length === 0) {
       setPaymentForm((current) => ({
         ...current,
         propertyId: '',
@@ -790,15 +846,15 @@ export default function App() {
       return
     }
 
-    const propertyStillExists = companyProperties.some((property) => property.id === paymentForm.propertyId)
+    const propertyStillExists = activeCompanyProperties.some((property) => property.id === paymentForm.propertyId)
 
     if (!propertyStillExists) {
       setPaymentForm((current) => ({
         ...current,
-        propertyId: companyProperties[0].id,
+        propertyId: activeCompanyProperties[0].id,
       }))
     }
-  }, [companyProperties, paymentForm.propertyId])
+  }, [activeCompanyProperties, paymentForm.propertyId])
 
   const companyPayments = useMemo(() => {
     return payments.filter((payment) => companyPropertyIds.includes(payment.property_id))
@@ -1569,12 +1625,26 @@ export default function App() {
       {activeTab === 'properties' && (
         <div style={styles.sectionGrid}>
           <div style={styles.card}>
-            <h2 style={styles.cardTitle}>Properties</h2>
+            <div style={styles.reportHeaderRow}>
+              <div>
+                <h2 style={styles.cardTitle}>Properties</h2>
+                <p style={styles.smallMuted}>Archive keeps a property in your historical reports without leaving it in your active working list.</p>
+              </div>
+              <label style={styles.inlineToggleLabel}>
+                <input
+                  type="checkbox"
+                  checked={showArchivedProperties}
+                  onChange={(e) => setShowArchivedProperties(e.target.checked)}
+                />
+                <span>Show archived properties</span>
+              </label>
+            </div>
             <div style={styles.tableWrap}>
               <table style={styles.table}>
                 <thead>
                   <tr>
                     <th style={styles.th}>Address</th>
+                    <th style={styles.th}>Status</th>
                     <th style={styles.th}>Tenant</th>
                     <th style={styles.th}>Rent</th>
                     <th style={styles.th}>Due Day</th>
@@ -1583,15 +1653,20 @@ export default function App() {
                   </tr>
                 </thead>
                 <tbody>
-                  {companyProperties.length === 0 ? (
-                    <tr><td style={styles.td} colSpan="6">No properties yet for this company.</td></tr>
+                  {visibleProperties.length === 0 ? (
+                    <tr><td style={styles.td} colSpan="7">No properties to show for this company.</td></tr>
                   ) : (
-                    companyProperties.map((property) => (
+                    visibleProperties.map((property) => (
                       <tr key={property.id}>
                         <td style={styles.td}>
                           {editingPropertyId === property.id ? (
                             <input style={styles.tableInput} value={editPropertyForm.address} onChange={(e) => setEditPropertyForm({ ...editPropertyForm, address: e.target.value })} />
                           ) : property.address}
+                        </td>
+                        <td style={styles.td}>
+                          <span style={property.is_active === false ? styles.archivedBadge : styles.activeBadge}>
+                            {property.is_active === false ? 'Archived' : 'Active'}
+                          </span>
                         </td>
                         <td style={styles.td}>
                           {editingPropertyId === property.id ? (
@@ -1623,7 +1698,11 @@ export default function App() {
                             ) : (
                               <>
                                 <button style={styles.smallSecondaryButton} type="button" onClick={() => startEditingProperty(property)}>Edit</button>
-                                <button style={styles.smallDangerButton} type="button" onClick={() => deleteProperty(property.id, property.address)}>Delete</button>
+                                {property.is_active === false ? (
+                                  <button style={styles.smallPrimaryButton} type="button" onClick={() => restoreProperty(property.id, property.address)}>Restore</button>
+                                ) : (
+                                  <button style={styles.smallDangerButton} type="button" onClick={() => archiveProperty(property.id, property.address)}>Archive</button>
+                                )}
                               </>
                             )}
                           </div>
@@ -1752,7 +1831,7 @@ export default function App() {
                 }}
               >
                 <option value="">Select property</option>
-                {companyProperties.map((property) => (
+                {activeCompanyProperties.map((property) => (
                   <option key={property.id} value={property.id}>{property.address}</option>
                 ))}
               </select>
@@ -2386,6 +2465,9 @@ const styles = {
   smallPrimaryButton: { background: '#0f172a', color: '#fff', border: 'none', borderRadius: '10px', padding: '8px 12px', cursor: 'pointer', fontWeight: 600, fontSize: '13px' },
   smallSecondaryButton: { background: '#e2e8f0', color: '#0f172a', border: 'none', borderRadius: '10px', padding: '8px 12px', cursor: 'pointer', fontWeight: 600, fontSize: '13px' },
   smallDangerButton: { background: '#dc2626', color: '#fff', border: 'none', borderRadius: '10px', padding: '8px 12px', cursor: 'pointer', fontWeight: 600, fontSize: '13px' },
+  inlineToggleLabel: { display: 'inline-flex', alignItems: 'center', gap: '8px', fontSize: '14px', fontWeight: 600, color: '#334155' },
+  activeBadge: { display: 'inline-block', background: '#ecfdf5', border: '1px solid #86efac', color: '#166534', borderRadius: '999px', padding: '4px 10px', fontSize: '12px', fontWeight: 700 },
+  archivedBadge: { display: 'inline-block', background: '#f1f5f9', border: '1px solid #cbd5e1', color: '#475569', borderRadius: '999px', padding: '4px 10px', fontSize: '12px', fontWeight: 700 },
   buttonRow: { display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '14px' },
   actionRow: { display: 'flex', gap: '8px', flexWrap: 'wrap' },
   reportHeaderRow: { display: 'flex', justifyContent: 'space-between', gap: '16px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '12px' },
