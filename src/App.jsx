@@ -1694,3 +1694,4 @@ const styles = {
   messageBanner: { marginBottom: '18px', background: '#fff7ed', border: '1px solid #fdba74', color: '#9a3412', borderRadius: '12px', padding: '12px 14px', fontSize: '14px' },
   notesBox: { marginTop: '16px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px 14px', fontSize: '14px', color: '#334155' },
 }
+<h1>Rent Tracker TEST</h1>
