@@ -532,6 +532,7 @@ export default function App() {
       return
     }
 
+    const postedMonth = monthKeyFromDate(paymentForm.paymentDate)
     const payload = {
       property_id: paymentForm.propertyId,
       payment_date: paymentForm.paymentDate,
@@ -540,7 +541,11 @@ export default function App() {
       note: paymentForm.note || null,
     }
 
-    const { error } = await supabase.from('payments').insert(payload)
+    const { data: insertedPayment, error } = await supabase
+      .from('payments')
+      .insert(payload)
+      .select('*')
+      .single()
 
     if (error) {
       setMessage(error.message)
@@ -553,7 +558,15 @@ export default function App() {
       window.localStorage.setItem('rentTrackerLastPaymentMethod', paymentForm.method)
     }
 
-    setPaymentSuccessMessage(`Payment saved for ${property?.address || 'selected property'} — ${currency(paymentForm.amount)} on ${formatDate(paymentForm.paymentDate)}.`)
+    if (insertedPayment) {
+      setPayments((current) => [insertedPayment, ...current.filter((item) => item.id !== insertedPayment.id)])
+    }
+
+    if (postedMonth) {
+      setSelectedMonth(postedMonth)
+    }
+
+    setPaymentSuccessMessage(`Payment saved for ${property?.address || 'selected property'} — ${currency(paymentForm.amount)} on ${formatDate(paymentForm.paymentDate)}. Posted to ${monthLabel(postedMonth || selectedMonth)}.`)
 
     setPaymentForm((current) => ({
       propertyId: addAnother ? current.propertyId : '',
@@ -727,7 +740,8 @@ This keeps the record for reporting but removes it from your active list.`
   async function saveEditedPayment(paymentId) {
     setMessage('')
 
-    const { error } = await supabase
+    const postedMonth = monthKeyFromDate(editPaymentForm.paymentDate)
+    const { data: updatedPayment, error } = await supabase
       .from('payments')
       .update({
         payment_date: editPaymentForm.paymentDate,
@@ -736,24 +750,38 @@ This keeps the record for reporting but removes it from your active list.`
         note: editPaymentForm.note || null,
       })
       .eq('id', paymentId)
+      .select('*')
+      .single()
 
     if (error) {
       setMessage(error.message)
       return
     }
 
+    if (updatedPayment) {
+      setPayments((current) => current.map((item) => (item.id === paymentId ? updatedPayment : item)))
+    }
+
+    if (postedMonth) {
+      setSelectedMonth(postedMonth)
+    }
+
     cancelEditingPayment()
     await loadData()
+    setMessage(`Payment updated and posted to ${monthLabel(postedMonth || selectedMonth)}.`)
   }
 
   async function deletePayment(paymentId) {
     const confirmed = confirmDeleteWithPrompt(
-      'Delete this payment?\n\nThis permanently removes the payment from the ledger.'
+      'Delete this payment?
+
+This permanently removes the payment from the ledger.'
     )
     if (!confirmed) return
 
     setMessage('')
 
+    const deletedPayment = payments.find((item) => item.id === paymentId) || null
     const { error } = await supabase.from('payments').delete().eq('id', paymentId)
 
     if (error) {
@@ -761,9 +789,19 @@ This keeps the record for reporting but removes it from your active list.`
       return
     }
 
+    setPayments((current) => current.filter((item) => item.id !== paymentId))
+
     if (editingPaymentId === paymentId) cancelEditingPayment()
+
+    if (deletedPayment?.payment_date) {
+      const deletedMonth = monthKeyFromDate(deletedPayment.payment_date)
+      if (deletedMonth) {
+        setSelectedMonth(deletedMonth)
+      }
+    }
+
     await loadData()
-    setMessage('Payment deleted.')
+    setMessage('Payment deleted and removed from the ledger.')
   }
 
   function startEditingOverride(propertyId, current) {
@@ -2164,6 +2202,7 @@ This keeps the record for reporting but removes it from your active list.`
           <div style={styles.card}>
             <h2 style={styles.cardTitle}>Quick Payment Entry</h2>
             <p style={styles.smallMuted}>Default date starts on today, the last saved payment method is remembered, and you can save another payment without rebuilding the form.</p>
+            <div style={styles.infoBanner}>Payments post by the payment date you enter, not the month currently showing at the top. After you save, the month selector will follow that payment date so you can see it in the right month.</div>
 
             {paymentSuccessMessage ? (
               <div style={styles.successBanner}>{paymentSuccessMessage}</div>
