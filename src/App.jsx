@@ -29,16 +29,12 @@ function getNextMonthKey(month) {
 
 function formatDate(value) {
   if (!value) return '—'
-  const text = String(value)
-  const dateOnlyMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})$/)
-
-  if (dateOnlyMatch) {
-    const [, year, month, day] = dateOnlyMatch
-    const d = new Date(Number(year), Number(month) - 1, Number(day))
-    return d.toLocaleDateString('en-US')
+  const raw = String(value)
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    const [year, month, day] = raw.split('-').map(Number)
+    return new Date(year, month - 1, day).toLocaleDateString('en-US')
   }
-
-  const d = new Date(text)
+  const d = new Date(value)
   if (Number.isNaN(d.getTime())) return value
   return d.toLocaleDateString('en-US')
 }
@@ -250,6 +246,9 @@ export default function App() {
     note: '',
   })
   const [paymentSuccessMessage, setPaymentSuccessMessage] = useState('')
+  const [voiceTranscript, setVoiceTranscript] = useState('')
+  const [voiceStatus, setVoiceStatus] = useState('')
+  const [isListening, setIsListening] = useState(false)
 
   const [editingPropertyId, setEditingPropertyId] = useState(null)
   const [editPropertyForm, setEditPropertyForm] = useState({
@@ -282,6 +281,7 @@ export default function App() {
   const propertyStatementRef = useRef(null)
   const tenantStatementRef = useRef(null)
   const propertyLedgerRef = useRef(null)
+  const speechRecognitionRef = useRef(null)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -301,6 +301,19 @@ export default function App() {
   useEffect(() => {
     if (session) loadData()
   }, [session])
+
+  useEffect(() => {
+    return () => {
+      if (speechRecognitionRef.current) {
+        try {
+          speechRecognitionRef.current.stop()
+        } catch (error) {
+          console.error('Unable to stop speech recognition.', error)
+        }
+      }
+    }
+  }, [])
+
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -331,6 +344,282 @@ export default function App() {
     if (typeof window === 'undefined') return
     window.localStorage.setItem('rentTrackerPropertyNotes', JSON.stringify(propertyNotes))
   }, [propertyNotes])
+
+
+  function browserSupportsVoiceEntry() {
+    if (typeof window === 'undefined') return false
+    return Boolean(window.SpeechRecognition || window.webkitSpeechRecognition)
+  }
+
+  function normalizeAddressText(value) {
+    return String(value || '')
+      .toLowerCase()
+      .replace(/\bstreet\b/g, 'st')
+      .replace(/\bsaint\b/g, 'st')
+      .replace(/\bavenue\b/g, 'ave')
+      .replace(/\broad\b/g, 'rd')
+      .replace(/\bdrive\b/g, 'dr')
+      .replace(/\blane\b/g, 'ln')
+      .replace(/\bapartment\b/g, 'apt')
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+  }
+
+  function wordToNumberToken(word) {
+    const map = {
+      zero: 0,
+      one: 1,
+      two: 2,
+      three: 3,
+      four: 4,
+      five: 5,
+      six: 6,
+      seven: 7,
+      eight: 8,
+      nine: 9,
+      ten: 10,
+      eleven: 11,
+      twelve: 12,
+      thirteen: 13,
+      fourteen: 14,
+      fifteen: 15,
+      sixteen: 16,
+      seventeen: 17,
+      eighteen: 18,
+      nineteen: 19,
+      twenty: 20,
+      thirty: 30,
+      forty: 40,
+      fifty: 50,
+      sixty: 60,
+      seventy: 70,
+      eighty: 80,
+      ninety: 90,
+    }
+    return map[word]
+  }
+
+  function parseNumberWords(segment) {
+    if (!segment) return null
+
+    const cleaned = String(segment)
+      .toLowerCase()
+      .replace(/-/g, ' ')
+      .replace(/ and /g, ' ')
+      .replace(/ dollars?/g, ' ')
+      .replace(/ cents?/g, ' ')
+      .replace(/[^a-z\s]/g, ' ')
+      .replace(/\s+/g, ' ')
+      .trim()
+
+    if (!cleaned) return null
+
+    const tokens = cleaned.split(' ')
+    let total = 0
+    let current = 0
+    let matched = false
+
+    for (const token of tokens) {
+      if (token === 'hundred') {
+        current = (current || 1) * 100
+        matched = true
+        continue
+      }
+
+      if (token === 'thousand') {
+        total += (current || 1) * 1000
+        current = 0
+        matched = true
+        continue
+      }
+
+      const numeric = wordToNumberToken(token)
+      if (numeric !== undefined) {
+        current += numeric
+        matched = true
+      }
+    }
+
+    const amount = total + current
+    return matched && amount > 0 ? amount : null
+  }
+
+  function parseSpokenAmount(transcript) {
+    const numericMatch = String(transcript || '').match(/\$?\s*(\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)/)
+    if (numericMatch) {
+      const parsed = Number(numericMatch[1].replace(/,/g, ''))
+      if (!Number.isNaN(parsed) && parsed > 0) return parsed
+    }
+
+    const lower = String(transcript || '').toLowerCase()
+    const amountPhraseMatch = lower.match(/(?:amount|for|paid|payment|received)\s+([a-z\s-]+?)(?:\s+(?:cash|check|zelle|venmo|cash app|money order|bank deposit|deposit|today|yesterday|note|on|dated)\b|$)/)
+    if (amountPhraseMatch) {
+      const parsed = parseNumberWords(amountPhraseMatch[1])
+      if (parsed) return parsed
+    }
+
+    return parseNumberWords(lower)
+  }
+
+  function parseSpokenMethod(transcript) {
+    const lower = String(transcript || '').toLowerCase()
+    if (lower.includes('cash app')) return 'Cash App'
+    if (lower.includes('bank deposit') || lower.includes('deposit')) return 'Bank Deposit'
+    if (lower.includes('money order')) return 'Money Order'
+    if (lower.includes('zelle')) return 'Zelle'
+    if (lower.includes('venmo')) return 'Venmo'
+    if (lower.includes('check')) return 'Check'
+    if (lower.includes('cash')) return 'Cash'
+    return ''
+  }
+
+  function parseSpokenDate(transcript) {
+    const raw = String(transcript || '')
+    const lower = raw.toLowerCase()
+
+    if (lower.includes('today')) return getTodayDateInput()
+    if (lower.includes('yesterday')) return addDays(getTodayDateInput(), -1)
+
+    const slashMatch = raw.match(/\b(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\b/)
+    if (slashMatch) {
+      let year = slashMatch[3] ? Number(slashMatch[3]) : new Date().getFullYear()
+      if (year < 100) year += 2000
+      const month = String(Number(slashMatch[1])).padStart(2, '0')
+      const day = String(Number(slashMatch[2])).padStart(2, '0')
+      return `${year}-${month}-${day}`
+    }
+
+    const monthNamePattern = /(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s*(\d{4}))?/i
+    const monthMatch = raw.match(monthNamePattern)
+    if (monthMatch) {
+      const parsed = new Date(`${monthMatch[1]} ${monthMatch[2]} ${monthMatch[3] || new Date().getFullYear()}`)
+      if (!Number.isNaN(parsed.getTime())) {
+        const yyyy = parsed.getFullYear()
+        const mm = String(parsed.getMonth() + 1).padStart(2, '0')
+        const dd = String(parsed.getDate()).padStart(2, '0')
+        return `${yyyy}-${mm}-${dd}`
+      }
+    }
+
+    return ''
+  }
+
+  function findPropertyFromTranscript(transcript) {
+    const normalizedTranscript = normalizeAddressText(transcript)
+    if (!normalizedTranscript) return null
+
+    let bestMatch = null
+    let bestScore = 0
+
+    activeCompanyProperties.forEach((property) => {
+      const normalizedAddress = normalizeAddressText(property.address)
+      if (!normalizedAddress) return
+
+      let score = 0
+
+      if (normalizedTranscript.includes(normalizedAddress)) {
+        score += normalizedAddress.length + 100
+      }
+
+      const addressTokens = normalizedAddress.split(' ').filter(Boolean)
+      addressTokens.forEach((token) => {
+        if (token.length >= 2 && normalizedTranscript.includes(token)) {
+          score += token.length
+        }
+      })
+
+      const numberMatch = normalizedAddress.match(/^\d+[a-z]?/)
+      if (numberMatch && normalizedTranscript.includes(numberMatch[0])) {
+        score += 50
+      }
+
+      if (score > bestScore) {
+        bestScore = score
+        bestMatch = property
+      }
+    })
+
+    return bestScore >= 6 ? bestMatch : null
+  }
+
+  function applyVoicePaymentTranscript(transcript) {
+    const property = findPropertyFromTranscript(transcript)
+    const paymentDate = parseSpokenDate(transcript) || getTodayDateInput()
+    const amount = parseSpokenAmount(transcript)
+    const method = parseSpokenMethod(transcript)
+    const note = `Voice entry: ${transcript}`
+
+    setPaymentSuccessMessage('')
+    setPaymentForm((current) => ({
+      ...current,
+      propertyId: property?.id || current.propertyId,
+      paymentDate: paymentDate || current.paymentDate || getTodayDateInput(),
+      amount: amount ? String(amount) : current.amount,
+      method: method || current.method || 'Cash',
+      note,
+    }))
+
+    const missing = []
+    if (!property) missing.push('property')
+    if (!amount) missing.push('amount')
+    if (!method) missing.push('method')
+
+    if (missing.length === 0) {
+      setVoiceStatus('Voice entry filled the payment form. Review and save when ready.')
+    } else {
+      setVoiceStatus(`Voice entry filled what it could. Please review: missing ${missing.join(', ')}.`)
+    }
+  }
+
+  function stopVoiceEntry() {
+    if (speechRecognitionRef.current) {
+      try {
+        speechRecognitionRef.current.stop()
+      } catch (error) {
+        console.error('Unable to stop speech recognition.', error)
+      }
+    }
+    setIsListening(false)
+  }
+
+  function startVoiceEntry() {
+    if (!browserSupportsVoiceEntry()) {
+      setVoiceStatus('Voice entry works in supported browsers like Chrome or Edge.')
+      return
+    }
+
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
+    const recognition = new SpeechRecognition()
+    speechRecognitionRef.current = recognition
+    recognition.lang = 'en-US'
+    recognition.interimResults = false
+    recognition.maxAlternatives = 1
+
+    setVoiceTranscript('')
+    setVoiceStatus('Listening… say the property, date, amount, and method.')
+    setIsListening(true)
+
+    recognition.onresult = (event) => {
+      const transcript = event.results?.[0]?.[0]?.transcript || ''
+      setVoiceTranscript(transcript)
+      applyVoicePaymentTranscript(transcript)
+    }
+
+    recognition.onerror = (event) => {
+      const errorMessage = event?.error === 'not-allowed'
+        ? 'Microphone permission was blocked.'
+        : 'Voice entry did not complete. Please try again.'
+      setVoiceStatus(errorMessage)
+      setIsListening(false)
+    }
+
+    recognition.onend = () => {
+      setIsListening(false)
+    }
+
+    recognition.start()
+  }
 
   async function loadData() {
     setLoading(true)
@@ -2213,6 +2502,57 @@ This permanently removes the payment from the ledger.`
             <p style={styles.smallMuted}>Default date starts on today, the last saved payment method is remembered, and you can save another payment without rebuilding the form.</p>
             <div style={styles.infoBanner}>Payments post by the payment date you enter, not the month currently showing at the top. After you save, the month selector will follow that payment date so you can see it in the right month.</div>
 
+            <div style={styles.voiceCard}>
+              <div style={styles.voiceHeaderRow}>
+                <div>
+                  <div style={styles.voiceTitle}>Voice Payment Entry</div>
+                  <div style={styles.smallMuted}>Say something like: “5342A St. Matthew Lane, March 8 2026, 1100 dollars, cash.”</div>
+                </div>
+                <div style={styles.actionRow}>
+                  <button
+                    style={isListening ? styles.smallDangerButton : styles.smallPrimaryButton}
+                    type="button"
+                    onClick={isListening ? stopVoiceEntry : startVoiceEntry}
+                  >
+                    {isListening ? 'Stop Listening' : 'Tap to Dictate'}
+                  </button>
+                </div>
+              </div>
+
+              {voiceStatus ? <div style={styles.infoBanner}>{voiceStatus}</div> : null}
+
+              <label style={styles.label}>Transcript</label>
+              <textarea
+                style={styles.textarea}
+                rows={3}
+                value={voiceTranscript}
+                onChange={(e) => {
+                  setVoiceTranscript(e.target.value)
+                  setVoiceStatus('Transcript updated. Use Apply Transcript to fill the payment form.')
+                }}
+                placeholder="Your dictated payment will appear here."
+              />
+              <div style={styles.buttonRow}>
+                <button
+                  style={styles.secondaryButton}
+                  type="button"
+                  onClick={() => applyVoicePaymentTranscript(voiceTranscript)}
+                >
+                  Apply Transcript
+                </button>
+                <button
+                  style={styles.secondaryButton}
+                  type="button"
+                  onClick={() => {
+                    setVoiceTranscript('')
+                    setVoiceStatus('')
+                  }}
+                >
+                  Clear Voice Entry
+                </button>
+              </div>
+            </div>
+
             {paymentSuccessMessage ? (
               <div style={styles.successBanner}>{paymentSuccessMessage}</div>
             ) : null}
@@ -3018,6 +3358,10 @@ const styles = {
   th: { textAlign: 'left', padding: '10px 8px', borderBottom: '1px solid #e2e8f0', fontSize: '13px', color: '#475569', whiteSpace: 'nowrap' },
   td: { padding: '12px 8px', borderBottom: '1px solid #e2e8f0', fontSize: '14px', verticalAlign: 'top' },
   smallMuted: { color: '#64748b', fontSize: '14px' },
+  infoBanner: { marginTop: '12px', marginBottom: '16px', background: '#eff6ff', border: '1px solid #93c5fd', color: '#1d4ed8', borderRadius: '12px', padding: '12px 14px', fontSize: '14px' },
+  voiceCard: { marginTop: '16px', marginBottom: '16px', border: '1px solid #dbeafe', background: '#f8fbff', borderRadius: '14px', padding: '14px' },
+  voiceHeaderRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', flexWrap: 'wrap', marginBottom: '10px' },
+  voiceTitle: { fontSize: '16px', fontWeight: 700, marginBottom: '4px' },
   message: { marginTop: '16px', color: '#b91c1c', fontSize: '14px' },
   messageBanner: { marginBottom: '18px', background: '#fff7ed', border: '1px solid #fdba74', color: '#9a3412', borderRadius: '12px', padding: '12px 14px', fontSize: '14px' },
   successBanner: { marginBottom: '16px', background: '#ecfdf5', border: '1px solid #86efac', color: '#166534', borderRadius: '12px', padding: '12px 14px', fontSize: '14px' },
