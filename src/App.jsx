@@ -282,6 +282,7 @@ export default function App() {
   const tenantStatementRef = useRef(null)
   const propertyLedgerRef = useRef(null)
   const speechRecognitionRef = useRef(null)
+  const voiceTranscriptRef = useRef(null)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -581,6 +582,13 @@ export default function App() {
       }
     }
     setIsListening(false)
+  }
+
+  function focusTranscriptForKeyboardMic() {
+    if (voiceTranscriptRef.current) {
+      voiceTranscriptRef.current.focus()
+    }
+    setVoiceStatus('Tap the microphone on your phone keyboard, speak the payment details, then press Apply Transcript.')
   }
 
   function startVoiceEntry() {
@@ -2508,44 +2516,61 @@ This permanently removes the payment from the ledger.`
                   <div style={styles.voiceTitle}>Voice Payment Entry</div>
                   <div style={styles.smallMuted}>Say something like: “5342A St. Matthew Lane, March 8 2026, 1100 dollars, cash.”</div>
                 </div>
-                <div style={styles.actionRow}>
+                <div style={styles.voiceButtonGroup}>
                   <button
-                    style={isListening ? styles.smallDangerButton : styles.smallPrimaryButton}
+                    style={isListening ? styles.voiceDangerButton : styles.voicePrimaryButton}
                     type="button"
                     onClick={isListening ? stopVoiceEntry : startVoiceEntry}
                   >
-                    {isListening ? 'Stop Listening' : 'Tap to Dictate'}
+                    {isListening ? 'Stop Listening' : 'Use Phone Mic'}
+                  </button>
+                  <button
+                    style={styles.voiceSecondaryButton}
+                    type="button"
+                    onClick={focusTranscriptForKeyboardMic}
+                  >
+                    Use Keyboard Mic
                   </button>
                 </div>
               </div>
 
+              <div style={styles.voiceHelpBox}>
+                <strong>Android tip:</strong> In Chrome or Edge, try <strong>Use Phone Mic</strong>. If that does not work well on your phone, tap <strong>Use Keyboard Mic</strong>, speak into your keyboard microphone, then press <strong>Apply Transcript</strong>.
+              </div>
+
               {voiceStatus ? <div style={styles.infoBanner}>{voiceStatus}</div> : null}
+
+              {!browserSupportsVoiceEntry() ? (
+                <div style={styles.warningBanner}>This browser may not support direct voice dictation. The keyboard mic option still works well on many Android phones.</div>
+              ) : null}
 
               <label style={styles.label}>Transcript</label>
               <textarea
+                ref={voiceTranscriptRef}
                 style={styles.textarea}
-                rows={3}
+                rows={4}
                 value={voiceTranscript}
                 onChange={(e) => {
                   setVoiceTranscript(e.target.value)
                   setVoiceStatus('Transcript updated. Use Apply Transcript to fill the payment form.')
                 }}
-                placeholder="Your dictated payment will appear here."
+                placeholder="Your dictated payment will appear here. You can also tap into this box and use your phone keyboard microphone."
               />
-              <div style={styles.buttonRow}>
+              <div style={styles.voiceButtonGroup}>
                 <button
-                  style={styles.secondaryButton}
+                  style={styles.voiceSecondaryButton}
                   type="button"
                   onClick={() => applyVoicePaymentTranscript(voiceTranscript)}
                 >
                   Apply Transcript
                 </button>
                 <button
-                  style={styles.secondaryButton}
+                  style={styles.voiceSecondaryButton}
                   type="button"
                   onClick={() => {
                     setVoiceTranscript('')
                     setVoiceStatus('')
+                    if (voiceTranscriptRef.current) voiceTranscriptRef.current.focus()
                   }}
                 >
                   Clear Voice Entry
@@ -3362,6 +3387,11 @@ const styles = {
   voiceCard: { marginTop: '16px', marginBottom: '16px', border: '1px solid #dbeafe', background: '#f8fbff', borderRadius: '14px', padding: '14px' },
   voiceHeaderRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', flexWrap: 'wrap', marginBottom: '10px' },
   voiceTitle: { fontSize: '16px', fontWeight: 700, marginBottom: '4px' },
+  voiceButtonGroup: { display: 'flex', gap: '10px', flexWrap: 'wrap' },
+  voicePrimaryButton: { background: '#1d4ed8', color: '#fff', border: 'none', borderRadius: '12px', padding: '12px 16px', fontWeight: 700, cursor: 'pointer', minHeight: '44px' },
+  voiceDangerButton: { background: '#b91c1c', color: '#fff', border: 'none', borderRadius: '12px', padding: '12px 16px', fontWeight: 700, cursor: 'pointer', minHeight: '44px' },
+  voiceSecondaryButton: { background: '#fff', color: '#0f172a', border: '1px solid #cbd5e1', borderRadius: '12px', padding: '12px 16px', fontWeight: 700, cursor: 'pointer', minHeight: '44px' },
+  voiceHelpBox: { marginBottom: '12px', padding: '10px 12px', borderRadius: '12px', background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1e3a8a', fontSize: '14px', lineHeight: 1.4 },
   message: { marginTop: '16px', color: '#b91c1c', fontSize: '14px' },
   messageBanner: { marginBottom: '18px', background: '#fff7ed', border: '1px solid #fdba74', color: '#9a3412', borderRadius: '12px', padding: '12px 14px', fontSize: '14px' },
   successBanner: { marginBottom: '16px', background: '#ecfdf5', border: '1px solid #86efac', color: '#166534', borderRadius: '12px', padding: '12px 14px', fontSize: '14px' },
