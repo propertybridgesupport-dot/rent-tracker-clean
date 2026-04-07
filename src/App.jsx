@@ -29,7 +29,16 @@ function getNextMonthKey(month) {
 
 function formatDate(value) {
   if (!value) return '—'
-  const d = new Date(value)
+  const text = String(value)
+  const dateOnlyMatch = text.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+
+  if (dateOnlyMatch) {
+    const [, year, month, day] = dateOnlyMatch
+    const d = new Date(Number(year), Number(month) - 1, Number(day))
+    return d.toLocaleDateString('en-US')
+  }
+
+  const d = new Date(text)
   if (Number.isNaN(d.getTime())) return value
   return d.toLocaleDateString('en-US')
 }
