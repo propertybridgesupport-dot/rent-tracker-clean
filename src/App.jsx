@@ -773,9 +773,9 @@ This keeps the record for reporting but removes it from your active list.`
 
   async function deletePayment(paymentId) {
     const confirmed = confirmDeleteWithPrompt(
-      'Delete this payment?
+      `Delete this payment?
 
-This permanently removes the payment from the ledger.'
+This permanently removes the payment from the ledger.`
     )
     if (!confirmed) return
 
