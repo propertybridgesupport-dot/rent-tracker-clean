@@ -2099,7 +2099,7 @@ This permanently removes the payment from the ledger.`
             <input style={styles.input} type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
             <label style={styles.label}>Password</label>
             <input style={styles.input} type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
-            <div style={styles.buttonRow}>
+            <div className="mobile-button-row" style={styles.buttonRow}>
               <button style={styles.primaryButton} type="submit">Sign In</button>
               <button style={styles.secondaryButton} type="button" onClick={signUp}>Create Account</button>
             </div>
@@ -2128,9 +2128,9 @@ This permanently removes the payment from the ledger.`
       `}</style>
 
       <div className="responsive-header" style={styles.header}>
-        <div style={styles.brandHeaderLeft}>
-          <div style={styles.logoWrap}>
-            <img src="/logo.png" alt="Open Door Support" style={styles.logo} />
+        <div className="mobile-brand-header-left" style={styles.brandHeaderLeft}>
+          <div className="mobile-logo-wrap" style={styles.logoWrap}>
+            <img className="mobile-logo" src="/logo.png" alt="Open Door Support" style={styles.logo} />
           </div>
           <div>
             <h1 style={styles.title}>Open Door Support</h1>
@@ -2138,7 +2138,7 @@ This permanently removes the payment from the ledger.`
           </div>
         </div>
 
-        <div style={styles.headerActions}>
+        <div className="mobile-header-actions" style={styles.headerActions}>
           <button style={styles.secondaryButton} onClick={printOwnerReport}>Print Report</button>
           <button style={styles.secondaryButton} onClick={signOut}>Sign Out</button>
         </div>
@@ -2153,7 +2153,7 @@ This permanently removes the payment from the ledger.`
       ) : null}
 
       <div className="mobile-top-controls" style={styles.topControls}>
-        <div style={styles.controlBlock}>
+        <div className="mobile-control-block" style={styles.controlBlock}>
           <label style={styles.label}>Company</label>
           <select style={styles.input} value={selectedCompanyId} onChange={(e) => setSelectedCompanyId(e.target.value)}>
             <option value="">Select a company</option>
@@ -2165,7 +2165,7 @@ This permanently removes the payment from the ledger.`
           </select>
         </div>
 
-        <div style={styles.controlBlock}>
+        <div className="mobile-control-block" style={styles.controlBlock}>
           <label style={styles.label}>Month</label>
           <select style={styles.input} value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)}>
             {monthOptions.map((month) => (
@@ -2174,7 +2174,7 @@ This permanently removes the payment from the ledger.`
           </select>
         </div>
 
-        <div style={styles.controlBlock}>
+        <div className="mobile-control-block" style={styles.controlBlock}>
           <label style={styles.label}>Search</label>
           <input
             style={styles.input}
@@ -2203,28 +2203,28 @@ This permanently removes the payment from the ledger.`
         <button style={activeTab === 'notesAlerts' ? styles.activeTabButton : styles.tabButton} onClick={() => setActiveTab('notesAlerts')}>Notes & Alerts</button>
       </div>
 
-      {!isMobile ? <div style={styles.cardGrid}>
-        <div style={styles.kpiCard}>
+      {!isMobile ? <div className="mobile-card-grid" style={styles.cardGrid}>
+        <div className="mobile-kpi-card" style={styles.kpiCard}>
           <div style={styles.kpiLabel}>Company</div>
           <div style={styles.kpiValueSmall}>{selectedCompanyName}</div>
         </div>
-        <div style={styles.kpiCard}>
+        <div className="mobile-kpi-card" style={styles.kpiCard}>
           <div style={styles.kpiLabel}>Properties</div>
           <div style={styles.kpiValue}>{totalProperties}</div>
         </div>
-        <div style={styles.kpiCard}>
+        <div className="mobile-kpi-card" style={styles.kpiCard}>
           <div style={styles.kpiLabel}>Monthly Rent</div>
           <div style={styles.kpiValue}>{currency(totalMonthlyRent)}</div>
         </div>
-        <div style={styles.kpiCard}>
+        <div className="mobile-kpi-card" style={styles.kpiCard}>
           <div style={styles.kpiLabel}>Collected</div>
           <div style={styles.kpiValue}>{currency(totalCollected)}</div>
         </div>
-        <div style={styles.kpiCard}>
+        <div className="mobile-kpi-card" style={styles.kpiCard}>
           <div style={styles.kpiLabel}>Outstanding</div>
           <div style={styles.kpiValue}>{currency(totalOutstanding)}</div>
         </div>
-        <div style={styles.kpiCard}>
+        <div className="mobile-kpi-card" style={styles.kpiCard}>
           <div style={styles.kpiLabel}>10% Mgmt Fee</div>
           <div style={styles.kpiValue}>{currency(managementFeeCollected)}</div>
         </div>
@@ -2234,7 +2234,7 @@ This permanently removes the payment from the ledger.`
 
       {activeTab === 'dashboard' && (
         <div style={styles.sectionGridSingle}>
-          <div style={styles.card}>
+          <div className="mobile-card" style={styles.card}>
             <h2 style={styles.cardTitle}>Owner Summary</h2>
             <p style={styles.smallMuted}>{selectedCompanyName} — {monthLabel(selectedMonth)}</p>
             <div style={styles.tableWrap}>
@@ -2270,7 +2270,7 @@ This permanently removes the payment from the ledger.`
             </div>
           </div>
 
-          <div style={styles.card}>
+          <div className="mobile-card" style={styles.card}>
             <div style={styles.reportHeaderRow}>
               <div>
                 <h2 style={styles.cardTitle}>Dashboard Alerts</h2>
@@ -2316,7 +2316,7 @@ This permanently removes the payment from the ledger.`
 
       {activeTab === 'companies' && (
         <div className="responsive-section-grid" style={styles.sectionGrid}>
-          <div style={styles.card}>
+          <div className="mobile-card" style={styles.card}>
             <h2 style={styles.cardTitle}>Companies</h2>
             <div style={styles.tableWrap}>
               <table style={styles.table}>
@@ -2402,7 +2402,7 @@ This permanently removes the payment from the ledger.`
             </div>
           </div>
 
-          <div style={styles.card}>
+          <div className="mobile-card" style={styles.card}>
             <h2 style={styles.cardTitle}>Add Company</h2>
             <form onSubmit={addCompany}>
               <label style={styles.label}>Company Name</label>
@@ -2425,7 +2425,7 @@ This permanently removes the payment from the ledger.`
 
       {activeTab === 'properties' && (
         <div className="responsive-section-grid" style={styles.sectionGrid}>
-          <div style={styles.card}>
+          <div className="mobile-card" style={styles.card}>
             <div style={styles.reportHeaderRow}>
               <div>
                 <h2 style={styles.cardTitle}>Properties</h2>
@@ -2516,7 +2516,7 @@ This permanently removes the payment from the ledger.`
             </div>
           </div>
 
-          <div style={styles.card}>
+          <div className="mobile-card" style={styles.card}>
             <h2 style={styles.cardTitle}>Add Property</h2>
             <form onSubmit={addProperty}>
               <label style={styles.label}>Address</label>
@@ -2543,7 +2543,7 @@ This permanently removes the payment from the ledger.`
               <div style={styles.mobilePaymentBannerText}>This tab is now the default mobile landing screen so you can get straight to payment entry.</div>
             </div>
           ) : null}
-          <div style={styles.card}>
+          <div className="mobile-card" style={styles.card}>
             <h2 style={styles.cardTitle}>Payments This Month</h2>
             <p style={styles.smallMuted}>{selectedCompanyName} — {monthLabel(selectedMonth)}</p>
             <div style={styles.tableWrap}>
@@ -2619,8 +2619,8 @@ This permanently removes the payment from the ledger.`
             </div>
           </div>
 
-          <div style={styles.card}>
-            <div style={styles.mobileHeroCard}>
+          <div className="mobile-card" style={styles.card}>
+            <div className="mobile-hero-card" style={styles.mobileHeroCard}>
               <div style={styles.mobileHeroEyebrow}>Open Door Support</div>
               <h2 style={styles.mobileHeroTitle}>Quick Payment Entry</h2>
               <p style={styles.mobileHeroText}>Built for easier phone use with larger controls, stacked spacing, and voice-friendly entry tools.</p>
@@ -2769,7 +2769,7 @@ This permanently removes the payment from the ledger.`
                 }}
               />
 
-              <div style={styles.buttonRow}>
+              <div className="mobile-button-row" style={styles.buttonRow}>
                 <button style={styles.primaryButton} type="submit">Save Payment</button>
                 <button style={styles.secondaryButton} type="button" onClick={addPaymentAndContinue}>Save + Add Another</button>
               </div>
@@ -2779,7 +2779,7 @@ This permanently removes the payment from the ledger.`
       )}
 
       {activeTab === 'overrides' && (
-        <div style={styles.card}>
+        <div className="mobile-card" style={styles.card}>
           <div style={styles.reportHeaderRow}>
             <div>
               <h2 style={styles.cardTitle}>Monthly Overrides</h2>
@@ -2875,7 +2875,7 @@ This permanently removes the payment from the ledger.`
 
       {activeTab === 'ledger' && (
         <div style={styles.sectionGridSingle}>
-          <div style={styles.card}>
+          <div className="mobile-card" style={styles.card}>
             <div style={styles.reportHeaderRow}>
               <div>
                 <h2 style={styles.cardTitle}>Property Ledger</h2>
@@ -2905,6 +2905,7 @@ This permanently removes the payment from the ledger.`
               <div>
                 <label style={styles.label}>Property</label>
                 <select
+                  className="mobile-input"
                   style={styles.input}
                   value={selectedReportPropertyId}
                   onChange={(e) => setSelectedReportPropertyId(e.target.value)}
@@ -2921,6 +2922,7 @@ This permanently removes the payment from the ledger.`
               <div>
                 <label style={styles.label}>Start Date</label>
                 <input
+                  className="mobile-input"
                   style={styles.input}
                   type="date"
                   value={reportStartDate}
@@ -2931,6 +2933,7 @@ This permanently removes the payment from the ledger.`
               <div>
                 <label style={styles.label}>End Date</label>
                 <input
+                  className="mobile-input"
                   style={styles.input}
                   type="date"
                   value={reportEndDate}
@@ -3027,7 +3030,7 @@ This permanently removes the payment from the ledger.`
 
       {activeTab === 'notesAlerts' && (
         <div className="responsive-section-grid" style={styles.sectionGrid}>
-          <div style={styles.card}>
+          <div className="mobile-card" style={styles.card}>
             <div style={styles.reportHeaderRow}>
               <div>
                 <h2 style={styles.cardTitle}>Property Notes</h2>
@@ -3079,13 +3082,13 @@ This permanently removes the payment from the ledger.`
               placeholder="Examples: agreed payment plan, move-out date promise, approved rent adjustment, maintenance-related credit, follow-up reminders."
             />
 
-            <div style={styles.buttonRow}>
+            <div className="mobile-button-row" style={styles.buttonRow}>
               <button style={styles.primaryButton} type="button" onClick={savePropertyNote}>Save Notes</button>
               <button style={styles.secondaryButton} type="button" onClick={clearPropertyNote}>Clear Notes</button>
             </div>
           </div>
 
-          <div style={styles.card}>
+          <div className="mobile-card" style={styles.card}>
             <div style={styles.reportHeaderRow}>
               <div>
                 <h2 style={styles.cardTitle}>Alerts Center</h2>
@@ -3130,7 +3133,7 @@ This permanently removes the payment from the ledger.`
 
       {activeTab === 'reports' && (
         <div style={styles.sectionGridSingle}>
-          <div style={styles.card}>
+          <div className="mobile-card" style={styles.card}>
             <div style={styles.reportHeaderRow}>
               <div>
                 <h2 style={styles.cardTitle}>Owner Monthly Report</h2>
@@ -3215,13 +3218,14 @@ This permanently removes the payment from the ledger.`
             </div>
           </div>
 
-          <div style={styles.card}>
+          <div className="mobile-card" style={styles.card}>
             <h2 style={styles.cardTitle}>Statement Filters</h2>
 
             <div style={styles.statementFilterGrid}>
               <div>
                 <label style={styles.label}>Property</label>
                 <select
+                  className="mobile-input"
                   style={styles.input}
                   value={selectedReportPropertyId}
                   onChange={(e) => setSelectedReportPropertyId(e.target.value)}
@@ -3238,6 +3242,7 @@ This permanently removes the payment from the ledger.`
               <div>
                 <label style={styles.label}>Tenant</label>
                 <select
+                  className="mobile-input"
                   style={styles.input}
                   value={selectedTenantName}
                   onChange={(e) => setSelectedTenantName(e.target.value)}
@@ -3254,6 +3259,7 @@ This permanently removes the payment from the ledger.`
               <div>
                 <label style={styles.label}>Start Date</label>
                 <input
+                  className="mobile-input"
                   style={styles.input}
                   type="date"
                   value={reportStartDate}
@@ -3264,6 +3270,7 @@ This permanently removes the payment from the ledger.`
               <div>
                 <label style={styles.label}>End Date</label>
                 <input
+                  className="mobile-input"
                   style={styles.input}
                   type="date"
                   value={reportEndDate}
@@ -3273,7 +3280,7 @@ This permanently removes the payment from the ledger.`
             </div>
           </div>
 
-          <div style={styles.card}>
+          <div className="mobile-card" style={styles.card}>
             <div style={styles.reportHeaderRow}>
               <div>
                 <h2 style={styles.cardTitle}>Property Statement</h2>
@@ -3358,7 +3365,7 @@ This permanently removes the payment from the ledger.`
             </div>
           </div>
 
-          <div style={styles.card}>
+          <div className="mobile-card" style={styles.card}>
             <div style={styles.reportHeaderRow}>
               <div>
                 <h2 style={styles.cardTitle}>Tenant Statement</h2>
