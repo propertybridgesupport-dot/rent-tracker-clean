@@ -1137,9 +1137,25 @@ This permanently removes the payment from the ledger.`
   async function saveOverride(propertyId) {
     setMessage('')
 
-    const existing = monthlyOverrides.find(
+    let existing = monthlyOverrides.find(
       (item) => item.property_id === propertyId && item.month_key === selectedMonth
-    )
+    ) || null
+
+    if (!existing) {
+      const { data: existingRow, error: lookupError } = await supabase
+        .from('monthly_overrides')
+        .select('id, property_id, month_key')
+        .eq('property_id', propertyId)
+        .eq('month_key', selectedMonth)
+        .maybeSingle()
+
+      if (lookupError) {
+        setMessage(lookupError.message)
+        return
+      }
+
+      existing = existingRow || null
+    }
 
     const payload = {
       property_id: propertyId,
@@ -1154,10 +1170,28 @@ This permanently removes the payment from the ledger.`
 
     let error
 
-    if (existing) {
+    if (existing?.id) {
       ;({ error } = await supabase.from('monthly_overrides').update(payload).eq('id', existing.id))
     } else {
       ;({ error } = await supabase.from('monthly_overrides').insert(payload))
+
+      if (error && String(error.message || '').includes('monthly_overrides_property_id_month_key_key')) {
+        const { data: fallbackExisting, error: fallbackLookupError } = await supabase
+          .from('monthly_overrides')
+          .select('id')
+          .eq('property_id', propertyId)
+          .eq('month_key', selectedMonth)
+          .maybeSingle()
+
+        if (fallbackLookupError) {
+          setMessage(fallbackLookupError.message)
+          return
+        }
+
+        if (fallbackExisting?.id) {
+          ;({ error } = await supabase.from('monthly_overrides').update(payload).eq('id', fallbackExisting.id))
+        }
+      }
     }
 
     if (error) {
@@ -1167,6 +1201,7 @@ This permanently removes the payment from the ledger.`
 
     cancelEditingOverride()
     await loadData()
+    setMessage(`Override saved for ${monthLabel(selectedMonth)}.`)
   }
 
   async function rollMonthForward() {
@@ -1391,6 +1426,8 @@ This permanently removes the payment from the ledger.`
       .sort((a, b) => String(a.payment_date).localeCompare(String(b.payment_date)))
 
     let runningBalance = 0
+    let previousEffectiveTenant = ''
+    let previousMonthWasOccupied = false
     const entries = []
     const monthlySummaries = []
 
@@ -1410,6 +1447,19 @@ This permanently removes the payment from the ledger.`
         (payment) => String(payment.payment_date).startsWith(month)
       )
       const monthStart = startOfMonth(month)
+      const hasMoveInThisMonth = Boolean(
+        override?.move_in_date && monthKeyFromDate(override.move_in_date) === month
+      )
+      const startsFreshTenancy = Boolean(
+        hasMoveInThisMonth &&
+        effectiveTenant &&
+        (effectiveTenant !== previousEffectiveTenant || !previousMonthWasOccupied)
+      )
+
+      if (startsFreshTenancy) {
+        runningBalance = 0
+      }
+
       const balanceForward = runningBalance
 
       if (balanceForward !== 0) {
@@ -1509,6 +1559,9 @@ This permanently removes the payment from the ledger.`
         moveInDate: override?.move_in_date || occupancy.firstOccupiedDate || '',
         moveOutDate: override?.move_out_date || '',
       })
+
+      previousEffectiveTenant = effectiveTenant
+      previousMonthWasOccupied = occupancy.isOccupied
     })
 
     return {
