@@ -21,6 +21,12 @@ function monthLabel(month) {
   })
 }
 
+function isMobileViewport() {
+  if (typeof window === 'undefined') return false
+  return window.innerWidth <= 768
+}
+
+
 function getNextMonthKey(month) {
   const [year, mon] = month.split('-').map(Number)
   const nextDate = new Date(year, mon, 1)
@@ -197,7 +203,8 @@ export default function App() {
   const [session, setSession] = useState(null)
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState('')
-  const [activeTab, setActiveTab] = useState('dashboard')
+  const [activeTab, setActiveTab] = useState(isMobileViewport() ? 'payments' : 'dashboard')
+  const [isMobile, setIsMobile] = useState(isMobileViewport())
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -302,6 +309,24 @@ export default function App() {
   useEffect(() => {
     if (session) loadData()
   }, [session])
+  useEffect(() => {
+    function handleResize() {
+      const mobileNow = isMobileViewport()
+      setIsMobile(mobileNow)
+      setActiveTab((current) => {
+        if (mobileNow && current === 'dashboard') return 'payments'
+        if (!mobileNow && current === 'mobileHome') return 'dashboard'
+        return current
+      })
+    }
+
+    if (typeof window !== 'undefined') {
+      handleResize()
+      window.addEventListener('resize', handleResize)
+      return () => window.removeEventListener('resize', handleResize)
+    }
+  }, [])
+
 
   useEffect(() => {
     return () => {
@@ -2119,7 +2144,15 @@ This permanently removes the payment from the ledger.`
         </div>
       </div>
 
-      <div style={styles.topControls}>
+      {isMobile ? (
+        <div style={styles.mobileModeBanner}>
+          <div style={styles.mobileModeEyebrow}>Mobile mode</div>
+          <div style={styles.mobileModeTitle}>Quick Payment view opens first on phone</div>
+          <div style={styles.mobileModeText}>Use the Payments tab for the phone-friendly entry screen. All other tabs are still available below.</div>
+        </div>
+      ) : null}
+
+      <div className="mobile-top-controls" style={styles.topControls}>
         <div style={styles.controlBlock}>
           <label style={styles.label}>Company</label>
           <select style={styles.input} value={selectedCompanyId} onChange={(e) => setSelectedCompanyId(e.target.value)}>
@@ -2159,7 +2192,7 @@ This permanently removes the payment from the ledger.`
         </div>
       ) : null}
 
-      <div style={styles.tabRow}>
+      <div className="mobile-tab-row" style={styles.tabRow}>
         <button style={activeTab === 'dashboard' ? styles.activeTabButton : styles.tabButton} onClick={() => setActiveTab('dashboard')}>Dashboard</button>
         <button style={activeTab === 'companies' ? styles.activeTabButton : styles.tabButton} onClick={() => setActiveTab('companies')}>Companies</button>
         <button style={activeTab === 'properties' ? styles.activeTabButton : styles.tabButton} onClick={() => setActiveTab('properties')}>Properties</button>
@@ -2170,7 +2203,7 @@ This permanently removes the payment from the ledger.`
         <button style={activeTab === 'notesAlerts' ? styles.activeTabButton : styles.tabButton} onClick={() => setActiveTab('notesAlerts')}>Notes & Alerts</button>
       </div>
 
-      <div style={styles.cardGrid}>
+      {!isMobile ? <div style={styles.cardGrid}>
         <div style={styles.kpiCard}>
           <div style={styles.kpiLabel}>Company</div>
           <div style={styles.kpiValueSmall}>{selectedCompanyName}</div>
@@ -2195,7 +2228,7 @@ This permanently removes the payment from the ledger.`
           <div style={styles.kpiLabel}>10% Mgmt Fee</div>
           <div style={styles.kpiValue}>{currency(managementFeeCollected)}</div>
         </div>
-      </div>
+      </div> : null}
 
       {message ? <div style={styles.messageBanner}>{message}</div> : null}
 
@@ -2504,6 +2537,12 @@ This permanently removes the payment from the ledger.`
 
       {activeTab === 'payments' && (
         <div className="responsive-section-grid" style={styles.sectionGrid}>
+          {isMobile ? (
+            <div style={styles.mobilePaymentBanner}>
+              <div style={styles.mobilePaymentBannerTitle}>Phone-friendly payment screen</div>
+              <div style={styles.mobilePaymentBannerText}>This tab is now the default mobile landing screen so you can get straight to payment entry.</div>
+            </div>
+          ) : null}
           <div style={styles.card}>
             <h2 style={styles.cardTitle}>Payments This Month</h2>
             <p style={styles.smallMuted}>{selectedCompanyName} — {monthLabel(selectedMonth)}</p>
