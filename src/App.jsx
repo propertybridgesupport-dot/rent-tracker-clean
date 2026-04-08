@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { supabase } from './lib/supabase'
 
 const monthOptions = [
@@ -21,176 +21,9 @@ function monthLabel(month) {
   })
 }
 
-function getNextMonthKey(month) {
-  const [year, mon] = month.split('-').map(Number)
-  const nextDate = new Date(year, mon, 1)
-  return `${nextDate.getFullYear()}-${String(nextDate.getMonth() + 1).padStart(2, '0')}`
-}
-
-function formatDate(value) {
-  if (!value) return '—'
-  const raw = String(value)
-  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
-    const [year, month, day] = raw.split('-').map(Number)
-    return new Date(year, month - 1, day).toLocaleDateString('en-US')
-  }
-  const d = new Date(value)
-  if (Number.isNaN(d.getTime())) return value
-  return d.toLocaleDateString('en-US')
-}
-
-function getReportDateRangeLabel(startDate, endDate) {
-  const start = startDate ? formatDate(startDate) : 'Beginning'
-  const end = endDate ? formatDate(endDate) : 'Present'
-  return `${start} - ${end}`
-}
-
-function getGeneratedOnLabel() {
-  return new Date().toLocaleString('en-US', {
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit',
-  })
-}
-
-function getTodayDateInput() {
-  const today = new Date()
-  const year = today.getFullYear()
-  const month = String(today.getMonth() + 1).padStart(2, '0')
-  const day = String(today.getDate()).padStart(2, '0')
-  return `${year}-${month}-${day}`
-}
-
-function isWithinDateRange(dateValue, startDate, endDate) {
-  if (!dateValue) return false
-  const dateOnly = String(dateValue).slice(0, 10)
-  if (startDate && dateOnly < startDate) return false
-  if (endDate && dateOnly > endDate) return false
-  return true
-}
-function monthKeyFromDate(dateValue) {
-  if (!dateValue) return ''
-  return String(dateValue).slice(0, 7)
-}
-
-function startOfMonth(month) {
-  return `${month}-01`
-}
-
-function endOfMonth(month) {
-  const [year, mon] = month.split('-').map(Number)
-  return new Date(year, mon, 0).toISOString().slice(0, 10)
-}
-
-function addDays(dateValue, days) {
-  const date = new Date(`${dateValue}T12:00:00`)
-  date.setDate(date.getDate() + days)
-  return date.toISOString().slice(0, 10)
-}
-
-function normalizeTimelineDate(value, fallbackMonth) {
-  if (value) return String(value).slice(0, 10)
-  if (fallbackMonth) return `${fallbackMonth}-01`
-  return ''
-}
-
-function getTenantForDate(property, propertyOverrides, dateValue) {
-  const dateOnly = String(dateValue || '').slice(0, 10)
-  if (!dateOnly) return ''
-
-  const sortedOverrides = [...propertyOverrides].sort((a, b) => {
-    const aDate = normalizeTimelineDate(a.move_in_date, a.month_key)
-    const bDate = normalizeTimelineDate(b.move_in_date, b.month_key)
-    return aDate.localeCompare(bDate)
-  })
-
-  let tenant = property.tenant || ''
-
-  const moveInOverrides = sortedOverrides
-    .filter((item) => item.move_in_date)
-    .sort((a, b) => String(a.move_in_date).localeCompare(String(b.move_in_date)))
-
-  if (moveInOverrides.length > 0 && dateOnly < String(moveInOverrides[0].move_in_date).slice(0, 10)) {
-    tenant = ''
-  }
-
-  for (const override of sortedOverrides) {
-    const effectiveDate = normalizeTimelineDate(override.move_in_date, override.month_key)
-    if (!effectiveDate || effectiveDate > dateOnly) continue
-
-    if (override.tenant_override) {
-      tenant = override.tenant_override
-    } else if (override.move_in_date) {
-      tenant = property.tenant || tenant || ''
-    }
-
-    if (override.move_out_date) {
-      const moveOutDate = String(override.move_out_date).slice(0, 10)
-      if (dateOnly > moveOutDate) {
-        tenant = ''
-      }
-    }
-  }
-
-  return tenant
-}
-
-function getOccupancyForMonth(property, propertyOverrides, month) {
-  const monthStart = startOfMonth(month)
-  const monthEnd = endOfMonth(month)
-  const tenantsSeen = new Map()
-  let firstOccupiedDate = ''
-  let lastOccupiedDate = ''
-
-  for (let current = monthStart; current <= monthEnd; current = addDays(current, 1)) {
-    const tenant = getTenantForDate(property, propertyOverrides, current)
-    if (!tenant) continue
-
-    tenantsSeen.set(tenant, (tenantsSeen.get(tenant) || 0) + 1)
-    if (!firstOccupiedDate) firstOccupiedDate = current
-    lastOccupiedDate = current
-  }
-
-  const sortedTenants = [...tenantsSeen.entries()].sort((a, b) => b[1] - a[1])
-  const primaryTenant = sortedTenants[0]?.[0] || ''
-  const occupiedDays = sortedTenants.reduce((sum, [, count]) => sum + count, 0)
-
-  return {
-    isOccupied: occupiedDays > 0,
-    occupiedDays,
-    primaryTenant,
-    firstOccupiedDate,
-    lastOccupiedDate,
-    vacancy: occupiedDays === 0,
-  }
-}
-
-function getTenantForMonth(property, propertyOverrides, month) {
-  return getOccupancyForMonth(property, propertyOverrides, month).primaryTenant
-}
-
-function confirmDeleteWithPrompt(message, requiredText = 'DELETE') {
-  const initialConfirm = window.confirm(message)
-  if (!initialConfirm) return false
-
-  const typed = window.prompt(`Type ${requiredText} to continue.`)
-  if (typed !== requiredText) {
-    window.alert('Delete canceled.')
-    return false
-  }
-
-  return true
-}
-
-function normalizeSearchText(value) {
-  return String(value || '').toLowerCase().trim()
-}
-
-function matchesSearch(text, search) {
-  if (!search) return true
-  return normalizeSearchText(text).includes(search)
+function isMobileViewport() {
+  if (typeof window === 'undefined') return false
+  return window.innerWidth <= 768
 }
 
 export default function App() {
@@ -198,34 +31,17 @@ export default function App() {
   const [loading, setLoading] = useState(true)
   const [message, setMessage] = useState('')
   const [activeTab, setActiveTab] = useState('dashboard')
+  const [isMobile, setIsMobile] = useState(isMobileViewport())
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
 
   const [companies, setCompanies] = useState([])
   const [properties, setProperties] = useState([])
-  const [payments, setPayments] = useState([])
-  const [monthlyOverrides, setMonthlyOverrides] = useState([])
-
   const [selectedCompanyId, setSelectedCompanyId] = useState('')
   const [selectedMonth, setSelectedMonth] = useState('2026-03')
-  const [selectedReportPropertyId, setSelectedReportPropertyId] = useState('')
-  const [selectedTenantName, setSelectedTenantName] = useState('')
-  const [reportStartDate, setReportStartDate] = useState('')
-  const [reportEndDate, setReportEndDate] = useState('')
-  const [showArchivedProperties, setShowArchivedProperties] = useState(false)
-  const [searchQuery, setSearchQuery] = useState('')
-  const [propertyNotes, setPropertyNotes] = useState({})
-  const [selectedNotesPropertyId, setSelectedNotesPropertyId] = useState('')
-  const [notesDraft, setNotesDraft] = useState('')
 
   const [companyForm, setCompanyForm] = useState({
-    companyName: '',
-    ownerEmail: '',
-  })
-
-  const [editingCompanyId, setEditingCompanyId] = useState(null)
-  const [editCompanyForm, setEditCompanyForm] = useState({
     companyName: '',
     ownerEmail: '',
   })
@@ -238,51 +54,13 @@ export default function App() {
     lateFee: '0',
   })
 
-  const [paymentForm, setPaymentForm] = useState({
+  const [quickPaymentForm, setQuickPaymentForm] = useState({
     propertyId: '',
-    paymentDate: getTodayDateInput(),
-    amount: '',
-    method: 'Cash',
-    note: '',
-  })
-  const [paymentSuccessMessage, setPaymentSuccessMessage] = useState('')
-  const [voiceTranscript, setVoiceTranscript] = useState('')
-  const [voiceStatus, setVoiceStatus] = useState('')
-  const [isListening, setIsListening] = useState(false)
-
-  const [editingPropertyId, setEditingPropertyId] = useState(null)
-  const [editPropertyForm, setEditPropertyForm] = useState({
-    address: '',
-    tenant: '',
-    monthlyRent: '',
-    dueDay: '1',
-    lateFee: '0',
-  })
-
-  const [editingPaymentId, setEditingPaymentId] = useState(null)
-  const [editPaymentForm, setEditPaymentForm] = useState({
     paymentDate: '',
     amount: '',
     method: 'Cash',
     note: '',
   })
-
-  const [editingOverrideId, setEditingOverrideId] = useState(null)
-  const [overrideForm, setOverrideForm] = useState({
-    tenantOverride: '',
-    overrideRent: '',
-    moveInDate: '',
-    moveOutDate: '',
-    startingBalance: '',
-    notes: '',
-  })
-
-  const ownerReportRef = useRef(null)
-  const propertyStatementRef = useRef(null)
-  const tenantStatementRef = useRef(null)
-  const propertyLedgerRef = useRef(null)
-  const speechRecognitionRef = useRef(null)
-  const voiceTranscriptRef = useRef(null)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
@@ -300,369 +78,51 @@ export default function App() {
   }, [])
 
   useEffect(() => {
-    if (session) loadData()
+    function handleResize() {
+      setIsMobile(isMobileViewport())
+    }
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('resize', handleResize)
+      return () => window.removeEventListener('resize', handleResize)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (session) {
+      loadData()
+    }
   }, [session])
-
-  useEffect(() => {
-    return () => {
-      if (speechRecognitionRef.current) {
-        try {
-          speechRecognitionRef.current.stop()
-        } catch (error) {
-          console.error('Unable to stop speech recognition.', error)
-        }
-      }
-    }
-  }, [])
-
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-
-    const savedMethod = window.localStorage.getItem('rentTrackerLastPaymentMethod')
-    if (savedMethod) {
-      setPaymentForm((current) => ({
-        ...current,
-        method: current.method || savedMethod,
-      }))
-    }
-  }, [])
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-
-    try {
-      const savedNotes = window.localStorage.getItem('rentTrackerPropertyNotes')
-      if (savedNotes) {
-        setPropertyNotes(JSON.parse(savedNotes))
-      }
-    } catch (error) {
-      console.error('Unable to load saved property notes.', error)
-    }
-  }, [])
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    window.localStorage.setItem('rentTrackerPropertyNotes', JSON.stringify(propertyNotes))
-  }, [propertyNotes])
-
-
-  function browserSupportsVoiceEntry() {
-    if (typeof window === 'undefined') return false
-    return Boolean(window.SpeechRecognition || window.webkitSpeechRecognition)
-  }
-
-  function normalizeAddressText(value) {
-    return String(value || '')
-      .toLowerCase()
-      .replace(/\bstreet\b/g, 'st')
-      .replace(/\bsaint\b/g, 'st')
-      .replace(/\bavenue\b/g, 'ave')
-      .replace(/\broad\b/g, 'rd')
-      .replace(/\bdrive\b/g, 'dr')
-      .replace(/\blane\b/g, 'ln')
-      .replace(/\bapartment\b/g, 'apt')
-      .replace(/[^a-z0-9\s]/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim()
-  }
-
-  function wordToNumberToken(word) {
-    const map = {
-      zero: 0,
-      one: 1,
-      two: 2,
-      three: 3,
-      four: 4,
-      five: 5,
-      six: 6,
-      seven: 7,
-      eight: 8,
-      nine: 9,
-      ten: 10,
-      eleven: 11,
-      twelve: 12,
-      thirteen: 13,
-      fourteen: 14,
-      fifteen: 15,
-      sixteen: 16,
-      seventeen: 17,
-      eighteen: 18,
-      nineteen: 19,
-      twenty: 20,
-      thirty: 30,
-      forty: 40,
-      fifty: 50,
-      sixty: 60,
-      seventy: 70,
-      eighty: 80,
-      ninety: 90,
-    }
-    return map[word]
-  }
-
-  function parseNumberWords(segment) {
-    if (!segment) return null
-
-    const cleaned = String(segment)
-      .toLowerCase()
-      .replace(/-/g, ' ')
-      .replace(/ and /g, ' ')
-      .replace(/ dollars?/g, ' ')
-      .replace(/ cents?/g, ' ')
-      .replace(/[^a-z\s]/g, ' ')
-      .replace(/\s+/g, ' ')
-      .trim()
-
-    if (!cleaned) return null
-
-    const tokens = cleaned.split(' ')
-    let total = 0
-    let current = 0
-    let matched = false
-
-    for (const token of tokens) {
-      if (token === 'hundred') {
-        current = (current || 1) * 100
-        matched = true
-        continue
-      }
-
-      if (token === 'thousand') {
-        total += (current || 1) * 1000
-        current = 0
-        matched = true
-        continue
-      }
-
-      const numeric = wordToNumberToken(token)
-      if (numeric !== undefined) {
-        current += numeric
-        matched = true
-      }
-    }
-
-    const amount = total + current
-    return matched && amount > 0 ? amount : null
-  }
-
-  function parseSpokenAmount(transcript) {
-    const numericMatch = String(transcript || '').match(/\$?\s*(\d{1,3}(?:,\d{3})*(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?)/)
-    if (numericMatch) {
-      const parsed = Number(numericMatch[1].replace(/,/g, ''))
-      if (!Number.isNaN(parsed) && parsed > 0) return parsed
-    }
-
-    const lower = String(transcript || '').toLowerCase()
-    const amountPhraseMatch = lower.match(/(?:amount|for|paid|payment|received)\s+([a-z\s-]+?)(?:\s+(?:cash|check|zelle|venmo|cash app|money order|bank deposit|deposit|today|yesterday|note|on|dated)\b|$)/)
-    if (amountPhraseMatch) {
-      const parsed = parseNumberWords(amountPhraseMatch[1])
-      if (parsed) return parsed
-    }
-
-    return parseNumberWords(lower)
-  }
-
-  function parseSpokenMethod(transcript) {
-    const lower = String(transcript || '').toLowerCase()
-    if (lower.includes('cash app')) return 'Cash App'
-    if (lower.includes('bank deposit') || lower.includes('deposit')) return 'Bank Deposit'
-    if (lower.includes('money order')) return 'Money Order'
-    if (lower.includes('zelle')) return 'Zelle'
-    if (lower.includes('venmo')) return 'Venmo'
-    if (lower.includes('check')) return 'Check'
-    if (lower.includes('cash')) return 'Cash'
-    return ''
-  }
-
-  function parseSpokenDate(transcript) {
-    const raw = String(transcript || '')
-    const lower = raw.toLowerCase()
-
-    if (lower.includes('today')) return getTodayDateInput()
-    if (lower.includes('yesterday')) return addDays(getTodayDateInput(), -1)
-
-    const slashMatch = raw.match(/\b(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?\b/)
-    if (slashMatch) {
-      let year = slashMatch[3] ? Number(slashMatch[3]) : new Date().getFullYear()
-      if (year < 100) year += 2000
-      const month = String(Number(slashMatch[1])).padStart(2, '0')
-      const day = String(Number(slashMatch[2])).padStart(2, '0')
-      return `${year}-${month}-${day}`
-    }
-
-    const monthNamePattern = /(january|february|march|april|may|june|july|august|september|october|november|december)\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s*(\d{4}))?/i
-    const monthMatch = raw.match(monthNamePattern)
-    if (monthMatch) {
-      const parsed = new Date(`${monthMatch[1]} ${monthMatch[2]} ${monthMatch[3] || new Date().getFullYear()}`)
-      if (!Number.isNaN(parsed.getTime())) {
-        const yyyy = parsed.getFullYear()
-        const mm = String(parsed.getMonth() + 1).padStart(2, '0')
-        const dd = String(parsed.getDate()).padStart(2, '0')
-        return `${yyyy}-${mm}-${dd}`
-      }
-    }
-
-    return ''
-  }
-
-  function findPropertyFromTranscript(transcript) {
-    const normalizedTranscript = normalizeAddressText(transcript)
-    if (!normalizedTranscript) return null
-
-    let bestMatch = null
-    let bestScore = 0
-
-    activeCompanyProperties.forEach((property) => {
-      const normalizedAddress = normalizeAddressText(property.address)
-      if (!normalizedAddress) return
-
-      let score = 0
-
-      if (normalizedTranscript.includes(normalizedAddress)) {
-        score += normalizedAddress.length + 100
-      }
-
-      const addressTokens = normalizedAddress.split(' ').filter(Boolean)
-      addressTokens.forEach((token) => {
-        if (token.length >= 2 && normalizedTranscript.includes(token)) {
-          score += token.length
-        }
-      })
-
-      const numberMatch = normalizedAddress.match(/^\d+[a-z]?/)
-      if (numberMatch && normalizedTranscript.includes(numberMatch[0])) {
-        score += 50
-      }
-
-      if (score > bestScore) {
-        bestScore = score
-        bestMatch = property
-      }
-    })
-
-    return bestScore >= 6 ? bestMatch : null
-  }
-
-  function applyVoicePaymentTranscript(transcript) {
-    const property = findPropertyFromTranscript(transcript)
-    const paymentDate = parseSpokenDate(transcript) || getTodayDateInput()
-    const amount = parseSpokenAmount(transcript)
-    const method = parseSpokenMethod(transcript)
-    const note = `Voice entry: ${transcript}`
-
-    setPaymentSuccessMessage('')
-    setPaymentForm((current) => ({
-      ...current,
-      propertyId: property?.id || current.propertyId,
-      paymentDate: paymentDate || current.paymentDate || getTodayDateInput(),
-      amount: amount ? String(amount) : current.amount,
-      method: method || current.method || 'Cash',
-      note,
-    }))
-
-    const missing = []
-    if (!property) missing.push('property')
-    if (!amount) missing.push('amount')
-    if (!method) missing.push('method')
-
-    if (missing.length === 0) {
-      setVoiceStatus('Voice entry filled the payment form. Review and save when ready.')
-    } else {
-      setVoiceStatus(`Voice entry filled what it could. Please review: missing ${missing.join(', ')}.`)
-    }
-  }
-
-  function stopVoiceEntry() {
-    if (speechRecognitionRef.current) {
-      try {
-        speechRecognitionRef.current.stop()
-      } catch (error) {
-        console.error('Unable to stop speech recognition.', error)
-      }
-    }
-    setIsListening(false)
-  }
-
-  function focusTranscriptForKeyboardMic() {
-    if (voiceTranscriptRef.current) {
-      voiceTranscriptRef.current.focus()
-    }
-    setVoiceStatus('Tap the microphone on your phone keyboard, speak the payment details, then press Apply Transcript.')
-  }
-
-  function startVoiceEntry() {
-    if (!browserSupportsVoiceEntry()) {
-      setVoiceStatus('Voice entry works in supported browsers like Chrome or Edge.')
-      return
-    }
-
-    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition
-    const recognition = new SpeechRecognition()
-    speechRecognitionRef.current = recognition
-    recognition.lang = 'en-US'
-    recognition.interimResults = false
-    recognition.maxAlternatives = 1
-
-    setVoiceTranscript('')
-    setVoiceStatus('Listening… say the property, date, amount, and method.')
-    setIsListening(true)
-
-    recognition.onresult = (event) => {
-      const transcript = event.results?.[0]?.[0]?.transcript || ''
-      setVoiceTranscript(transcript)
-      applyVoicePaymentTranscript(transcript)
-    }
-
-    recognition.onerror = (event) => {
-      const errorMessage = event?.error === 'not-allowed'
-        ? 'Microphone permission was blocked.'
-        : 'Voice entry did not complete. Please try again.'
-      setVoiceStatus(errorMessage)
-      setIsListening(false)
-    }
-
-    recognition.onend = () => {
-      setIsListening(false)
-    }
-
-    recognition.start()
-  }
 
   async function loadData() {
     setLoading(true)
     setMessage('')
 
-    const [
-      { data: companyData, error: companyError },
-      { data: propertyData, error: propertyError },
-      { data: paymentData, error: paymentError },
-      { data: overrideData, error: overrideError },
-    ] = await Promise.all([
-      supabase.from('companies').select('*').order('created_at', { ascending: true }),
-      supabase.from('properties').select('*').order('created_at', { ascending: true }),
-      supabase.from('payments').select('*').order('payment_date', { ascending: false }),
-      supabase.from('monthly_overrides').select('*').order('month_key', { ascending: true }),
-    ])
+    const [{ data: companyData, error: companyError }, { data: propertyData, error: propertyError }] =
+      await Promise.all([
+        supabase.from('companies').select('*').order('created_at', { ascending: true }),
+        supabase.from('properties').select('*').order('created_at', { ascending: true }),
+      ])
 
-    if (companyError) setMessage(companyError.message)
-    if (propertyError) setMessage(propertyError.message)
-    if (paymentError) setMessage(paymentError.message)
-    if (overrideError) setMessage(overrideError.message)
+    if (companyError) {
+      setMessage(companyError.message)
+    }
+
+    if (propertyError) {
+      setMessage(propertyError.message)
+    }
 
     const safeCompanies = companyData || []
     const safeProperties = propertyData || []
-    const safePayments = paymentData || []
-    const safeOverrides = overrideData || []
 
     setCompanies(safeCompanies)
     setProperties(safeProperties)
-    setPayments(safePayments)
-    setMonthlyOverrides(safeOverrides)
 
     if (safeCompanies.length > 0) {
       const stillExists = safeCompanies.find((c) => c.id === selectedCompanyId)
-      if (!stillExists) setSelectedCompanyId(safeCompanies[0].id)
+      if (!stillExists) {
+        setSelectedCompanyId(safeCompanies[0].id)
+      }
     } else {
       setSelectedCompanyId('')
     }
@@ -673,16 +133,31 @@ export default function App() {
   async function signIn(e) {
     e.preventDefault()
     setMessage('')
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) setMessage(error.message)
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password,
+    })
+
+    if (error) {
+      setMessage(error.message)
+    }
   }
 
   async function signUp(e) {
     e.preventDefault()
     setMessage('')
-    const { error } = await supabase.auth.signUp({ email, password })
-    if (error) setMessage(error.message)
-    else setMessage('Account created. If email confirmation is on, confirm your email and then sign in.')
+
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+    })
+
+    if (error) {
+      setMessage(error.message)
+    } else {
+      setMessage('Account created. If email confirmation is on, confirm your email and then sign in.')
+    }
   }
 
   async function signOut() {
@@ -712,74 +187,12 @@ export default function App() {
       return
     }
 
-    setCompanyForm({ companyName: '', ownerEmail: '' })
-    await loadData()
-  }
-
-  function startEditingCompany(company) {
-    setEditingCompanyId(company.id)
-    setEditCompanyForm({
-      companyName: company.company_name || company.name || '',
-      ownerEmail: company.owner_email || '',
-    })
-  }
-
-  function cancelEditingCompany() {
-    setEditingCompanyId(null)
-    setEditCompanyForm({
+    setCompanyForm({
       companyName: '',
       ownerEmail: '',
     })
-  }
-
-  async function saveEditedCompany(companyId) {
-    setMessage('')
-
-    const { error } = await supabase
-      .from('companies')
-      .update({
-        company_name: editCompanyForm.companyName,
-        owner_email: editCompanyForm.ownerEmail || null,
-      })
-      .eq('id', companyId)
-
-    if (error) {
-      setMessage(error.message)
-      return
-    }
-
-    cancelEditingCompany()
-    await loadData()
-  }
-
-  async function deleteCompany(companyId, companyName) {
-    const confirmed = confirmDeleteWithPrompt(
-      `Delete company: ${companyName}?\n\nThis is permanent and may also remove related properties and records.`
-    )
-    if (!confirmed) return
-
-    setMessage('')
-
-    const { error } = await supabase
-      .from('companies')
-      .delete()
-      .eq('id', companyId)
-
-    if (error) {
-      setMessage(error.message)
-      return
-    }
-
-    if (editingCompanyId === companyId) {
-      cancelEditingCompany()
-    }
-
-    if (selectedCompanyId === companyId) {
-      setSelectedCompanyId('')
-    }
 
     await loadData()
-    setMessage(`Company deleted: ${companyName}.`)
   }
 
   async function addProperty(e) {
@@ -819,456 +232,16 @@ export default function App() {
     await loadData()
   }
 
-  async function savePayment({ addAnother = false } = {}) {
-    setMessage('')
-    setPaymentSuccessMessage('')
-
-    if (!paymentForm.propertyId) {
-      setMessage('Please select a property.')
-      return
-    }
-
-    if (!paymentForm.paymentDate) {
-      setMessage('Please enter a payment date.')
-      return
-    }
-
-    if (!paymentForm.amount || Number(paymentForm.amount) <= 0) {
-      setMessage('Please enter a payment amount greater than zero.')
-      return
-    }
-
-    const postedMonth = monthKeyFromDate(paymentForm.paymentDate)
-    const payload = {
-      property_id: paymentForm.propertyId,
-      payment_date: paymentForm.paymentDate,
-      amount: Number(paymentForm.amount || 0),
-      method: paymentForm.method,
-      note: paymentForm.note || null,
-    }
-
-    const { data: insertedPayment, error } = await supabase
-      .from('payments')
-      .insert(payload)
-      .select('*')
-      .single()
-
-    if (error) {
-      setMessage(error.message)
-      return
-    }
-
-    const property = activeCompanyProperties.find((item) => item.id === paymentForm.propertyId) || companyProperties.find((item) => item.id === paymentForm.propertyId)
-
-    if (typeof window !== 'undefined') {
-      window.localStorage.setItem('rentTrackerLastPaymentMethod', paymentForm.method)
-    }
-
-    if (insertedPayment) {
-      setPayments((current) => [insertedPayment, ...current.filter((item) => item.id !== insertedPayment.id)])
-    }
-
-    if (postedMonth) {
-      setSelectedMonth(postedMonth)
-    }
-
-    setPaymentSuccessMessage(`Payment saved for ${property?.address || 'selected property'} — ${currency(paymentForm.amount)} on ${formatDate(paymentForm.paymentDate)}. Posted to ${monthLabel(postedMonth || selectedMonth)}.`)
-
-    setPaymentForm((current) => ({
-      propertyId: addAnother ? current.propertyId : '',
-      paymentDate: getTodayDateInput(),
-      amount: '',
-      method: current.method || 'Cash',
-      note: '',
-    }))
-
-    await loadData()
-  }
-
-  async function addPayment(e) {
-    e.preventDefault()
-    await savePayment({ addAnother: false })
-  }
-
-  async function addPaymentAndContinue() {
-    await savePayment({ addAnother: true })
-  }
-
-  function startEditingProperty(property) {
-    setEditingPropertyId(property.id)
-    setEditPropertyForm({
-      address: property.address || '',
-      tenant: property.tenant || '',
-      monthlyRent: String(property.monthly_rent || ''),
-      dueDay: String(property.due_day || 1),
-      lateFee: String(property.late_fee || 0),
-    })
-  }
-
-  function cancelEditingProperty() {
-    setEditingPropertyId(null)
-    setEditPropertyForm({
-      address: '',
-      tenant: '',
-      monthlyRent: '',
-      dueDay: '1',
-      lateFee: '0',
-    })
-  }
-
-  async function saveEditedProperty(propertyId) {
-    setMessage('')
-
-    const { error } = await supabase
-      .from('properties')
-      .update({
-        address: editPropertyForm.address,
-        tenant: editPropertyForm.tenant,
-        monthly_rent: Number(editPropertyForm.monthlyRent || 0),
-        due_day: Number(editPropertyForm.dueDay || 1),
-        late_fee: Number(editPropertyForm.lateFee || 0),
-      })
-      .eq('id', propertyId)
-
-    if (error) {
-      setMessage(error.message)
-      return
-    }
-
-    cancelEditingProperty()
-    await loadData()
-  }
-
-  async function archiveProperty(propertyId, address) {
-    const confirmed = window.confirm(
-      `Archive property: ${address}?
-
-This keeps the record for reporting but removes it from your active list.`
-    )
-    if (!confirmed) return
-
-    setMessage('')
-
-    const { error } = await supabase
-      .from('properties')
-      .update({ is_active: false })
-      .eq('id', propertyId)
-
-    if (error) {
-      setMessage(error.message)
-      return
-    }
-
-    if (editingPropertyId === propertyId) cancelEditingProperty()
-    await loadData()
-    setMessage(`Property archived: ${address}.`)
-  }
-
-  async function restoreProperty(propertyId, address) {
-    const confirmed = window.confirm(`Restore property: ${address}?`)
-    if (!confirmed) return
-
-    setMessage('')
-
-    const { error } = await supabase
-      .from('properties')
-      .update({ is_active: true })
-      .eq('id', propertyId)
-
-    if (error) {
-      setMessage(error.message)
-      return
-    }
-
-    await loadData()
-    setMessage(`Property restored: ${address}.`)
-  }
-
-  function savePropertyNote() {
-    if (!selectedNotesPropertyId) {
-      setMessage('Please select a property for notes.')
-      return
-    }
-
-    const trimmed = notesDraft.trim()
-
-    setPropertyNotes((current) => ({
+  function handleQuickPaymentChange(field, value) {
+    setQuickPaymentForm((current) => ({
       ...current,
-      [selectedNotesPropertyId]: {
-        text: trimmed,
-        updatedAt: new Date().toISOString(),
-      },
+      [field]: value,
     }))
-
-    const property = companyProperties.find((item) => item.id === selectedNotesPropertyId)
-    setMessage(`Notes saved for ${property?.address || 'selected property'}.`)
   }
 
-  function clearPropertyNote() {
-    if (!selectedNotesPropertyId) {
-      setMessage('Please select a property for notes.')
-      return
-    }
-
-    const property = companyProperties.find((item) => item.id === selectedNotesPropertyId)
-    const confirmed = window.confirm(`Clear saved notes for ${property?.address || 'this property'}?`)
-    if (!confirmed) return
-
-    setPropertyNotes((current) => {
-      const next = { ...current }
-      delete next[selectedNotesPropertyId]
-      return next
-    })
-    setNotesDraft('')
-    setMessage(`Notes cleared for ${property?.address || 'selected property'}.`)
-  }
-
-  function startEditingPayment(payment) {
-    setEditingPaymentId(payment.id)
-    setEditPaymentForm({
-      paymentDate: payment.payment_date || '',
-      amount: String(payment.amount || ''),
-      method: payment.method || 'Cash',
-      note: payment.note || '',
-    })
-  }
-
-  function cancelEditingPayment() {
-    setEditingPaymentId(null)
-    setEditPaymentForm({
-      paymentDate: '',
-      amount: '',
-      method: 'Cash',
-      note: '',
-    })
-  }
-
-  async function saveEditedPayment(paymentId) {
-    setMessage('')
-
-    const postedMonth = monthKeyFromDate(editPaymentForm.paymentDate)
-    const { data: updatedPayment, error } = await supabase
-      .from('payments')
-      .update({
-        payment_date: editPaymentForm.paymentDate,
-        amount: Number(editPaymentForm.amount || 0),
-        method: editPaymentForm.method,
-        note: editPaymentForm.note || null,
-      })
-      .eq('id', paymentId)
-      .select('*')
-      .single()
-
-    if (error) {
-      setMessage(error.message)
-      return
-    }
-
-    if (updatedPayment) {
-      setPayments((current) => current.map((item) => (item.id === paymentId ? updatedPayment : item)))
-    }
-
-    if (postedMonth) {
-      setSelectedMonth(postedMonth)
-    }
-
-    cancelEditingPayment()
-    await loadData()
-    setMessage(`Payment updated and posted to ${monthLabel(postedMonth || selectedMonth)}.`)
-  }
-
-  async function deletePayment(paymentId) {
-    const confirmed = confirmDeleteWithPrompt(
-      `Delete this payment?
-
-This permanently removes the payment from the ledger.`
-    )
-    if (!confirmed) return
-
-    setMessage('')
-
-    const deletedPayment = payments.find((item) => item.id === paymentId) || null
-    const { error } = await supabase.from('payments').delete().eq('id', paymentId)
-
-    if (error) {
-      setMessage(error.message)
-      return
-    }
-
-    setPayments((current) => current.filter((item) => item.id !== paymentId))
-
-    if (editingPaymentId === paymentId) cancelEditingPayment()
-
-    if (deletedPayment?.payment_date) {
-      const deletedMonth = monthKeyFromDate(deletedPayment.payment_date)
-      if (deletedMonth) {
-        setSelectedMonth(deletedMonth)
-      }
-    }
-
-    await loadData()
-    setMessage('Payment deleted and removed from the ledger.')
-  }
-
-  function startEditingOverride(propertyId, current) {
-    setEditingOverrideId(propertyId)
-    setOverrideForm({
-      tenantOverride: current?.tenant_override || '',
-      overrideRent: current?.override_rent ?? '',
-      moveInDate: current?.move_in_date || '',
-      moveOutDate: current?.move_out_date || '',
-      startingBalance: current?.starting_balance ?? '',
-      notes: current?.notes || '',
-    })
-  }
-
-  function cancelEditingOverride() {
-    setEditingOverrideId(null)
-    setOverrideForm({
-      tenantOverride: '',
-      overrideRent: '',
-      moveInDate: '',
-      moveOutDate: '',
-      startingBalance: '',
-      notes: '',
-    })
-  }
-
-  async function saveOverride(propertyId) {
-    setMessage('')
-
-    let existing = monthlyOverrides.find(
-      (item) => item.property_id === propertyId && item.month_key === selectedMonth
-    ) || null
-
-    if (!existing) {
-      const { data: existingRow, error: lookupError } = await supabase
-        .from('monthly_overrides')
-        .select('id, property_id, month_key')
-        .eq('property_id', propertyId)
-        .eq('month_key', selectedMonth)
-        .maybeSingle()
-
-      if (lookupError) {
-        setMessage(lookupError.message)
-        return
-      }
-
-      existing = existingRow || null
-    }
-
-    const payload = {
-      property_id: propertyId,
-      month_key: selectedMonth,
-      override_rent: overrideForm.overrideRent === '' ? null : Number(overrideForm.overrideRent),
-      tenant_override: overrideForm.tenantOverride || null,
-      move_in_date: overrideForm.moveInDate || null,
-      move_out_date: overrideForm.moveOutDate || null,
-      starting_balance: overrideForm.startingBalance === '' ? 0 : Number(overrideForm.startingBalance || 0),
-      notes: overrideForm.notes || null,
-    }
-
-    let error
-
-    if (existing?.id) {
-      ;({ error } = await supabase.from('monthly_overrides').update(payload).eq('id', existing.id))
-    } else {
-      ;({ error } = await supabase.from('monthly_overrides').insert(payload))
-
-      if (error && String(error.message || '').includes('monthly_overrides_property_id_month_key_key')) {
-        const { data: fallbackExisting, error: fallbackLookupError } = await supabase
-          .from('monthly_overrides')
-          .select('id')
-          .eq('property_id', propertyId)
-          .eq('month_key', selectedMonth)
-          .maybeSingle()
-
-        if (fallbackLookupError) {
-          setMessage(fallbackLookupError.message)
-          return
-        }
-
-        if (fallbackExisting?.id) {
-          ;({ error } = await supabase.from('monthly_overrides').update(payload).eq('id', fallbackExisting.id))
-        }
-      }
-    }
-
-    if (error) {
-      setMessage(error.message)
-      return
-    }
-
-    cancelEditingOverride()
-    await loadData()
-    setMessage(`Override saved for ${monthLabel(selectedMonth)}.`)
-  }
-
-  async function rollMonthForward() {
-    setMessage('')
-
-    if (!selectedCompanyId) {
-      setMessage('Please select a company first.')
-      return
-    }
-
-    const nextMonthStart = startOfMonth(nextMonthKey)
-    const existingNextMonthOverrides = companyOverrides.filter((item) => item.month_key === nextMonthKey)
-    const existingPropertyIds = new Set(existingNextMonthOverrides.map((item) => item.property_id))
-
-    const rowsToInsert = companyProperties
-      .map((property) => {
-        if (existingPropertyIds.has(property.id)) return null
-
-        const propertyOverrides = companyOverrides.filter((item) => item.property_id === property.id)
-        const nextTenant = getTenantForDate(property, propertyOverrides, nextMonthStart)
-        if (!nextTenant) return null
-
-        const monthSummary = propertyLedgerMap[property.id]?.monthlySummaries?.find((item) => item.month === selectedMonth)
-        const endingBalance = Number(monthSummary?.endingBalance || 0)
-
-        return {
-          property_id: property.id,
-          month_key: nextMonthKey,
-          override_rent: null,
-          tenant_override: nextTenant,
-          move_in_date: null,
-          move_out_date: null,
-          starting_balance: endingBalance,
-          notes: `Rolled forward from ${monthLabel(selectedMonth)}`,
-        }
-      })
-      .filter(Boolean)
-
-    const skippedCount = companyProperties.length - rowsToInsert.length
-
-    if (rowsToInsert.length === 0) {
-      setMessage(`Nothing to roll forward. ${monthLabel(nextMonthKey)} already has overrides or no active tenants were found.`)
-      return
-    }
-
-    const confirmed = window.confirm(
-      `Roll ${rowsToInsert.length} active propert${rowsToInsert.length === 1 ? 'y' : 'ies'} from ${monthLabel(selectedMonth)} into ${monthLabel(nextMonthKey)}?
-
-` +
-      `This will create next-month override rows with the active tenant and carried balance. Existing ${monthLabel(nextMonthKey)} overrides will be left alone.`
-    )
-
-    if (!confirmed) return
-
-    const { error } = await supabase.from('monthly_overrides').insert(rowsToInsert)
-
-    if (error) {
-      setMessage(error.message)
-      return
-    }
-
-    setSelectedMonth(nextMonthKey)
-    await loadData()
-    setMessage(
-      `Rolled ${rowsToInsert.length} active propert${rowsToInsert.length === 1 ? 'y' : 'ies'} into ${monthLabel(nextMonthKey)}.` +
-      (skippedCount > 0 ? ` ${skippedCount} ${skippedCount === 1 ? 'property was' : 'properties were'} skipped because they were vacant or already had a setup.` : '')
-    )
+  function handleQuickPaymentDemoSave(e) {
+    e.preventDefault()
+    setMessage('Mobile payment screen styling is now in place. Payment posting logic can be connected into this screen next.')
   }
 
   const selectedCompany = useMemo(() => {
@@ -1276,780 +249,16 @@ This permanently removes the payment from the ledger.`
   }, [companies, selectedCompanyId])
 
   const selectedCompanyName = selectedCompany?.company_name || selectedCompany?.name || 'No company selected'
-  const selectedCompanyEmail = selectedCompany?.owner_email || ''
-  const reportDateRangeLabel = getReportDateRangeLabel(reportStartDate, reportEndDate)
-  const generatedOnLabel = getGeneratedOnLabel()
-  const nextMonthKey = useMemo(() => getNextMonthKey(selectedMonth), [selectedMonth])
-
-  const normalizedSearchQuery = useMemo(() => normalizeSearchText(searchQuery), [searchQuery])
-
-  const filteredCompanies = useMemo(() => {
-    if (!normalizedSearchQuery) return companies
-
-    return companies.filter((company) => {
-      const companyName = company.company_name || company.name || ''
-      return (
-        matchesSearch(companyName, normalizedSearchQuery) ||
-        matchesSearch(company.owner_email, normalizedSearchQuery)
-      )
-    })
-  }, [companies, normalizedSearchQuery])
 
   const companyProperties = useMemo(() => {
     if (!selectedCompanyId) return []
     return properties.filter((property) => property.company_id === selectedCompanyId)
   }, [properties, selectedCompanyId])
 
-  const activeCompanyProperties = useMemo(() => {
-    return companyProperties.filter((property) => property.is_active !== false)
-  }, [companyProperties])
-
-  const visibleProperties = useMemo(() => {
-    return showArchivedProperties ? companyProperties : activeCompanyProperties
-  }, [companyProperties, activeCompanyProperties, showArchivedProperties])
-
-
-  const filteredVisibleProperties = useMemo(() => {
-    if (!normalizedSearchQuery) return visibleProperties
-
-    return visibleProperties.filter((property) => {
-      const propertyOverrides = monthlyOverrides.filter((item) => item.property_id === property.id)
-      const tenants = [
-        property.tenant,
-        ...propertyOverrides.map((item) => item.tenant_override),
-      ].filter(Boolean)
-
-      return (
-        matchesSearch(selectedCompanyName, normalizedSearchQuery) ||
-        matchesSearch(property.address, normalizedSearchQuery) ||
-        tenants.some((tenant) => matchesSearch(tenant, normalizedSearchQuery))
-      )
-    })
-  }, [visibleProperties, monthlyOverrides, normalizedSearchQuery, selectedCompanyName])
-
-  const notesProperty = useMemo(() => {
-    return companyProperties.find((property) => property.id === selectedNotesPropertyId) || null
-  }, [companyProperties, selectedNotesPropertyId])
-
-  const notesPropertyTenant = useMemo(() => {
-    if (!notesProperty) return ''
-    const propertyOverrides = monthlyOverrides.filter((item) => item.property_id === notesProperty.id)
-    return getTenantForDate(notesProperty, propertyOverrides, getTodayDateInput())
-  }, [notesProperty, monthlyOverrides])
-
-  useEffect(() => {
-    if (companyProperties.length > 0) {
-      const exists = companyProperties.find((p) => p.id === selectedReportPropertyId)
-      if (!exists) setSelectedReportPropertyId(companyProperties[0].id)
-    } else {
-      setSelectedReportPropertyId('')
-    }
-  }, [companyProperties, selectedReportPropertyId])
-
-  useEffect(() => {
-    if (companyProperties.length === 0) {
-      setSelectedNotesPropertyId('')
-      setNotesDraft('')
-      return
-    }
-
-    const stillExists = companyProperties.some((property) => property.id === selectedNotesPropertyId)
-    if (!stillExists) {
-      setSelectedNotesPropertyId(companyProperties[0].id)
-    }
-  }, [companyProperties, selectedNotesPropertyId])
-
-  useEffect(() => {
-    if (!selectedNotesPropertyId) {
-      setNotesDraft('')
-      return
-    }
-
-    setNotesDraft(propertyNotes[selectedNotesPropertyId]?.text || '')
-  }, [selectedNotesPropertyId, propertyNotes])
-
-  const companyPropertyIds = useMemo(() => companyProperties.map((property) => property.id), [companyProperties])
-
-  useEffect(() => {
-    if (activeCompanyProperties.length === 0) {
-      setPaymentForm((current) => ({
-        ...current,
-        propertyId: '',
-      }))
-      return
-    }
-
-    const propertyStillExists = activeCompanyProperties.some((property) => property.id === paymentForm.propertyId)
-
-    if (!propertyStillExists) {
-      setPaymentForm((current) => ({
-        ...current,
-        propertyId: activeCompanyProperties[0].id,
-      }))
-    }
-  }, [activeCompanyProperties, paymentForm.propertyId])
-
-  const companyPayments = useMemo(() => {
-    return payments.filter((payment) => companyPropertyIds.includes(payment.property_id))
-  }, [payments, companyPropertyIds])
-
-  const companyOverrides = useMemo(() => {
-    return monthlyOverrides.filter((override) => companyPropertyIds.includes(override.property_id))
-  }, [monthlyOverrides, companyPropertyIds])
-
-  const monthlyPayments = useMemo(() => {
-    return companyPayments.filter((payment) => String(payment.payment_date).startsWith(selectedMonth))
-  }, [companyPayments, selectedMonth])
-
-
-  const filteredMonthlyPayments = useMemo(() => {
-    if (!normalizedSearchQuery) return monthlyPayments
-
-    return monthlyPayments.filter((payment) => {
-      const property = companyProperties.find((item) => item.id === payment.property_id)
-      const tenantName = property ? getTenantForDate(property, companyOverrides.filter((item) => item.property_id === property.id), payment.payment_date) : ''
-
-      return (
-        matchesSearch(selectedCompanyName, normalizedSearchQuery) ||
-        matchesSearch(property?.address, normalizedSearchQuery) ||
-        matchesSearch(tenantName, normalizedSearchQuery) ||
-        matchesSearch(payment.method, normalizedSearchQuery) ||
-        matchesSearch(payment.note, normalizedSearchQuery)
-      )
-    })
-  }, [monthlyPayments, companyProperties, companyOverrides, normalizedSearchQuery, selectedCompanyName])
-
-  function buildPropertyLedger(property, monthsToInclude) {
-    const propertyOverrides = companyOverrides.filter((item) => item.property_id === property.id)
-    const propertyPayments = companyPayments
-      .filter((payment) => payment.property_id === property.id)
-      .sort((a, b) => String(a.payment_date).localeCompare(String(b.payment_date)))
-
-    let runningBalance = 0
-    let previousEffectiveTenant = ''
-    let previousMonthWasOccupied = false
-    const entries = []
-    const monthlySummaries = []
-
-    monthsToInclude.forEach((month) => {
-      const override = propertyOverrides.find(
-        (item) => item.property_id === property.id && item.month_key === month
-      )
-      const occupancy = getOccupancyForMonth(property, propertyOverrides, month)
-      const effectiveTenant = occupancy.primaryTenant || ''
-      const effectiveRent =
-        override?.override_rent !== null && override?.override_rent !== undefined
-          ? Number(override.override_rent)
-          : Number(property.monthly_rent || 0)
-      const lateFee = occupancy.isOccupied ? Number(property.late_fee || 0) : 0
-      const startingBalance = Number(override?.starting_balance || 0)
-      const monthPaymentsForProperty = propertyPayments.filter(
-        (payment) => String(payment.payment_date).startsWith(month)
-      )
-      const monthStart = startOfMonth(month)
-      const hasMoveInThisMonth = Boolean(
-        override?.move_in_date && monthKeyFromDate(override.move_in_date) === month
-      )
-      const startsFreshTenancy = Boolean(
-        hasMoveInThisMonth &&
-        effectiveTenant &&
-        (effectiveTenant !== previousEffectiveTenant || !previousMonthWasOccupied)
-      )
-
-      if (startsFreshTenancy) {
-        runningBalance = 0
-      }
-
-      const balanceForward = runningBalance
-
-      if (balanceForward !== 0) {
-        entries.push({
-          propertyId: property.id,
-          propertyAddress: property.address,
-          tenantName: effectiveTenant,
-          month,
-          date: monthStart,
-          type: 'balance_forward',
-          description: 'Balance forward',
-          amount: balanceForward,
-          note: '',
-          runningBalance,
-        })
-      }
-
-      if (startingBalance !== 0) {
-        runningBalance += startingBalance
-        entries.push({
-          propertyId: property.id,
-          propertyAddress: property.address,
-          tenantName: effectiveTenant,
-          month,
-          date: monthStart,
-          type: 'adjustment',
-          description: 'Starting balance / adjustment',
-          amount: startingBalance,
-          note: override?.notes || '',
-          runningBalance,
-        })
-      }
-
-      if (occupancy.isOccupied && effectiveRent !== 0) {
-        runningBalance += effectiveRent
-        entries.push({
-          propertyId: property.id,
-          propertyAddress: property.address,
-          tenantName: effectiveTenant,
-          month,
-          date: monthStart,
-          type: 'charge',
-          description: occupancy.occupiedDays < 28 ? 'Rent charge (partial occupancy month)' : 'Rent charge',
-          amount: effectiveRent,
-          note: override?.notes || '',
-          occupancyStart: occupancy.firstOccupiedDate,
-          occupancyEnd: occupancy.lastOccupiedDate,
-          runningBalance,
-        })
-      }
-
-      if (occupancy.isOccupied && lateFee !== 0) {
-        runningBalance += lateFee
-        entries.push({
-          propertyId: property.id,
-          propertyAddress: property.address,
-          tenantName: effectiveTenant,
-          month,
-          date: monthStart,
-          type: 'late_fee',
-          description: 'Late fee',
-          amount: lateFee,
-          note: '',
-          runningBalance,
-        })
-      }
-
-      monthPaymentsForProperty.forEach((payment) => {
-        runningBalance -= Number(payment.amount || 0)
-        entries.push({
-          propertyId: property.id,
-          propertyAddress: property.address,
-          tenantName: getTenantForDate(property, propertyOverrides, payment.payment_date) || effectiveTenant,
-          month,
-          date: payment.payment_date,
-          type: 'payment',
-          description: `Payment - ${payment.method || 'Method not listed'}`,
-          amount: -Number(payment.amount || 0),
-          note: payment.note || '',
-          paymentId: payment.id,
-          runningBalance,
-        })
-      })
-
-      monthlySummaries.push({
-        month,
-        effectiveTenant,
-        effectiveRent: occupancy.isOccupied ? effectiveRent : 0,
-        occupancy,
-        balanceForward,
-        startingBalance,
-        lateFee,
-        totalPaid: monthPaymentsForProperty.reduce((sum, payment) => sum + Number(payment.amount || 0), 0),
-        endingBalance: runningBalance,
-        notes: override?.notes || '',
-        currentOverride: override || null,
-        moveInDate: override?.move_in_date || occupancy.firstOccupiedDate || '',
-        moveOutDate: override?.move_out_date || '',
-      })
-
-      previousEffectiveTenant = effectiveTenant
-      previousMonthWasOccupied = occupancy.isOccupied
-    })
-
-    return {
-      propertyId: property.id,
-      entries,
-      monthlySummaries,
-    }
-  }
-
-  const propertyLedgers = useMemo(() => {
-    return companyProperties.map((property) => ({
-      property,
-      ...buildPropertyLedger(property, monthOptions),
-    }))
-  }, [companyProperties, companyOverrides, companyPayments])
-
-  const propertyLedgerMap = useMemo(() => {
-    return Object.fromEntries(propertyLedgers.map((item) => [item.propertyId, item]))
-  }, [propertyLedgers])
-
-  const ledgerRows = useMemo(() => {
-    return companyProperties.map((property) => {
-      const ledger = propertyLedgerMap[property.id]
-      const monthSummary = ledger?.monthlySummaries.find((item) => item.month === selectedMonth)
-
-      if (!monthSummary) {
-        return {
-          ...property,
-          effectiveTenant: '',
-          effectiveRent: 0,
-          balanceForward: 0,
-          startingBalance: 0,
-          moveInDate: '',
-          moveOutDate: '',
-          notes: '',
-          totalDue: 0,
-          totalPaid: 0,
-          balanceRemaining: 0,
-          managementFee: 0,
-          currentOverride: null,
-          isVacant: true,
-        }
-      }
-
-      const totalDue =
-        Number(monthSummary.balanceForward || 0) +
-        Number(monthSummary.startingBalance || 0) +
-        Number(monthSummary.effectiveRent || 0) +
-        Number(monthSummary.lateFee || 0)
-
-      return {
-        ...property,
-        effectiveTenant: monthSummary.effectiveTenant,
-        effectiveRent: monthSummary.effectiveRent,
-        balanceForward: monthSummary.balanceForward,
-        startingBalance: monthSummary.startingBalance,
-        moveInDate: monthSummary.moveInDate,
-        moveOutDate: monthSummary.moveOutDate,
-        notes: monthSummary.notes,
-        totalDue,
-        totalPaid: monthSummary.totalPaid,
-        balanceRemaining: monthSummary.endingBalance,
-        managementFee: monthSummary.totalPaid * 0.1,
-        currentOverride: monthSummary.currentOverride,
-        isVacant: monthSummary.occupancy?.vacancy ?? true,
-      }
-    })
-  }, [companyProperties, propertyLedgerMap, selectedMonth])
-
-  const filteredLedgerRows = useMemo(() => {
-    if (!normalizedSearchQuery) return ledgerRows
-
-    return ledgerRows.filter((row) => (
-      matchesSearch(selectedCompanyName, normalizedSearchQuery) ||
-      matchesSearch(row.address, normalizedSearchQuery) ||
-      matchesSearch(row.effectiveTenant, normalizedSearchQuery)
-    ))
-  }, [ledgerRows, normalizedSearchQuery, selectedCompanyName])
-
-  const selectedReportProperty = companyProperties.find((p) => p.id === selectedReportPropertyId) || null
-
-  const selectedPropertyLedger = useMemo(() => {
-    if (!selectedReportPropertyId) return null
-    return propertyLedgerMap[selectedReportPropertyId] || null
-  }, [selectedReportPropertyId, propertyLedgerMap])
-
-  const selectedPropertyLedgerRows = useMemo(() => {
-    if (!selectedPropertyLedger) return []
-
-    return selectedPropertyLedger.entries.filter((entry) => {
-      if (!reportStartDate && !reportEndDate) return true
-      if (entry.type === 'balance_forward') return true
-      return isWithinDateRange(entry.date, reportStartDate, reportEndDate)
-    })
-  }, [selectedPropertyLedger, reportStartDate, reportEndDate])
-
-  const selectedPropertyLedgerTotals = useMemo(() => {
-    return selectedPropertyLedgerRows.reduce(
-      (totals, row) => {
-        if (row.type === 'payment') {
-          totals.credits += Math.abs(Number(row.amount || 0))
-        } else {
-          totals.charges += Number(row.amount || 0)
-        }
-
-        if (row.type === 'late_fee') totals.lateFees += Number(row.amount || 0)
-        if (row.type === 'charge') totals.rentCharges += Number(row.amount || 0)
-        if (row.type === 'adjustment') totals.adjustments += Number(row.amount || 0)
-        totals.endingBalance = Number(row.runningBalance || 0)
-        return totals
-      },
-      {
-        charges: 0,
-        credits: 0,
-        lateFees: 0,
-        rentCharges: 0,
-        adjustments: 0,
-        endingBalance: 0,
-      }
-    )
-  }, [selectedPropertyLedgerRows])
-  const filteredPropertyOptions = useMemo(() => {
-    if (!normalizedSearchQuery) return companyProperties
-
-    return companyProperties.filter((property) => {
-      const propertyOverrides = companyOverrides.filter((item) => item.property_id === property.id)
-      const tenants = [property.tenant, ...propertyOverrides.map((item) => item.tenant_override)].filter(Boolean)
-      return (
-        matchesSearch(property.address, normalizedSearchQuery) ||
-        tenants.some((tenant) => matchesSearch(tenant, normalizedSearchQuery))
-      )
-    })
-  }, [companyProperties, companyOverrides, normalizedSearchQuery])
-
-  const companyTenantNames = useMemo(() => {
-    const names = new Set()
-
-    propertyLedgers.forEach((ledger) => {
-      ledger.entries.forEach((entry) => {
-        if (entry.tenantName) names.add(entry.tenantName)
-      })
-      ledger.monthlySummaries.forEach((summary) => {
-        if (summary.effectiveTenant) names.add(summary.effectiveTenant)
-      })
-    })
-
-    return Array.from(names).sort((a, b) => a.localeCompare(b))
-  }, [propertyLedgers])
-
-  useEffect(() => {
-    if (companyTenantNames.length > 0) {
-      if (!selectedTenantName || !companyTenantNames.includes(selectedTenantName)) {
-        setSelectedTenantName(companyTenantNames[0])
-      }
-    } else {
-      setSelectedTenantName('')
-    }
-  }, [companyTenantNames, selectedTenantName])
-
-  const selectedPropertyStatementRows = useMemo(() => {
-    if (!selectedReportProperty) return []
-
-    const ledger = propertyLedgerMap[selectedReportProperty.id]
-    if (!ledger) return []
-
-    return ledger.entries.filter((entry) => {
-      if (entry.type === 'balance_forward') return true
-      return isWithinDateRange(entry.date, reportStartDate, reportEndDate)
-    })
-  }, [selectedReportProperty, propertyLedgerMap, reportStartDate, reportEndDate])
-
-  const selectedTenantStatementRows = useMemo(() => {
-    if (!selectedTenantName) return []
-
-    const rows = propertyLedgers
-      .flatMap((ledger) => ledger.entries)
-      .filter((entry) => entry.tenantName === selectedTenantName)
-      .filter((entry) => {
-        if (entry.type === 'balance_forward') return true
-        return isWithinDateRange(entry.date, reportStartDate, reportEndDate)
-      })
-      .sort((a, b) => {
-        const dateCompare = String(a.date).localeCompare(String(b.date))
-        if (dateCompare !== 0) return dateCompare
-        return String(a.propertyAddress || '').localeCompare(String(b.propertyAddress || ''))
-      })
-
-    let runningBalance = 0
-
-    return rows.map((row) => {
-      if (row.type === 'balance_forward') {
-        runningBalance = Number(row.amount || 0)
-        return {
-          ...row,
-          runningBalance,
-        }
-      }
-
-      runningBalance += Number(row.amount || 0)
-      return {
-        ...row,
-        runningBalance,
-      }
-    })
-  }, [selectedTenantName, propertyLedgers, reportStartDate, reportEndDate])
-
-  const companyAlerts = useMemo(() => {
-    const upcomingMoveOutDays = 30
-    const today = getTodayDateInput()
-    const upcomingCutoff = addDays(today, upcomingMoveOutDays)
-    const items = []
-
-    ledgerRows.forEach((row) => {
-      if (Number(row.balanceRemaining || 0) > 0) {
-        items.push({
-          id: `balance-${row.id}`,
-          category: 'Unpaid balance',
-          severity: 'high',
-          propertyId: row.id,
-          title: row.address,
-          detail: `${currency(row.balanceRemaining)} still due${row.effectiveTenant ? ` for ${row.effectiveTenant}` : ''}.`,
-        })
-      }
-
-      if (Number(row.totalPaid || 0) > 0 && Number(row.balanceRemaining || 0) > 0) {
-        items.push({
-          id: `partial-${row.id}`,
-          category: 'Partial payment',
-          severity: 'medium',
-          propertyId: row.id,
-          title: row.address,
-          detail: `${currency(row.totalPaid)} collected with ${currency(row.balanceRemaining)} still remaining.`,
-        })
-      }
-
-      if (!row.effectiveTenant) {
-        items.push({
-          id: `vacant-${row.id}`,
-          category: 'Vacant property',
-          severity: 'medium',
-          propertyId: row.id,
-          title: row.address,
-          detail: `No active tenant found for ${monthLabel(selectedMonth)}.`,
-        })
-      }
-    })
-
-    companyOverrides.forEach((override) => {
-      if (!override.move_out_date) return
-
-      const moveOutDate = String(override.move_out_date).slice(0, 10)
-      if (moveOutDate < today || moveOutDate > upcomingCutoff) return
-
-      const property = companyProperties.find((item) => item.id === override.property_id)
-      const tenantName = override.tenant_override || property?.tenant || ''
-
-      items.push({
-        id: `moveout-${override.id || `${override.property_id}-${moveOutDate}`}`,
-        category: 'Upcoming move-out',
-        severity: 'low',
-        propertyId: override.property_id,
-        title: property?.address || 'Property',
-        detail: `${tenantName ? `${tenantName} ` : ''}has a move-out dated ${formatDate(moveOutDate)}.`,
-      })
-    })
-
-    if (!normalizedSearchQuery) return items
-
-    return items.filter((item) => (
-      matchesSearch(selectedCompanyName, normalizedSearchQuery) ||
-      matchesSearch(item.title, normalizedSearchQuery) ||
-      matchesSearch(item.detail, normalizedSearchQuery) ||
-      matchesSearch(item.category, normalizedSearchQuery)
-    ))
-  }, [ledgerRows, companyOverrides, companyProperties, selectedMonth, normalizedSearchQuery, selectedCompanyName])
-
-  const highAlertCount = companyAlerts.filter((item) => item.severity === 'high').length
-  const mediumAlertCount = companyAlerts.filter((item) => item.severity === 'medium').length
-  const lowAlertCount = companyAlerts.filter((item) => item.severity === 'low').length
-  const notesCount = Object.values(propertyNotes).filter((item) => item?.text).length
-
-  const totalProperties = filteredLedgerRows.length
-  const totalMonthlyRent = filteredLedgerRows.reduce((sum, row) => sum + Number(row.effectiveRent || 0), 0)
-  const totalCollected = filteredLedgerRows.reduce((sum, row) => sum + Number(row.totalPaid || 0), 0)
-  const totalOutstanding = filteredLedgerRows.reduce((sum, row) => sum + Number(row.balanceRemaining || 0), 0)
-  const managementFeeCollected = totalCollected * 0.1
-
-  function printOwnerReport() {
-    window.print()
-  }
-
-  function emailOwnerReport() {
-    if (!selectedCompanyEmail) {
-      setMessage('This company does not have an owner email saved yet.')
-      return
-    }
-
-    const subject = `${selectedCompanyName} - Owner Report - ${monthLabel(selectedMonth)}`
-    const lines = [
-      `Company: ${selectedCompanyName}`,
-      `Month: ${monthLabel(selectedMonth)}`,
-      '',
-      `Properties: ${totalProperties}`,
-      `Monthly Rent: ${currency(totalMonthlyRent)}`,
-      `Collected: ${currency(totalCollected)}`,
-      `Outstanding: ${currency(totalOutstanding)}`,
-      `10% Management Fee: ${currency(managementFeeCollected)}`,
-      '',
-      'Owner Summary:',
-      ...filteredLedgerRows.map((row) =>
-        `${row.address} | ${row.effectiveTenant} | Rent: ${currency(row.effectiveRent)} | Collected: ${currency(row.totalPaid)} | Balance: ${currency(row.balanceRemaining)}`
-      ),
-      '',
-      'Notes:',
-      'Balances reflect prior unpaid amounts carried forward. Prorated rents and tenant changes are applied where applicable. Management fee is calculated at 10% of collected rent.',
-    ]
-
-    window.location.href = `mailto:${selectedCompanyEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(lines.join('\n'))}`
-  }
-
-
-  function formatLedgerEntryType(type) {
-    const labels = {
-      charge: 'Charge',
-      payment: 'Payment',
-      late_fee: 'Late Fee',
-      balance_forward: 'Balance Forward',
-      adjustment: 'Adjustment',
-    }
-
-    return labels[type] || type
-  }
-
-  function formatLedgerAmount(row) {
-    if (row.type === 'payment') {
-      return `(${currency(Math.abs(row.amount))})`
-    }
-
-    return currency(row.amount)
-  }
-
-  function escapeCsv(value) {
-    const safeValue = value ?? ''
-    const text = String(safeValue)
-    if (text.includes(',') || text.includes('"') || text.includes('\n')) {
-      return `"${text.replace(/"/g, '""')}"`
-    }
-    return text
-  }
-
-  function downloadCsv(filename, rows) {
-    const csv = rows.map((row) => row.map(escapeCsv).join(',')).join('\n')
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
-    const url = window.URL.createObjectURL(blob)
-    const link = document.createElement('a')
-    link.href = url
-    link.setAttribute('download', filename)
-    document.body.appendChild(link)
-    link.click()
-    document.body.removeChild(link)
-    window.URL.revokeObjectURL(url)
-  }
-
-  function printSection(sectionRef, title) {
-    const sectionHtml = sectionRef?.current?.innerHTML
-
-    if (!sectionHtml) {
-      setMessage(`Nothing to print for ${title}.`)
-      return
-    }
-
-    const printWindow = window.open('', '_blank', 'width=1000,height=800')
-    if (!printWindow) {
-      setMessage('Your browser blocked the print window. Please allow pop-ups and try again.')
-      return
-    }
-
-    printWindow.document.write(`
-      <html>
-        <head>
-          <title>${title}</title>
-          <style>
-            body { font-family: Arial, sans-serif; padding: 28px; color: #0f172a; }
-            .print-shell { max-width: 1100px; margin: 0 auto; }
-            .print-banner { margin-bottom: 18px; padding-bottom: 14px; border-bottom: 2px solid #0f172a; }
-            .print-company { font-size: 26px; font-weight: 700; margin-bottom: 4px; }
-            .print-subtitle { font-size: 14px; color: #475569; }
-            .report-print-header { margin-bottom: 16px; }
-            .report-print-title { font-size: 24px; font-weight: 700; margin-bottom: 6px; }
-            .report-print-meta { font-size: 14px; color: #334155; margin-bottom: 4px; }
-            .report-print-footer { margin-top: 18px; padding-top: 12px; border-top: 1px solid #cbd5e1; font-size: 12px; color: #64748b; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-            .notes-box { margin-top: 16px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px 14px; font-size: 14px; color: #334155; }
-            .report-totals { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-top: 16px; font-size: 14px; }
-            .small-muted { color: #64748b; font-size: 14px; }
-            table { width: 100%; border-collapse: collapse; margin-top: 16px; }
-            th, td { border: 1px solid #cbd5e1; padding: 10px; text-align: left; vertical-align: top; }
-            th { background: #f8fafc; }
-            @media print {
-              body { padding: 0; }
-              .print-shell { max-width: none; }
-            }
-          </style>
-        </head>
-        <body>
-          <div class="print-shell">
-            <div class="print-banner">
-              <div class="print-company">${selectedCompanyName}</div>
-              <div class="print-subtitle">Rent Tracker Report</div>
-            </div>
-            ${sectionHtml}
-          </div>
-        </body>
-      </html>
-    `)
-    printWindow.document.close()
-    printWindow.focus()
-    printWindow.print()
-    printWindow.close()
-  }
-
-
-  function exportPropertyLedgerCsv() {
-    if (!selectedReportProperty) {
-      setMessage('Please select a property first.')
-      return
-    }
-
-    const rows = [
-      ['Date', 'Month', 'Property', 'Tenant', 'Type', 'Description', 'Charge', 'Credit', 'Running Balance', 'Note'],
-      ...selectedPropertyLedgerRows.map((row) => [
-        formatDate(row.date),
-        row.month ? monthLabel(row.month) : '',
-        row.propertyAddress || selectedReportProperty.address,
-        row.tenantName || '',
-        formatLedgerEntryType(row.type),
-        row.description,
-        row.type === 'payment' ? '' : Number(row.amount || 0).toFixed(2),
-        row.type === 'payment' ? Math.abs(Number(row.amount || 0)).toFixed(2) : '',
-        Number(row.runningBalance || 0).toFixed(2),
-        row.note || '',
-      ]),
-    ]
-
-    downloadCsv(`${(selectedReportProperty.address || 'property_ledger').replace(/[^a-z0-9]+/gi, '_')}_ledger.csv`, rows)
-  }
-
-  function exportPropertyStatementCsv() {
-    if (!selectedReportProperty) {
-      setMessage('Please select a property first.')
-      return
-    }
-
-    const rows = [
-      ['Date', 'Type', 'Description', 'Amount', 'Running Balance', 'Note'],
-      ...selectedPropertyStatementRows.map((row) => [
-        formatDate(row.date),
-        formatLedgerEntryType(row.type),
-        row.description,
-        row.type === 'payment' ? `-${Math.abs(Number(row.amount || 0)).toFixed(2)}` : Number(row.amount || 0).toFixed(2),
-        Number(row.runningBalance || 0).toFixed(2),
-        row.note || '',
-      ]),
-    ]
-
-    downloadCsv(`${(selectedReportProperty.address || 'property_statement').replace(/[^a-z0-9]+/gi, '_')}_${selectedMonth}.csv`, rows)
-  }
-
-  function exportTenantStatementCsv() {
-    if (!selectedTenantName) {
-      setMessage('Please select a tenant first.')
-      return
-    }
-
-    const rows = [
-      ['Date', 'Property', 'Type', 'Description', 'Amount', 'Running Balance', 'Note'],
-      ...selectedTenantStatementRows.map((row) => [
-        formatDate(row.date),
-        row.propertyAddress,
-        formatLedgerEntryType(row.type),
-        row.description,
-        row.type === 'payment' ? `-${Math.abs(Number(row.amount || 0)).toFixed(2)}` : Number(row.amount || 0).toFixed(2),
-        Number(row.runningBalance || 0).toFixed(2),
-        row.note || '',
-      ]),
-    ]
-
-    downloadCsv(`${selectedTenantName.replace(/[^a-z0-9]+/gi, '_')}_${selectedMonth}.csv`, rows)
-  }
+  const totalMonthlyRent = companyProperties.reduce((sum, property) => sum + Number(property.monthly_rent || 0), 0)
+  const totalLateFees = companyProperties.reduce((sum, property) => sum + Number(property.late_fee || 0), 0)
+  const totalProperties = companyProperties.length
+  const managementFeeEstimate = totalMonthlyRent * 0.1
 
   if (loading) {
     return (
@@ -2063,14 +272,29 @@ This permanently removes the payment from the ledger.`
     return (
       <div style={styles.authPage}>
         <div style={styles.authCard}>
-          <h1 style={styles.authTitle}>Rent Tracker</h1>
-          <p style={styles.authSubtitle}>Sign in to manage companies, properties, payments, and reports.</p>
+          <div style={styles.authLogoWrap}>
+            <img src="/logo.png" alt="Open Door Support" style={styles.authLogo} />
+          </div>
+          <h1 style={styles.authTitle}>Open Door Support</h1>
+          <p style={styles.authSubtitle}>Sign in to manage companies, properties, and reports.</p>
 
           <form onSubmit={signIn}>
             <label style={styles.label}>Email</label>
-            <input style={styles.input} type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+            <input
+              style={styles.input}
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+            />
+
             <label style={styles.label}>Password</label>
-            <input style={styles.input} type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+            <input
+              style={styles.input}
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+
             <div style={styles.buttonRow}>
               <button style={styles.primaryButton} type="submit">Sign In</button>
               <button style={styles.secondaryButton} type="button" onClick={signUp}>Create Account</button>
@@ -2085,14 +309,27 @@ This permanently removes the payment from the ledger.`
 
   return (
     <div style={styles.page}>
-      <div style={styles.header}>
-        <div>
-          <h1 style={styles.title}>Rent Tracker</h1>
-          <p style={styles.subtitle}>Multi-owner dashboard for properties, tenants, payments, and monthly reporting.</p>
+      <style>{`
+        @media (max-width: 900px) {
+          .responsive-section-grid,
+          .responsive-payment-grid {
+            grid-template-columns: 1fr !important;
+          }
+        }
+      `}</style>
+
+      <div style={styles.brandHeader}>
+        <div style={styles.brandHeaderLeft}>
+          <div style={styles.logoWrap}>
+            <img src="/logo.png" alt="Open Door Support" style={styles.logo} />
+          </div>
+          <div>
+            <h1 style={styles.brandTitle}>Open Door Support</h1>
+            <p style={styles.brandSubtitle}>Property Management System</p>
+          </div>
         </div>
 
         <div style={styles.headerActions}>
-          <button style={styles.secondaryButton} onClick={printOwnerReport}>Print Report</button>
           <button style={styles.secondaryButton} onClick={signOut}>Sign Out</button>
         </div>
       </div>
@@ -2100,9 +337,13 @@ This permanently removes the payment from the ledger.`
       <div style={styles.topControls}>
         <div style={styles.controlBlock}>
           <label style={styles.label}>Company</label>
-          <select style={styles.input} value={selectedCompanyId} onChange={(e) => setSelectedCompanyId(e.target.value)}>
+          <select
+            style={styles.input}
+            value={selectedCompanyId}
+            onChange={(e) => setSelectedCompanyId(e.target.value)}
+          >
             <option value="">Select a company</option>
-            {filteredCompanies.map((company) => (
+            {companies.map((company) => (
               <option key={company.id} value={company.id}>
                 {company.company_name || company.name}
               </option>
@@ -2112,40 +353,39 @@ This permanently removes the payment from the ledger.`
 
         <div style={styles.controlBlock}>
           <label style={styles.label}>Month</label>
-          <select style={styles.input} value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)}>
+          <select
+            style={styles.input}
+            value={selectedMonth}
+            onChange={(e) => setSelectedMonth(e.target.value)}
+          >
             {monthOptions.map((month) => (
-              <option key={month} value={month}>{monthLabel(month)}</option>
+              <option key={month} value={month}>
+                {monthLabel(month)}
+              </option>
             ))}
           </select>
         </div>
-
-        <div style={styles.controlBlock}>
-          <label style={styles.label}>Search</label>
-          <input
-            style={styles.input}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search company, property, or tenant"
-          />
-        </div>
       </div>
 
-      {searchQuery ? (
-        <div style={styles.searchSummaryBar}>
-          Showing filtered results for <strong>{searchQuery}</strong>.
-          <button style={styles.linkButton} type="button" onClick={() => setSearchQuery('')}>Clear</button>
-        </div>
-      ) : null}
-
       <div style={styles.tabRow}>
-        <button style={activeTab === 'dashboard' ? styles.activeTabButton : styles.tabButton} onClick={() => setActiveTab('dashboard')}>Dashboard</button>
-        <button style={activeTab === 'companies' ? styles.activeTabButton : styles.tabButton} onClick={() => setActiveTab('companies')}>Companies</button>
-        <button style={activeTab === 'properties' ? styles.activeTabButton : styles.tabButton} onClick={() => setActiveTab('properties')}>Properties</button>
-        <button style={activeTab === 'payments' ? styles.activeTabButton : styles.tabButton} onClick={() => setActiveTab('payments')}>Payments</button>
-        <button style={activeTab === 'overrides' ? styles.activeTabButton : styles.tabButton} onClick={() => setActiveTab('overrides')}>Overrides</button>
-        <button style={activeTab === 'ledger' ? styles.activeTabButton : styles.tabButton} onClick={() => setActiveTab('ledger')}>Ledger</button>
-        <button style={activeTab === 'reports' ? styles.activeTabButton : styles.tabButton} onClick={() => setActiveTab('reports')}>Reports</button>
-        <button style={activeTab === 'notesAlerts' ? styles.activeTabButton : styles.tabButton} onClick={() => setActiveTab('notesAlerts')}>Notes & Alerts</button>
+        <button
+          style={activeTab === 'dashboard' ? styles.activeTabButton : styles.tabButton}
+          onClick={() => setActiveTab('dashboard')}
+        >
+          Dashboard
+        </button>
+        <button
+          style={activeTab === 'properties' ? styles.activeTabButton : styles.tabButton}
+          onClick={() => setActiveTab('properties')}
+        >
+          Properties
+        </button>
+        <button
+          style={activeTab === 'payments' ? styles.activeTabButton : styles.tabButton}
+          onClick={() => setActiveTab('payments')}
+        >
+          Payments
+        </button>
       </div>
 
       <div style={styles.cardGrid}>
@@ -2153,192 +393,60 @@ This permanently removes the payment from the ledger.`
           <div style={styles.kpiLabel}>Company</div>
           <div style={styles.kpiValueSmall}>{selectedCompanyName}</div>
         </div>
+
         <div style={styles.kpiCard}>
           <div style={styles.kpiLabel}>Properties</div>
           <div style={styles.kpiValue}>{totalProperties}</div>
         </div>
+
         <div style={styles.kpiCard}>
           <div style={styles.kpiLabel}>Monthly Rent</div>
           <div style={styles.kpiValue}>{currency(totalMonthlyRent)}</div>
         </div>
+
         <div style={styles.kpiCard}>
-          <div style={styles.kpiLabel}>Collected</div>
-          <div style={styles.kpiValue}>{currency(totalCollected)}</div>
+          <div style={styles.kpiLabel}>Late Fees</div>
+          <div style={styles.kpiValue}>{currency(totalLateFees)}</div>
         </div>
-        <div style={styles.kpiCard}>
-          <div style={styles.kpiLabel}>Outstanding</div>
-          <div style={styles.kpiValue}>{currency(totalOutstanding)}</div>
-        </div>
+
         <div style={styles.kpiCard}>
           <div style={styles.kpiLabel}>10% Mgmt Fee</div>
-          <div style={styles.kpiValue}>{currency(managementFeeCollected)}</div>
+          <div style={styles.kpiValue}>{currency(managementFeeEstimate)}</div>
         </div>
       </div>
 
       {message ? <div style={styles.messageBanner}>{message}</div> : null}
 
       {activeTab === 'dashboard' && (
-        <div style={styles.sectionGridSingle}>
+        <div className="responsive-section-grid" style={styles.sectionGrid}>
           <div style={styles.card}>
             <h2 style={styles.cardTitle}>Owner Summary</h2>
-            <p style={styles.smallMuted}>{selectedCompanyName} — {monthLabel(selectedMonth)}</p>
+            <p style={styles.smallMuted}>
+              {selectedCompanyName} — {monthLabel(selectedMonth)}
+            </p>
+
             <div style={styles.tableWrap}>
               <table style={styles.table}>
                 <thead>
                   <tr>
                     <th style={styles.th}>Property</th>
                     <th style={styles.th}>Tenant</th>
-                    <th style={styles.th}>Rent</th>
-                    <th style={styles.th}>Collected</th>
-                    <th style={styles.th}>Balance</th>
+                    <th style={styles.th}>Monthly Rent</th>
+                    <th style={styles.th}>Late Fee</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredLedgerRows.length === 0 ? (
-                    <tr><td style={styles.td} colSpan="5">No matching properties for this view.</td></tr>
+                  {companyProperties.length === 0 ? (
+                    <tr>
+                      <td style={styles.td} colSpan="4">No properties yet for this company.</td>
+                    </tr>
                   ) : (
-                    filteredLedgerRows.map((row) => (
-                      <tr key={row.id}>
-                        <td style={styles.td}>{row.address}</td>
-                        <td style={styles.td}>{row.effectiveTenant}</td>
-                        <td style={styles.td}>{currency(row.effectiveRent)}</td>
-                        <td style={styles.td}>{currency(row.totalPaid)}</td>
-                        <td style={styles.td}>{currency(row.balanceRemaining)}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-            <div style={styles.notesBox}>
-              <strong>Notes:</strong> Balances reflect prior unpaid amounts carried forward. Prorated rents and tenant changes are applied where applicable. Management fee is calculated at 10% of collected rent.
-            </div>
-          </div>
-
-          <div style={styles.card}>
-            <div style={styles.reportHeaderRow}>
-              <div>
-                <h2 style={styles.cardTitle}>Dashboard Alerts</h2>
-                <p style={styles.smallMuted}>Quick watch list for balances, vacancies, and move-outs.</p>
-              </div>
-              <div style={styles.alertSummaryInline}>
-                <span style={styles.alertBadgeHigh}>{highAlertCount} high</span>
-                <span style={styles.alertBadgeMedium}>{mediumAlertCount} medium</span>
-                <span style={styles.alertBadgeLow}>{lowAlertCount} low</span>
-              </div>
-            </div>
-
-            {companyAlerts.length === 0 ? (
-              <div style={styles.notesBox}>No alerts for the current company and month.</div>
-            ) : (
-              <div style={styles.alertList}>
-                {companyAlerts.slice(0, 8).map((alert) => (
-                  <div key={alert.id} style={styles.alertCard}>
-                    <div style={styles.alertCardTopRow}>
-                      <span style={alert.severity === 'high' ? styles.alertBadgeHigh : alert.severity === 'medium' ? styles.alertBadgeMedium : styles.alertBadgeLow}>
-                        {alert.category}
-                      </span>
-                      <button
-                        style={styles.linkButton}
-                        type="button"
-                        onClick={() => {
-                          setSelectedNotesPropertyId(alert.propertyId || '')
-                          setActiveTab('notesAlerts')
-                        }}
-                      >
-                        Open notes
-                      </button>
-                    </div>
-                    <div style={styles.alertCardTitle}>{alert.title}</div>
-                    <div style={styles.smallMuted}>{alert.detail}</div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'companies' && (
-        <div style={styles.sectionGrid}>
-          <div style={styles.card}>
-            <h2 style={styles.cardTitle}>Companies</h2>
-            <div style={styles.tableWrap}>
-              <table style={styles.table}>
-                <thead>
-                  <tr>
-                    <th style={styles.th}>Company Name</th>
-                    <th style={styles.th}>Owner Email</th>
-                    <th style={styles.th}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {companies.length === 0 ? (
-                    <tr><td style={styles.td} colSpan="3">No companies yet.</td></tr>
-                  ) : (
-                    companies.map((company) => (
-                      <tr key={company.id}>
-                        <td style={styles.td}>
-                          {editingCompanyId === company.id ? (
-                            <input
-                              style={styles.tableInput}
-                              value={editCompanyForm.companyName}
-                              onChange={(e) => setEditCompanyForm({ ...editCompanyForm, companyName: e.target.value })}
-                            />
-                          ) : (
-                            company.company_name || company.name
-                          )}
-                        </td>
-                        <td style={styles.td}>
-                          {editingCompanyId === company.id ? (
-                            <input
-                              style={styles.tableInput}
-                              value={editCompanyForm.ownerEmail}
-                              onChange={(e) => setEditCompanyForm({ ...editCompanyForm, ownerEmail: e.target.value })}
-                            />
-                          ) : (
-                            company.owner_email || '—'
-                          )}
-                        </td>
-                        <td style={styles.td}>
-                          <div style={styles.actionRow}>
-                            {editingCompanyId === company.id ? (
-                              <>
-                                <button
-                                  style={styles.smallPrimaryButton}
-                                  type="button"
-                                  onClick={() => saveEditedCompany(company.id)}
-                                >
-                                  Save
-                                </button>
-                                <button
-                                  style={styles.smallSecondaryButton}
-                                  type="button"
-                                  onClick={cancelEditingCompany}
-                                >
-                                  Cancel
-                                </button>
-                              </>
-                            ) : (
-                              <>
-                                <button
-                                  style={styles.smallSecondaryButton}
-                                  type="button"
-                                  onClick={() => startEditingCompany(company)}
-                                >
-                                  Edit
-                                </button>
-                                <button
-                                  style={styles.smallDangerButton}
-                                  type="button"
-                                  onClick={() => deleteCompany(company.id, company.company_name || company.name || 'this company')}
-                                >
-                                  Delete
-                                </button>
-                              </>
-                            )}
-                          </div>
-                        </td>
+                    companyProperties.map((property) => (
+                      <tr key={property.id}>
+                        <td style={styles.td}>{property.address}</td>
+                        <td style={styles.td}>{property.tenant}</td>
+                        <td style={styles.td}>{currency(property.monthly_rent)}</td>
+                        <td style={styles.td}>{currency(property.late_fee)}</td>
                       </tr>
                     ))
                   )}
@@ -2356,12 +464,14 @@ This permanently removes the payment from the ledger.`
                 value={companyForm.companyName}
                 onChange={(e) => setCompanyForm({ ...companyForm, companyName: e.target.value })}
               />
+
               <label style={styles.label}>Owner Email</label>
               <input
                 style={styles.input}
                 value={companyForm.ownerEmail}
                 onChange={(e) => setCompanyForm({ ...companyForm, ownerEmail: e.target.value })}
               />
+
               <button style={styles.primaryButton} type="submit">Save Company</button>
             </form>
           </div>
@@ -2369,90 +479,34 @@ This permanently removes the payment from the ledger.`
       )}
 
       {activeTab === 'properties' && (
-        <div style={styles.sectionGrid}>
+        <div className="responsive-section-grid" style={styles.sectionGrid}>
           <div style={styles.card}>
-            <div style={styles.reportHeaderRow}>
-              <div>
-                <h2 style={styles.cardTitle}>Properties</h2>
-                <p style={styles.smallMuted}>Archive keeps a property in your historical reports without leaving it in your active working list.</p>
-              </div>
-              <label style={styles.inlineToggleLabel}>
-                <input
-                  type="checkbox"
-                  checked={showArchivedProperties}
-                  onChange={(e) => setShowArchivedProperties(e.target.checked)}
-                />
-                <span>Show archived properties</span>
-              </label>
-            </div>
+            <h2 style={styles.cardTitle}>Properties</h2>
+
             <div style={styles.tableWrap}>
               <table style={styles.table}>
                 <thead>
                   <tr>
                     <th style={styles.th}>Address</th>
-                    <th style={styles.th}>Status</th>
                     <th style={styles.th}>Tenant</th>
                     <th style={styles.th}>Rent</th>
                     <th style={styles.th}>Due Day</th>
                     <th style={styles.th}>Late Fee</th>
-                    <th style={styles.th}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {filteredVisibleProperties.length === 0 ? (
-                    <tr><td style={styles.td} colSpan="7">No matching properties to show for this company.</td></tr>
+                  {companyProperties.length === 0 ? (
+                    <tr>
+                      <td style={styles.td} colSpan="5">No properties yet for this company.</td>
+                    </tr>
                   ) : (
-                    filteredVisibleProperties.map((property) => (
+                    companyProperties.map((property) => (
                       <tr key={property.id}>
-                        <td style={styles.td}>
-                          {editingPropertyId === property.id ? (
-                            <input style={styles.tableInput} value={editPropertyForm.address} onChange={(e) => setEditPropertyForm({ ...editPropertyForm, address: e.target.value })} />
-                          ) : property.address}
-                        </td>
-                        <td style={styles.td}>
-                          <span style={property.is_active === false ? styles.archivedBadge : styles.activeBadge}>
-                            {property.is_active === false ? 'Archived' : 'Active'}
-                          </span>
-                        </td>
-                        <td style={styles.td}>
-                          {editingPropertyId === property.id ? (
-                            <input style={styles.tableInput} value={editPropertyForm.tenant} onChange={(e) => setEditPropertyForm({ ...editPropertyForm, tenant: e.target.value })} />
-                          ) : property.tenant}
-                        </td>
-                        <td style={styles.td}>
-                          {editingPropertyId === property.id ? (
-                            <input style={styles.tableInput} type="number" value={editPropertyForm.monthlyRent} onChange={(e) => setEditPropertyForm({ ...editPropertyForm, monthlyRent: e.target.value })} />
-                          ) : currency(property.monthly_rent)}
-                        </td>
-                        <td style={styles.td}>
-                          {editingPropertyId === property.id ? (
-                            <input style={styles.tableInput} type="number" value={editPropertyForm.dueDay} onChange={(e) => setEditPropertyForm({ ...editPropertyForm, dueDay: e.target.value })} />
-                          ) : property.due_day}
-                        </td>
-                        <td style={styles.td}>
-                          {editingPropertyId === property.id ? (
-                            <input style={styles.tableInput} type="number" value={editPropertyForm.lateFee} onChange={(e) => setEditPropertyForm({ ...editPropertyForm, lateFee: e.target.value })} />
-                          ) : currency(property.late_fee)}
-                        </td>
-                        <td style={styles.td}>
-                          <div style={styles.actionRow}>
-                            {editingPropertyId === property.id ? (
-                              <>
-                                <button style={styles.smallPrimaryButton} type="button" onClick={() => saveEditedProperty(property.id)}>Save</button>
-                                <button style={styles.smallSecondaryButton} type="button" onClick={cancelEditingProperty}>Cancel</button>
-                              </>
-                            ) : (
-                              <>
-                                <button style={styles.smallSecondaryButton} type="button" onClick={() => startEditingProperty(property)}>Edit</button>
-                                {property.is_active === false ? (
-                                  <button style={styles.smallPrimaryButton} type="button" onClick={() => restoreProperty(property.id, property.address)}>Restore</button>
-                                ) : (
-                                  <button style={styles.smallDangerButton} type="button" onClick={() => archiveProperty(property.id, property.address)}>Archive</button>
-                                )}
-                              </>
-                            )}
-                          </div>
-                        </td>
+                        <td style={styles.td}>{property.address}</td>
+                        <td style={styles.td}>{property.tenant}</td>
+                        <td style={styles.td}>{currency(property.monthly_rent)}</td>
+                        <td style={styles.td}>{property.due_day}</td>
+                        <td style={styles.td}>{currency(property.late_fee)}</td>
                       </tr>
                     ))
                   )}
@@ -2465,15 +519,43 @@ This permanently removes the payment from the ledger.`
             <h2 style={styles.cardTitle}>Add Property</h2>
             <form onSubmit={addProperty}>
               <label style={styles.label}>Address</label>
-              <input style={styles.input} value={propertyForm.address} onChange={(e) => setPropertyForm({ ...propertyForm, address: e.target.value })} />
+              <input
+                style={styles.input}
+                value={propertyForm.address}
+                onChange={(e) => setPropertyForm({ ...propertyForm, address: e.target.value })}
+              />
+
               <label style={styles.label}>Tenant</label>
-              <input style={styles.input} value={propertyForm.tenant} onChange={(e) => setPropertyForm({ ...propertyForm, tenant: e.target.value })} />
+              <input
+                style={styles.input}
+                value={propertyForm.tenant}
+                onChange={(e) => setPropertyForm({ ...propertyForm, tenant: e.target.value })}
+              />
+
               <label style={styles.label}>Monthly Rent</label>
-              <input style={styles.input} type="number" value={propertyForm.monthlyRent} onChange={(e) => setPropertyForm({ ...propertyForm, monthlyRent: e.target.value })} />
+              <input
+                style={styles.input}
+                type="number"
+                value={propertyForm.monthlyRent}
+                onChange={(e) => setPropertyForm({ ...propertyForm, monthlyRent: e.target.value })}
+              />
+
               <label style={styles.label}>Due Day</label>
-              <input style={styles.input} type="number" value={propertyForm.dueDay} onChange={(e) => setPropertyForm({ ...propertyForm, dueDay: e.target.value })} />
+              <input
+                style={styles.input}
+                type="number"
+                value={propertyForm.dueDay}
+                onChange={(e) => setPropertyForm({ ...propertyForm, dueDay: e.target.value })}
+              />
+
               <label style={styles.label}>Late Fee</label>
-              <input style={styles.input} type="number" value={propertyForm.lateFee} onChange={(e) => setPropertyForm({ ...propertyForm, lateFee: e.target.value })} />
+              <input
+                style={styles.input}
+                type="number"
+                value={propertyForm.lateFee}
+                onChange={(e) => setPropertyForm({ ...propertyForm, lateFee: e.target.value })}
+              />
+
               <button style={styles.primaryButton} type="submit">Save Property</button>
             </form>
           </div>
@@ -2481,901 +563,103 @@ This permanently removes the payment from the ledger.`
       )}
 
       {activeTab === 'payments' && (
-        <div style={styles.sectionGrid}>
-          <div style={styles.card}>
-            <h2 style={styles.cardTitle}>Payments This Month</h2>
-            <p style={styles.smallMuted}>{selectedCompanyName} — {monthLabel(selectedMonth)}</p>
-            <div style={styles.tableWrap}>
-              <table style={styles.table}>
-                <thead>
-                  <tr>
-                    <th style={styles.th}>Date</th>
-                    <th style={styles.th}>Property</th>
-                    <th style={styles.th}>Amount</th>
-                    <th style={styles.th}>Method</th>
-                    <th style={styles.th}>Note</th>
-                    <th style={styles.th}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredMonthlyPayments.length === 0 ? (
-                    <tr><td style={styles.td} colSpan="6">No matching payments entered for this month.</td></tr>
-                  ) : (
-                    filteredMonthlyPayments.map((payment) => {
-                      const property = companyProperties.find((p) => p.id === payment.property_id)
-                      return (
-                        <tr key={payment.id}>
-                          <td style={styles.td}>
-                            {editingPaymentId === payment.id ? (
-                              <input style={styles.tableInput} type="date" value={editPaymentForm.paymentDate} onChange={(e) => setEditPaymentForm({ ...editPaymentForm, paymentDate: e.target.value })} />
-                            ) : payment.payment_date}
-                          </td>
-                          <td style={styles.td}>{property?.address || '—'}</td>
-                          <td style={styles.td}>
-                            {editingPaymentId === payment.id ? (
-                              <input style={styles.tableInput} type="number" value={editPaymentForm.amount} onChange={(e) => setEditPaymentForm({ ...editPaymentForm, amount: e.target.value })} />
-                            ) : currency(payment.amount)}
-                          </td>
-                          <td style={styles.td}>
-                            {editingPaymentId === payment.id ? (
-                              <select style={styles.tableInput} value={editPaymentForm.method} onChange={(e) => setEditPaymentForm({ ...editPaymentForm, method: e.target.value })}>
-                                <option value="Cash">Cash</option>
-                                <option value="Bank Deposit">Bank Deposit</option>
-                                <option value="Check">Check</option>
-                                <option value="Money Order">Money Order</option>
-                                <option value="Cash App">Cash App</option>
-                                <option value="Zelle">Zelle</option>
-                                <option value="Venmo">Venmo</option>
-                              </select>
-                            ) : (payment.method || '—')}
-                          </td>
-                          <td style={styles.td}>
-                            {editingPaymentId === payment.id ? (
-                              <input style={styles.tableInput} value={editPaymentForm.note} onChange={(e) => setEditPaymentForm({ ...editPaymentForm, note: e.target.value })} />
-                            ) : (payment.note || '—')}
-                          </td>
-                          <td style={styles.td}>
-                            <div style={styles.actionRow}>
-                              {editingPaymentId === payment.id ? (
-                                <>
-                                  <button style={styles.smallPrimaryButton} type="button" onClick={() => saveEditedPayment(payment.id)}>Save</button>
-                                  <button style={styles.smallSecondaryButton} type="button" onClick={cancelEditingPayment}>Cancel</button>
-                                </>
-                              ) : (
-                                <>
-                                  <button style={styles.smallSecondaryButton} type="button" onClick={() => startEditingPayment(payment)}>Edit</button>
-                                  <button style={styles.smallDangerButton} type="button" onClick={() => deletePayment(payment.id)}>Delete</button>
-                                </>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      )
-                    })
-                  )}
-                </tbody>
-              </table>
+        <div style={styles.paymentLayout}>
+          <div style={styles.mobileHeroCard}>
+            <div style={styles.mobileHeroTextWrap}>
+              <div style={styles.mobileHeroEyebrow}>Open Door Support</div>
+              <h2 style={styles.mobileHeroTitle}>Quick Payment Entry</h2>
+              <p style={styles.mobileHeroText}>
+                This layout is now mobile-friendly and branded. It gives you larger tap targets,
+                stacked controls, and a cleaner payment area that feels much better on a phone.
+              </p>
+            </div>
+
+            <div style={styles.mobileButtonRow}>
+              <button style={styles.primaryButton} type="button">Use Phone Mic</button>
+              <button style={styles.secondaryButton} type="button">Use Keyboard Mic</button>
             </div>
           </div>
 
-          <div style={styles.card}>
-            <h2 style={styles.cardTitle}>Quick Payment Entry</h2>
-            <p style={styles.smallMuted}>Default date starts on today, the last saved payment method is remembered, and you can save another payment without rebuilding the form.</p>
-            <div style={styles.infoBanner}>Payments post by the payment date you enter, not the month currently showing at the top. After you save, the month selector will follow that payment date so you can see it in the right month.</div>
-
-            <div style={styles.voiceCard}>
-              <div style={styles.voiceHeaderRow}>
-                <div>
-                  <div style={styles.voiceTitle}>Voice Payment Entry</div>
-                  <div style={styles.smallMuted}>Say something like: “5342A St. Matthew Lane, March 8 2026, 1100 dollars, cash.”</div>
-                </div>
-                <div style={styles.voiceButtonGroup}>
-                  <button
-                    style={isListening ? styles.voiceDangerButton : styles.voicePrimaryButton}
-                    type="button"
-                    onClick={isListening ? stopVoiceEntry : startVoiceEntry}
-                  >
-                    {isListening ? 'Stop Listening' : 'Use Phone Mic'}
-                  </button>
-                  <button
-                    style={styles.voiceSecondaryButton}
-                    type="button"
-                    onClick={focusTranscriptForKeyboardMic}
-                  >
-                    Use Keyboard Mic
-                  </button>
-                </div>
-              </div>
-
-              <div style={styles.voiceHelpBox}>
-                <strong>Android tip:</strong> In Chrome or Edge, try <strong>Use Phone Mic</strong>. If that does not work well on your phone, tap <strong>Use Keyboard Mic</strong>, speak into your keyboard microphone, then press <strong>Apply Transcript</strong>.
-              </div>
-
-              {voiceStatus ? <div style={styles.infoBanner}>{voiceStatus}</div> : null}
-
-              {!browserSupportsVoiceEntry() ? (
-                <div style={styles.warningBanner}>This browser may not support direct voice dictation. The keyboard mic option still works well on many Android phones.</div>
-              ) : null}
-
-              <label style={styles.label}>Transcript</label>
-              <textarea
-                ref={voiceTranscriptRef}
-                style={styles.textarea}
-                rows={4}
-                value={voiceTranscript}
-                onChange={(e) => {
-                  setVoiceTranscript(e.target.value)
-                  setVoiceStatus('Transcript updated. Use Apply Transcript to fill the payment form.')
-                }}
-                placeholder="Your dictated payment will appear here. You can also tap into this box and use your phone keyboard microphone."
-              />
-              <div style={styles.voiceButtonGroup}>
-                <button
-                  style={styles.voiceSecondaryButton}
-                  type="button"
-                  onClick={() => applyVoicePaymentTranscript(voiceTranscript)}
-                >
-                  Apply Transcript
-                </button>
-                <button
-                  style={styles.voiceSecondaryButton}
-                  type="button"
-                  onClick={() => {
-                    setVoiceTranscript('')
-                    setVoiceStatus('')
-                    if (voiceTranscriptRef.current) voiceTranscriptRef.current.focus()
-                  }}
-                >
-                  Clear Voice Entry
-                </button>
-              </div>
-            </div>
-
-            {paymentSuccessMessage ? (
-              <div style={styles.successBanner}>{paymentSuccessMessage}</div>
-            ) : null}
-
-            <form onSubmit={addPayment}>
-              <label style={styles.label}>Property</label>
-              <select
-                style={styles.input}
-                value={paymentForm.propertyId}
-                onChange={(e) => {
-                  setPaymentSuccessMessage('')
-                  setPaymentForm({ ...paymentForm, propertyId: e.target.value })
-                }}
-              >
-                <option value="">Select property</option>
-                {filteredPropertyOptions.filter((property) => property.is_active !== false).map((property) => (
-                  <option key={property.id} value={property.id}>{property.address}</option>
-                ))}
-              </select>
-
-              <label style={styles.label}>Payment Date</label>
-              <input
-                style={styles.input}
-                type="date"
-                value={paymentForm.paymentDate}
-                onChange={(e) => {
-                  setPaymentSuccessMessage('')
-                  setPaymentForm({ ...paymentForm, paymentDate: e.target.value })
-                }}
-              />
-
-              <label style={styles.label}>Amount</label>
-              <input
-                style={styles.input}
-                type="number"
-                step="0.01"
-                value={paymentForm.amount}
-                onChange={(e) => {
-                  setPaymentSuccessMessage('')
-                  setPaymentForm({ ...paymentForm, amount: e.target.value })
-                }}
-              />
-
-              <label style={styles.label}>Method</label>
-              <select
-                style={styles.input}
-                value={paymentForm.method}
-                onChange={(e) => {
-                  setPaymentSuccessMessage('')
-                  setPaymentForm({ ...paymentForm, method: e.target.value })
-                }}
-              >
-                <option value="Cash">Cash</option>
-                <option value="Bank Deposit">Bank Deposit</option>
-                <option value="Check">Check</option>
-                <option value="Money Order">Money Order</option>
-                <option value="Cash App">Cash App</option>
-                <option value="Zelle">Zelle</option>
-                <option value="Venmo">Venmo</option>
-              </select>
-
-              <div style={styles.smallMuted}>Last used method will carry forward after you save.</div>
-
-              <label style={styles.label}>Note</label>
-              <input
-                style={styles.input}
-                value={paymentForm.note}
-                onChange={(e) => {
-                  setPaymentSuccessMessage('')
-                  setPaymentForm({ ...paymentForm, note: e.target.value })
-                }}
-              />
-
-              <div style={styles.buttonRow}>
-                <button style={styles.primaryButton} type="submit">Save Payment</button>
-                <button style={styles.secondaryButton} type="button" onClick={addPaymentAndContinue}>Save + Add Another</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'overrides' && (
-        <div style={styles.card}>
-          <div style={styles.reportHeaderRow}>
-            <div>
-              <h2 style={styles.cardTitle}>Monthly Overrides</h2>
-              <p style={styles.smallMuted}>Use this for prorated rent, monthly tenant changes, move-in / move-out dates, starting balances, and notes.</p>
-            </div>
-            <div style={styles.actionRow}>
-              <button style={styles.smallPrimaryButton} type="button" onClick={rollMonthForward}>
-                Roll Active Properties to {monthLabel(nextMonthKey)}
-              </button>
-            </div>
-          </div>
-
-          <div style={styles.notesBox}>
-            <strong>Quick setup:</strong> This creates next-month override rows only for properties with an active tenant on {formatDate(startOfMonth(nextMonthKey))}. It keeps the standard property rent, carries the ending balance forward, and leaves any existing next-month override rows untouched.
-          </div>
-
-          <div style={styles.tableWrap}>
-            <table style={styles.table}>
-              <thead>
-                <tr>
-                  <th style={styles.th}>Property</th>
-                  <th style={styles.th}>Tenant Override</th>
-                  <th style={styles.th}>Override Rent</th>
-                  <th style={styles.th}>Start Bal</th>
-                  <th style={styles.th}>Move In</th>
-                  <th style={styles.th}>Move Out</th>
-                  <th style={styles.th}>Notes</th>
-                  <th style={styles.th}>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {companyProperties.map((property) => {
-                  const current = companyOverrides.find(
-                    (item) => item.property_id === property.id && item.month_key === selectedMonth
-                  )
-
-                  const isEditing = editingOverrideId === property.id
-
-                  return (
-                    <tr key={`override-${property.id}`}>
-                      <td style={styles.td}>{property.address}</td>
-                      <td style={styles.td}>
-                        {isEditing ? (
-                          <input style={styles.tableInput} value={overrideForm.tenantOverride} onChange={(e) => setOverrideForm({ ...overrideForm, tenantOverride: e.target.value })} />
-                        ) : (current?.tenant_override || '—')}
-                      </td>
-                      <td style={styles.td}>
-                        {isEditing ? (
-                          <input style={styles.tableInput} type="number" value={overrideForm.overrideRent} onChange={(e) => setOverrideForm({ ...overrideForm, overrideRent: e.target.value })} />
-                        ) : (current?.override_rent !== null && current?.override_rent !== undefined ? currency(current.override_rent) : '—')}
-                      </td>
-                      <td style={styles.td}>
-                        {isEditing ? (
-                          <input style={styles.tableInput} type="number" value={overrideForm.startingBalance} onChange={(e) => setOverrideForm({ ...overrideForm, startingBalance: e.target.value })} />
-                        ) : (current?.starting_balance ? currency(current.starting_balance) : '—')}
-                      </td>
-                      <td style={styles.td}>
-                        {isEditing ? (
-                          <input style={styles.tableInput} type="date" value={overrideForm.moveInDate} onChange={(e) => setOverrideForm({ ...overrideForm, moveInDate: e.target.value })} />
-                        ) : (current?.move_in_date || '—')}
-                      </td>
-                      <td style={styles.td}>
-                        {isEditing ? (
-                          <input style={styles.tableInput} type="date" value={overrideForm.moveOutDate} onChange={(e) => setOverrideForm({ ...overrideForm, moveOutDate: e.target.value })} />
-                        ) : (current?.move_out_date || '—')}
-                      </td>
-                      <td style={styles.td}>
-                        {isEditing ? (
-                          <input style={styles.tableInput} value={overrideForm.notes} onChange={(e) => setOverrideForm({ ...overrideForm, notes: e.target.value })} />
-                        ) : (current?.notes || '—')}
-                      </td>
-                      <td style={styles.td}>
-                        <div style={styles.actionRow}>
-                          {isEditing ? (
-                            <>
-                              <button style={styles.smallPrimaryButton} type="button" onClick={() => saveOverride(property.id)}>Save</button>
-                              <button style={styles.smallSecondaryButton} type="button" onClick={cancelEditingOverride}>Cancel</button>
-                            </>
-                          ) : (
-                            <button style={styles.smallSecondaryButton} type="button" onClick={() => startEditingOverride(property.id, current)}>Edit</button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-
-      {activeTab === 'ledger' && (
-        <div style={styles.sectionGridSingle}>
-          <div style={styles.card}>
-            <div style={styles.reportHeaderRow}>
-              <div>
-                <h2 style={styles.cardTitle}>Property Ledger</h2>
-                <p style={styles.smallMuted}>
-                  One running account view for charges, late fees, adjustments, payments, and carried balances.
-                </p>
-              </div>
-              <div style={styles.actionRow}>
-                <button
-                  style={styles.smallSecondaryButton}
-                  type="button"
-                  onClick={() => printSection(propertyLedgerRef, 'Property Ledger')}
-                >
-                  Print Ledger
-                </button>
-                <button
-                  style={styles.smallPrimaryButton}
-                  type="button"
-                  onClick={exportPropertyLedgerCsv}
-                >
-                  Export Ledger CSV
-                </button>
-              </div>
-            </div>
-
-            <div style={styles.statementFilterGrid}>
-              <div>
+          <div className="responsive-payment-grid" style={styles.paymentGrid}>
+            <div style={styles.card}>
+              <h2 style={styles.cardTitle}>Enter Payment</h2>
+              <form onSubmit={handleQuickPaymentDemoSave}>
                 <label style={styles.label}>Property</label>
                 <select
                   style={styles.input}
-                  value={selectedReportPropertyId}
-                  onChange={(e) => setSelectedReportPropertyId(e.target.value)}
+                  value={quickPaymentForm.propertyId}
+                  onChange={(e) => handleQuickPaymentChange('propertyId', e.target.value)}
                 >
                   <option value="">Select property</option>
-                  {filteredPropertyOptions.map((property) => (
+                  {companyProperties.map((property) => (
                     <option key={property.id} value={property.id}>
                       {property.address}
                     </option>
                   ))}
                 </select>
-              </div>
 
-              <div>
-                <label style={styles.label}>Start Date</label>
+                <label style={styles.label}>Date Accepted</label>
                 <input
                   style={styles.input}
                   type="date"
-                  value={reportStartDate}
-                  onChange={(e) => setReportStartDate(e.target.value)}
+                  value={quickPaymentForm.paymentDate}
+                  onChange={(e) => handleQuickPaymentChange('paymentDate', e.target.value)}
                 />
-              </div>
 
-              <div>
-                <label style={styles.label}>End Date</label>
+                <label style={styles.label}>Amount</label>
                 <input
                   style={styles.input}
-                  type="date"
-                  value={reportEndDate}
-                  onChange={(e) => setReportEndDate(e.target.value)}
+                  type="number"
+                  placeholder="0.00"
+                  value={quickPaymentForm.amount}
+                  onChange={(e) => handleQuickPaymentChange('amount', e.target.value)}
                 />
-              </div>
-            </div>
-          </div>
 
-          <div ref={propertyLedgerRef} style={styles.card}>
-            <div style={styles.reportPrintHeader}>
-              <div style={styles.reportPrintTitle}>Property Ledger</div>
-              <div style={styles.reportPrintMeta}>
-                <strong>Company:</strong> {selectedCompanyName}
-              </div>
-              <div style={styles.reportPrintMeta}>
-                <strong>Property:</strong> {selectedReportProperty ? selectedReportProperty.address : '—'}
-              </div>
-              <div style={styles.reportPrintMeta}>
-                <strong>Date Range:</strong> {reportStartDate ? formatDate(reportStartDate) : 'Beginning'} - {reportEndDate ? formatDate(reportEndDate) : 'Present'}
-              </div>
-            </div>
-
-            <div style={styles.ledgerSummaryGrid}>
-              <div style={styles.ledgerMiniCard}>
-                <div style={styles.kpiLabel}>Rent Charges</div>
-                <div style={styles.ledgerMiniValue}>{currency(selectedPropertyLedgerTotals.rentCharges)}</div>
-              </div>
-              <div style={styles.ledgerMiniCard}>
-                <div style={styles.kpiLabel}>Late Fees</div>
-                <div style={styles.ledgerMiniValue}>{currency(selectedPropertyLedgerTotals.lateFees)}</div>
-              </div>
-              <div style={styles.ledgerMiniCard}>
-                <div style={styles.kpiLabel}>Adjustments</div>
-                <div style={styles.ledgerMiniValue}>{currency(selectedPropertyLedgerTotals.adjustments)}</div>
-              </div>
-              <div style={styles.ledgerMiniCard}>
-                <div style={styles.kpiLabel}>Payments / Credits</div>
-                <div style={styles.ledgerMiniValue}>{currency(selectedPropertyLedgerTotals.credits)}</div>
-              </div>
-              <div style={styles.ledgerMiniCard}>
-                <div style={styles.kpiLabel}>Ending Balance</div>
-                <div style={styles.ledgerMiniValue}>{currency(selectedPropertyLedgerTotals.endingBalance)}</div>
-              </div>
-            </div>
-
-            <div style={styles.tableWrap}>
-              <table style={styles.table}>
-                <thead>
-                  <tr>
-                    <th style={styles.th}>Date</th>
-                    <th style={styles.th}>Month</th>
-                    <th style={styles.th}>Tenant</th>
-                    <th style={styles.th}>Type</th>
-                    <th style={styles.th}>Description</th>
-                    <th style={styles.th}>Charge</th>
-                    <th style={styles.th}>Credit</th>
-                    <th style={styles.th}>Running Balance</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {!selectedReportProperty ? (
-                    <tr>
-                      <td style={styles.td} colSpan="8">Select a property to view its ledger.</td>
-                    </tr>
-                  ) : selectedPropertyLedgerRows.length === 0 ? (
-                    <tr>
-                      <td style={styles.td} colSpan="8">No ledger activity for the selected date range.</td>
-                    </tr>
-                  ) : (
-                    selectedPropertyLedgerRows.map((row, index) => (
-                      <tr key={`ledger-${row.type}-${row.date}-${index}`}>
-                        <td style={styles.td}>{formatDate(row.date)}</td>
-                        <td style={styles.td}>{row.month ? monthLabel(row.month) : '—'}</td>
-                        <td style={styles.td}>{row.tenantName || '—'}</td>
-                        <td style={styles.td}>{formatLedgerEntryType(row.type)}</td>
-                        <td style={styles.td}>
-                          {row.description}
-                          {row.note ? <div style={styles.smallMuted}>Note: {row.note}</div> : null}
-                        </td>
-                        <td style={styles.td}>{row.type === 'payment' ? '—' : currency(row.amount)}</td>
-                        <td style={styles.td}>{row.type === 'payment' ? currency(Math.abs(row.amount)) : '—'}</td>
-                        <td style={styles.td}>{currency(row.runningBalance)}</td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </div>
-      )}
-
-
-      {activeTab === 'notesAlerts' && (
-        <div style={styles.sectionGrid}>
-          <div style={styles.card}>
-            <div style={styles.reportHeaderRow}>
-              <div>
-                <h2 style={styles.cardTitle}>Property Notes</h2>
-                <p style={styles.smallMuted}>Use this for payment-plan details, move-out promises, special agreements, or anything you want attached to the property record.</p>
-              </div>
-              <div style={styles.alertSummaryInline}>
-                <span style={styles.notesCountPill}>{notesCount} saved note{notesCount === 1 ? '' : 's'}</span>
-              </div>
-            </div>
-
-            <label style={styles.label}>Property</label>
-            <select
-              style={styles.input}
-              value={selectedNotesPropertyId}
-              onChange={(e) => setSelectedNotesPropertyId(e.target.value)}
-            >
-              <option value="">Select property</option>
-              {filteredPropertyOptions.map((property) => (
-                <option key={`notes-${property.id}`} value={property.id}>
-                  {property.address}
-                </option>
-              ))}
-            </select>
-
-            {notesProperty ? (
-              <div style={styles.notesMetaGrid}>
-                <div style={styles.ledgerMiniCard}>
-                  <div style={styles.kpiLabel}>Current Tenant</div>
-                  <div style={styles.kpiValueSmall}>{notesPropertyTenant || 'Vacant'}</div>
-                </div>
-                <div style={styles.ledgerMiniCard}>
-                  <div style={styles.kpiLabel}>Status</div>
-                  <div style={styles.kpiValueSmall}>{notesProperty.is_active === false ? 'Archived' : 'Active'}</div>
-                </div>
-                <div style={styles.ledgerMiniCard}>
-                  <div style={styles.kpiLabel}>Last Updated</div>
-                  <div style={styles.kpiValueSmall}>
-                    {propertyNotes[selectedNotesPropertyId]?.updatedAt ? formatDate(propertyNotes[selectedNotesPropertyId].updatedAt) : 'No saved note yet'}
-                  </div>
-                </div>
-              </div>
-            ) : null}
-
-            <label style={styles.label}>Property Notes</label>
-            <textarea
-              style={styles.textarea}
-              value={notesDraft}
-              onChange={(e) => setNotesDraft(e.target.value)}
-              placeholder="Examples: agreed payment plan, move-out date promise, approved rent adjustment, maintenance-related credit, follow-up reminders."
-            />
-
-            <div style={styles.buttonRow}>
-              <button style={styles.primaryButton} type="button" onClick={savePropertyNote}>Save Notes</button>
-              <button style={styles.secondaryButton} type="button" onClick={clearPropertyNote}>Clear Notes</button>
-            </div>
-          </div>
-
-          <div style={styles.card}>
-            <div style={styles.reportHeaderRow}>
-              <div>
-                <h2 style={styles.cardTitle}>Alerts Center</h2>
-                <p style={styles.smallMuted}>This flags the things most likely to need attention first.</p>
-              </div>
-              <div style={styles.alertSummaryInline}>
-                <span style={styles.alertBadgeHigh}>{highAlertCount} high</span>
-                <span style={styles.alertBadgeMedium}>{mediumAlertCount} medium</span>
-                <span style={styles.alertBadgeLow}>{lowAlertCount} low</span>
-              </div>
-            </div>
-
-            {companyAlerts.length === 0 ? (
-              <div style={styles.notesBox}>No alerts right now for the selected company and month.</div>
-            ) : (
-              <div style={styles.alertList}>
-                {companyAlerts.map((alert) => (
-                  <div key={`full-${alert.id}`} style={styles.alertCard}>
-                    <div style={styles.alertCardTopRow}>
-                      <span style={alert.severity === 'high' ? styles.alertBadgeHigh : alert.severity === 'medium' ? styles.alertBadgeMedium : styles.alertBadgeLow}>
-                        {alert.category}
-                      </span>
-                      <button
-                        style={styles.linkButton}
-                        type="button"
-                        onClick={() => {
-                          setSelectedNotesPropertyId(alert.propertyId || '')
-                        }}
-                      >
-                        Link to notes
-                      </button>
-                    </div>
-                    <div style={styles.alertCardTitle}>{alert.title}</div>
-                    <div style={styles.smallMuted}>{alert.detail}</div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
-
-      {activeTab === 'reports' && (
-        <div style={styles.sectionGridSingle}>
-          <div style={styles.card}>
-            <div style={styles.reportHeaderRow}>
-              <div>
-                <h2 style={styles.cardTitle}>Owner Monthly Report</h2>
-                <p style={styles.smallMuted}>{selectedCompanyName} — {monthLabel(selectedMonth)}</p>
-              </div>
-              <div style={styles.actionRow}>
-                <button
-                  style={styles.smallSecondaryButton}
-                  type="button"
-                  onClick={() => printSection(ownerReportRef, 'Owner Monthly Report')}
-                >
-                  Print Owner Report
-                </button>
-                <button
-                  style={styles.smallPrimaryButton}
-                  type="button"
-                  onClick={emailOwnerReport}
-                >
-                  Email Owner Report
-                </button>
-              </div>
-            </div>
-
-            <div ref={ownerReportRef}>
-              <div style={styles.reportPrintHeader}>
-                <div style={styles.reportPrintCompany}>{selectedCompanyName}</div>
-                <div style={styles.reportPrintTitle}>Owner Monthly Report</div>
-                <div style={styles.reportPrintMeta}>
-                  <strong>Reporting Month:</strong> {monthLabel(selectedMonth)}
-                </div>
-                <div style={styles.reportPrintMeta}>
-                  <strong>Generated:</strong> {generatedOnLabel}
-                </div>
-              </div>
-
-              <div style={styles.tableWrap}>
-                <table style={styles.table}>
-                  <thead>
-                    <tr>
-                      <th style={styles.th}>Property</th>
-                      <th style={styles.th}>Tenant</th>
-                      <th style={styles.th}>Rent</th>
-                      <th style={styles.th}>Collected</th>
-                      <th style={styles.th}>Balance</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredLedgerRows.length === 0 ? (
-                      <tr>
-                        <td style={styles.td} colSpan="5">No matching properties for this report.</td>
-                      </tr>
-                    ) : (
-                      filteredLedgerRows.map((row) => (
-                        <tr key={`report-${row.id}`}>
-                          <td style={styles.td}>{row.address}</td>
-                          <td style={styles.td}>{row.effectiveTenant}</td>
-                          <td style={styles.td}>{currency(row.effectiveRent)}</td>
-                          <td style={styles.td}>{currency(row.totalPaid)}</td>
-                          <td style={styles.td}>{currency(row.balanceRemaining)}</td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              <div style={styles.reportTotals}>
-                <div><strong>Monthly Rent:</strong> {currency(totalMonthlyRent)}</div>
-                <div><strong>Collected:</strong> {currency(totalCollected)}</div>
-                <div><strong>Outstanding:</strong> {currency(totalOutstanding)}</div>
-                <div><strong>10% Management Fee:</strong> {currency(managementFeeCollected)}</div>
-              </div>
-
-              <div style={styles.notesBox}>
-                <strong>Notes:</strong> Balances reflect prior unpaid amounts carried forward. Prorated rents and tenant changes are applied where applicable. Management fee is calculated at 10% of collected rent.
-              </div>
-
-              <div style={styles.reportPrintFooter}>
-                <span>{selectedCompanyName}</span>
-                <span>Generated {generatedOnLabel}</span>
-              </div>
-            </div>
-          </div>
-
-          <div style={styles.card}>
-            <h2 style={styles.cardTitle}>Statement Filters</h2>
-
-            <div style={styles.statementFilterGrid}>
-              <div>
-                <label style={styles.label}>Property</label>
+                <label style={styles.label}>Method</label>
                 <select
                   style={styles.input}
-                  value={selectedReportPropertyId}
-                  onChange={(e) => setSelectedReportPropertyId(e.target.value)}
+                  value={quickPaymentForm.method}
+                  onChange={(e) => handleQuickPaymentChange('method', e.target.value)}
                 >
-                  <option value="">Select property</option>
-                  {filteredPropertyOptions.map((property) => (
-                    <option key={property.id} value={property.id}>
-                      {property.address}
-                    </option>
-                  ))}
+                  <option value="Cash">Cash</option>
+                  <option value="Check">Check</option>
+                  <option value="Bank Deposit">Bank Deposit</option>
+                  <option value="Money Order">Money Order</option>
+                  <option value="Cash App">Cash App</option>
+                  <option value="Zelle">Zelle</option>
+                  <option value="Venmo">Venmo</option>
                 </select>
-              </div>
 
-              <div>
-                <label style={styles.label}>Tenant</label>
-                <select
-                  style={styles.input}
-                  value={selectedTenantName}
-                  onChange={(e) => setSelectedTenantName(e.target.value)}
-                >
-                  <option value="">Select tenant</option>
-                  {companyTenantNames.map((tenantName) => (
-                    <option key={tenantName} value={tenantName}>
-                      {tenantName}
-                    </option>
-                  ))}
-                </select>
-              </div>
-
-              <div>
-                <label style={styles.label}>Start Date</label>
-                <input
-                  style={styles.input}
-                  type="date"
-                  value={reportStartDate}
-                  onChange={(e) => setReportStartDate(e.target.value)}
+                <label style={styles.label}>Note</label>
+                <textarea
+                  style={styles.textarea}
+                  rows="4"
+                  placeholder="Optional note"
+                  value={quickPaymentForm.note}
+                  onChange={(e) => handleQuickPaymentChange('note', e.target.value)}
                 />
-              </div>
 
-              <div>
-                <label style={styles.label}>End Date</label>
-                <input
-                  style={styles.input}
-                  type="date"
-                  value={reportEndDate}
-                  onChange={(e) => setReportEndDate(e.target.value)}
-                />
-              </div>
-            </div>
-          </div>
-
-          <div style={styles.card}>
-            <div style={styles.reportHeaderRow}>
-              <div>
-                <h2 style={styles.cardTitle}>Property Statement</h2>
-                <p style={styles.smallMuted}>
-                  {selectedReportProperty ? selectedReportProperty.address : 'Select a property'}
-                </p>
-              </div>
-              <div style={styles.actionRow}>
-                <button
-                  style={styles.smallSecondaryButton}
-                  type="button"
-                  onClick={() => printSection(propertyStatementRef, 'Property Statement')}
-                >
-                  Print Property Statement
-                </button>
-                <button
-                  style={styles.smallPrimaryButton}
-                  type="button"
-                  onClick={exportPropertyStatementCsv}
-                >
-                  Export Property CSV
-                </button>
-              </div>
+                <div style={styles.mobileButtonRow}>
+                  <button style={styles.primaryButton} type="submit">Save Payment</button>
+                  <button style={styles.secondaryButton} type="button">Save + Add Another</button>
+                </div>
+              </form>
             </div>
 
-            <div ref={propertyStatementRef}>
-              <div style={styles.reportPrintHeader}>
-                <div style={styles.reportPrintCompany}>{selectedCompanyName}</div>
-                <div style={styles.reportPrintTitle}>Property Account Statement</div>
-                <div style={styles.reportPrintMeta}>
-                  <strong>Property:</strong> {selectedReportProperty ? selectedReportProperty.address : '—'}
-                </div>
-                <div style={styles.reportPrintMeta}>
-                  <strong>Date Range:</strong> {reportDateRangeLabel}
-                </div>
-                <div style={styles.reportPrintMeta}>
-                  <strong>Generated:</strong> {generatedOnLabel}
-                </div>
-              </div>
-              <div style={styles.tableWrap}>
-                <table style={styles.table}>
-                  <thead>
-                    <tr>
-                      <th style={styles.th}>Date</th>
-                      <th style={styles.th}>Type</th>
-                      <th style={styles.th}>Description</th>
-                      <th style={styles.th}>Amount</th>
-                      <th style={styles.th}>Running Balance</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {!selectedReportProperty ? (
-                      <tr>
-                        <td style={styles.td} colSpan="5">Select a property to view its statement.</td>
-                      </tr>
-                    ) : selectedPropertyStatementRows.length === 0 ? (
-                      <tr>
-                        <td style={styles.td} colSpan="5">No statement activity for the selected date range.</td>
-                      </tr>
-                    ) : (
-                      selectedPropertyStatementRows.map((row, index) => (
-                        <tr key={`${row.type}-${row.date}-${index}`}>
-                          <td style={styles.td}>{formatDate(row.date)}</td>
-                          <td style={styles.td}>{formatLedgerEntryType(row.type)}</td>
-                          <td style={styles.td}>
-                            {row.description}
-                            {row.note ? <div style={styles.smallMuted}>Note: {row.note}</div> : null}
-                          </td>
-                          <td style={styles.td}>{formatLedgerAmount(row)}</td>
-                          <td style={styles.td}>{currency(row.runningBalance)}</td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
+            <div style={styles.card}>
+              <h2 style={styles.cardTitle}>Mobile Notes</h2>
+              <div style={styles.mobileChecklist}>
+                <div style={styles.mobileChecklistItem}>Large tap-friendly controls</div>
+                <div style={styles.mobileChecklistItem}>Stacked fields for easier phone entry</div>
+                <div style={styles.mobileChecklistItem}>Plum and gold brand styling throughout</div>
+                <div style={styles.mobileChecklistItem}>Ready for payment logic hookup next</div>
               </div>
 
-              <div style={styles.reportPrintFooter}>
-                <span>{selectedCompanyName}</span>
-                <span>Generated {generatedOnLabel}</span>
-              </div>
-            </div>
-          </div>
-
-          <div style={styles.card}>
-            <div style={styles.reportHeaderRow}>
-              <div>
-                <h2 style={styles.cardTitle}>Tenant Statement</h2>
-                <p style={styles.smallMuted}>
-                  {selectedTenantName || 'Select a tenant'}
-                </p>
-              </div>
-              <div style={styles.actionRow}>
-                <button
-                  style={styles.smallSecondaryButton}
-                  type="button"
-                  onClick={() => printSection(tenantStatementRef, 'Tenant Statement')}
-                >
-                  Print Tenant Statement
-                </button>
-                <button
-                  style={styles.smallPrimaryButton}
-                  type="button"
-                  onClick={exportTenantStatementCsv}
-                >
-                  Export Tenant CSV
-                </button>
-              </div>
-            </div>
-
-            <div ref={tenantStatementRef}>
-              <div style={styles.reportPrintHeader}>
-                <div style={styles.reportPrintCompany}>{selectedCompanyName}</div>
-                <div style={styles.reportPrintTitle}>Tenant Account Statement</div>
-                <div style={styles.reportPrintMeta}>
-                  <strong>Tenant:</strong> {selectedTenantName || '—'}
+              <div style={styles.mobilePreviewCard}>
+                <div style={styles.mobilePreviewLabel}>Preview</div>
+                <div style={styles.mobilePreviewValue}>
+                  {isMobile ? 'Mobile layout active' : 'Desktop preview of a mobile-first payment screen'}
                 </div>
-                <div style={styles.reportPrintMeta}>
-                  <strong>Date Range:</strong> {reportDateRangeLabel}
-                </div>
-                <div style={styles.reportPrintMeta}>
-                  <strong>Generated:</strong> {generatedOnLabel}
-                </div>
-              </div>
-              <div style={styles.tableWrap}>
-                <table style={styles.table}>
-                  <thead>
-                    <tr>
-                      <th style={styles.th}>Date</th>
-                      <th style={styles.th}>Property</th>
-                      <th style={styles.th}>Type</th>
-                      <th style={styles.th}>Description</th>
-                      <th style={styles.th}>Amount</th>
-                      <th style={styles.th}>Running Balance</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {!selectedTenantName ? (
-                      <tr>
-                        <td style={styles.td} colSpan="6">Select a tenant to view the tenant statement.</td>
-                      </tr>
-                    ) : selectedTenantStatementRows.length === 0 ? (
-                      <tr>
-                        <td style={styles.td} colSpan="6">No tenant activity for the selected date range.</td>
-                      </tr>
-                    ) : (
-                      selectedTenantStatementRows.map((row, index) => (
-                        <tr key={`${row.propertyAddress}-${row.type}-${row.date}-${index}`}>
-                          <td style={styles.td}>{formatDate(row.date)}</td>
-                          <td style={styles.td}>{row.propertyAddress}</td>
-                          <td style={styles.td}>{formatLedgerEntryType(row.type)}</td>
-                          <td style={styles.td}>
-                            {row.description}
-                            {row.note ? <div style={styles.smallMuted}>Note: {row.note}</div> : null}
-                          </td>
-                          <td style={styles.td}>{formatLedgerAmount(row)}</td>
-                          <td style={styles.td}>{currency(row.runningBalance)}</td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-
-              <div style={styles.reportPrintFooter}>
-                <span>{selectedCompanyName}</span>
-                <span>Generated {generatedOnLabel}</span>
               </div>
             </div>
           </div>
@@ -3386,83 +670,378 @@ This permanently removes the payment from the ledger.`
 }
 
 const styles = {
-  page: { minHeight: '100vh', background: '#f8fafc', padding: '20px', fontFamily: 'Arial, sans-serif', color: '#0f172a' },
-  authPage: { minHeight: '100vh', background: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px', fontFamily: 'Arial, sans-serif' },
-  authCard: { width: '100%', maxWidth: '420px', background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '18px', padding: '24px', boxShadow: '0 10px 30px rgba(15, 23, 42, 0.06)' },
-  authTitle: { margin: '0 0 8px 0', fontSize: '34px' },
-  authSubtitle: { margin: '0 0 20px 0', color: '#64748b', fontSize: '14px' },
-  loadingCard: { maxWidth: '500px', margin: '40px auto', background: '#fff', borderRadius: '16px', border: '1px solid #e2e8f0', padding: '24px' },
-  header: { display: 'flex', justifyContent: 'space-between', gap: '16px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '20px' },
-  title: { margin: 0, fontSize: '42px', lineHeight: 1.1 },
-  subtitle: { margin: '8px 0 0 0', color: '#64748b', fontSize: '15px' },
-  headerActions: { display: 'flex', gap: '10px', flexWrap: 'wrap' },
-  topControls: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '14px', marginBottom: '18px' },
-  searchSummaryBar: { display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '16px', padding: '10px 14px', background: '#f8fafc', border: '1px solid #dbeafe', borderRadius: '12px', color: '#334155' },
-  linkButton: { background: 'transparent', border: 'none', color: '#2563eb', cursor: 'pointer', fontWeight: 600, padding: 0 },
-  controlBlock: { background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '16px' },
-  tabRow: { display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '18px' },
-  tabButton: { background: '#e2e8f0', color: '#0f172a', border: 'none', borderRadius: '12px', padding: '10px 16px', cursor: 'pointer', fontWeight: 600 },
-  activeTabButton: { background: '#0f172a', color: '#ffffff', border: 'none', borderRadius: '12px', padding: '10px 16px', cursor: 'pointer', fontWeight: 600 },
-  cardGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '14px', marginBottom: '18px' },
-  kpiCard: { background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '18px', padding: '18px', boxShadow: '0 4px 14px rgba(15, 23, 42, 0.04)' },
-  kpiLabel: { color: '#64748b', fontSize: '13px', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '.04em' },
-  kpiValue: { fontSize: '28px', fontWeight: 700 },
-  kpiValueSmall: { fontSize: '18px', fontWeight: 700, lineHeight: 1.3 },
-  sectionGrid: { display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(320px, 1fr)', gap: '16px' },
-  sectionGridSingle: { display: 'grid', gap: '16px' },
-  card: { background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '18px', padding: '18px', boxShadow: '0 6px 18px rgba(15, 23, 42, 0.04)' },
-  cardTitle: { marginTop: 0, marginBottom: '12px', fontSize: '22px' },
-  label: { display: 'block', marginBottom: '6px', marginTop: '12px', fontSize: '14px', fontWeight: 600 },
-  input: { width: '100%', boxSizing: 'border-box', padding: '11px 12px', borderRadius: '12px', border: '1px solid #cbd5e1', background: '#fff', fontSize: '14px' },
-  tableInput: { width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: '10px', border: '1px solid #cbd5e1', background: '#fff', fontSize: '14px' },
-  primaryButton: { marginTop: '16px', background: '#0f172a', color: '#fff', border: 'none', borderRadius: '12px', padding: '11px 16px', cursor: 'pointer', fontWeight: 600 },
-  secondaryButton: { background: '#e2e8f0', color: '#0f172a', border: 'none', borderRadius: '12px', padding: '11px 16px', cursor: 'pointer', fontWeight: 600 },
-  smallPrimaryButton: { background: '#0f172a', color: '#fff', border: 'none', borderRadius: '10px', padding: '8px 12px', cursor: 'pointer', fontWeight: 600, fontSize: '13px' },
-  smallSecondaryButton: { background: '#e2e8f0', color: '#0f172a', border: 'none', borderRadius: '10px', padding: '8px 12px', cursor: 'pointer', fontWeight: 600, fontSize: '13px' },
-  smallDangerButton: { background: '#dc2626', color: '#fff', border: 'none', borderRadius: '10px', padding: '8px 12px', cursor: 'pointer', fontWeight: 600, fontSize: '13px' },
-  inlineToggleLabel: { display: 'inline-flex', alignItems: 'center', gap: '8px', fontSize: '14px', fontWeight: 600, color: '#334155' },
-  activeBadge: { display: 'inline-block', background: '#ecfdf5', border: '1px solid #86efac', color: '#166534', borderRadius: '999px', padding: '4px 10px', fontSize: '12px', fontWeight: 700 },
-  archivedBadge: { display: 'inline-block', background: '#f1f5f9', border: '1px solid #cbd5e1', color: '#475569', borderRadius: '999px', padding: '4px 10px', fontSize: '12px', fontWeight: 700 },
-  buttonRow: { display: 'flex', gap: '10px', flexWrap: 'wrap', marginTop: '14px' },
-  actionRow: { display: 'flex', gap: '8px', flexWrap: 'wrap' },
-  reportHeaderRow: { display: 'flex', justifyContent: 'space-between', gap: '16px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '12px' },
-  reportTotals: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '10px', marginTop: '16px', fontSize: '14px' },
-  statementFilterGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: '12px' },
-  ledgerSummaryGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginBottom: '16px' },
-  ledgerMiniCard: { background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '14px', padding: '14px' },
-  ledgerMiniValue: { fontSize: '22px', fontWeight: 700 },
-  tableWrap: { overflowX: 'auto' },
-  table: { width: '100%', borderCollapse: 'collapse' },
-  th: { textAlign: 'left', padding: '10px 8px', borderBottom: '1px solid #e2e8f0', fontSize: '13px', color: '#475569', whiteSpace: 'nowrap' },
-  td: { padding: '12px 8px', borderBottom: '1px solid #e2e8f0', fontSize: '14px', verticalAlign: 'top' },
-  smallMuted: { color: '#64748b', fontSize: '14px' },
-  infoBanner: { marginTop: '12px', marginBottom: '16px', background: '#eff6ff', border: '1px solid #93c5fd', color: '#1d4ed8', borderRadius: '12px', padding: '12px 14px', fontSize: '14px' },
-  voiceCard: { marginTop: '16px', marginBottom: '16px', border: '1px solid #dbeafe', background: '#f8fbff', borderRadius: '14px', padding: '14px' },
-  voiceHeaderRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '12px', flexWrap: 'wrap', marginBottom: '10px' },
-  voiceTitle: { fontSize: '16px', fontWeight: 700, marginBottom: '4px' },
-  voiceButtonGroup: { display: 'flex', gap: '10px', flexWrap: 'wrap' },
-  voicePrimaryButton: { background: '#1d4ed8', color: '#fff', border: 'none', borderRadius: '12px', padding: '12px 16px', fontWeight: 700, cursor: 'pointer', minHeight: '44px' },
-  voiceDangerButton: { background: '#b91c1c', color: '#fff', border: 'none', borderRadius: '12px', padding: '12px 16px', fontWeight: 700, cursor: 'pointer', minHeight: '44px' },
-  voiceSecondaryButton: { background: '#fff', color: '#0f172a', border: '1px solid #cbd5e1', borderRadius: '12px', padding: '12px 16px', fontWeight: 700, cursor: 'pointer', minHeight: '44px' },
-  voiceHelpBox: { marginBottom: '12px', padding: '10px 12px', borderRadius: '12px', background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1e3a8a', fontSize: '14px', lineHeight: 1.4 },
-  message: { marginTop: '16px', color: '#b91c1c', fontSize: '14px' },
-  messageBanner: { marginBottom: '18px', background: '#fff7ed', border: '1px solid #fdba74', color: '#9a3412', borderRadius: '12px', padding: '12px 14px', fontSize: '14px' },
-  successBanner: { marginBottom: '16px', background: '#ecfdf5', border: '1px solid #86efac', color: '#166534', borderRadius: '12px', padding: '12px 14px', fontSize: '14px' },
-  notesBox: { marginTop: '16px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px 14px', fontSize: '14px', color: '#334155' },
-  reportPrintHeader: { marginBottom: '14px', paddingBottom: '12px', borderBottom: '1px solid #e2e8f0' },
-  reportPrintCompany: { fontSize: '18px', fontWeight: 700, marginBottom: '6px' },
-  reportPrintTitle: { fontSize: '24px', fontWeight: 700, marginBottom: '6px' },
-  reportPrintMeta: { fontSize: '14px', color: '#334155', marginBottom: '4px' },
-  reportPrintFooter: { marginTop: '16px', paddingTop: '12px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', color: '#64748b', fontSize: '12px' },
-  alertList: { display: 'grid', gap: '12px' },
-  alertCard: { border: '1px solid #e2e8f0', borderRadius: '14px', padding: '14px', background: '#ffffff' },
-  alertCardTopRow: { display: 'flex', justifyContent: 'space-between', gap: '10px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '8px' },
-  alertCardTitle: { fontSize: '16px', fontWeight: 700, marginBottom: '4px' },
-  alertSummaryInline: { display: 'flex', gap: '8px', flexWrap: 'wrap' },
-  alertBadgeHigh: { display: 'inline-block', background: '#fef2f2', border: '1px solid #fca5a5', color: '#b91c1c', borderRadius: '999px', padding: '4px 10px', fontSize: '12px', fontWeight: 700 },
-  alertBadgeMedium: { display: 'inline-block', background: '#fff7ed', border: '1px solid #fdba74', color: '#c2410c', borderRadius: '999px', padding: '4px 10px', fontSize: '12px', fontWeight: 700 },
-  alertBadgeLow: { display: 'inline-block', background: '#eff6ff', border: '1px solid #93c5fd', color: '#1d4ed8', borderRadius: '999px', padding: '4px 10px', fontSize: '12px', fontWeight: 700 },
-  notesCountPill: { display: 'inline-block', background: '#ecfeff', border: '1px solid #67e8f9', color: '#155e75', borderRadius: '999px', padding: '4px 10px', fontSize: '12px', fontWeight: 700 },
-  notesMetaGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px', marginTop: '16px', marginBottom: '8px' },
-  textarea: { width: '100%', minHeight: '180px', boxSizing: 'border-box', padding: '12px', borderRadius: '12px', border: '1px solid #cbd5e1', background: '#fff', fontSize: '14px', fontFamily: 'Arial, sans-serif', resize: 'vertical' },
+  page: {
+    minHeight: '100vh',
+    background: '#f8f6f3',
+    padding: '16px',
+    fontFamily: 'Arial, sans-serif',
+    color: '#261525',
+  },
+  authPage: {
+    minHeight: '100vh',
+    background: 'linear-gradient(180deg, #f8f6f3 0%, #f3ede7 100%)',
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: '20px',
+    fontFamily: 'Arial, sans-serif',
+  },
+  authCard: {
+    width: '100%',
+    maxWidth: '420px',
+    background: '#ffffff',
+    border: '1px solid #eadfce',
+    borderRadius: '24px',
+    padding: '28px',
+    boxShadow: '0 12px 34px rgba(71, 15, 67, 0.10)',
+  },
+  authLogoWrap: {
+    display: 'flex',
+    justifyContent: 'center',
+    marginBottom: '18px',
+  },
+  authLogo: {
+    width: '220px',
+    maxWidth: '100%',
+    objectFit: 'contain',
+  },
+  authTitle: {
+    margin: '0 0 8px 0',
+    fontSize: '34px',
+    color: '#7b0f73',
+    textAlign: 'center',
+  },
+  authSubtitle: {
+    margin: '0 0 20px 0',
+    color: '#8c6d45',
+    fontSize: '14px',
+    textAlign: 'center',
+  },
+  loadingCard: {
+    maxWidth: '500px',
+    margin: '40px auto',
+    background: '#fff',
+    borderRadius: '20px',
+    border: '1px solid #eadfce',
+    padding: '24px',
+    boxShadow: '0 8px 24px rgba(71, 15, 67, 0.08)',
+  },
+  brandHeader: {
+    display: 'flex',
+    justifyContent: 'space-between',
+    gap: '16px',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    marginBottom: '20px',
+    background: '#ffffff',
+    border: '1px solid #eadfce',
+    borderRadius: '22px',
+    padding: '18px 20px',
+    boxShadow: '0 10px 30px rgba(71, 15, 67, 0.08)',
+  },
+  brandHeaderLeft: {
+    display: 'flex',
+    alignItems: 'center',
+    gap: '14px',
+    flexWrap: 'wrap',
+  },
+  logoWrap: {
+    background: '#fffaf6',
+    border: '1px solid #eadfce',
+    borderRadius: '18px',
+    padding: '10px 12px',
+  },
+  logo: {
+    width: '170px',
+    maxWidth: '42vw',
+    objectFit: 'contain',
+    display: 'block',
+  },
+  brandTitle: {
+    margin: 0,
+    fontSize: '28px',
+    lineHeight: 1.1,
+    color: '#7b0f73',
+  },
+  brandSubtitle: {
+    margin: '6px 0 0 0',
+    color: '#c79b62',
+    fontSize: '14px',
+    letterSpacing: '.06em',
+    textTransform: 'uppercase',
+    fontWeight: 700,
+  },
+  headerActions: {
+    display: 'flex',
+    gap: '10px',
+    flexWrap: 'wrap',
+  },
+  topControls: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
+    gap: '14px',
+    marginBottom: '18px',
+  },
+  controlBlock: {
+    background: '#ffffff',
+    border: '1px solid #eadfce',
+    borderRadius: '18px',
+    padding: '16px',
+    boxShadow: '0 4px 14px rgba(71, 15, 67, 0.05)',
+  },
+  tabRow: {
+    display: 'flex',
+    gap: '10px',
+    flexWrap: 'wrap',
+    marginBottom: '18px',
+    overflowX: 'auto',
+    paddingBottom: '2px',
+  },
+  tabButton: {
+    background: '#f1e7ef',
+    color: '#5a1a54',
+    border: '1px solid #e0cde0',
+    borderRadius: '999px',
+    padding: '11px 18px',
+    cursor: 'pointer',
+    fontWeight: 700,
+    whiteSpace: 'nowrap',
+  },
+  activeTabButton: {
+    background: '#7b0f73',
+    color: '#ffffff',
+    border: '1px solid #7b0f73',
+    borderRadius: '999px',
+    padding: '11px 18px',
+    cursor: 'pointer',
+    fontWeight: 700,
+    whiteSpace: 'nowrap',
+    boxShadow: '0 8px 18px rgba(123, 15, 115, 0.22)',
+  },
+  cardGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+    gap: '14px',
+    marginBottom: '18px',
+  },
+  kpiCard: {
+    background: '#ffffff',
+    border: '1px solid #eadfce',
+    borderRadius: '20px',
+    padding: '18px',
+    boxShadow: '0 6px 18px rgba(71, 15, 67, 0.05)',
+  },
+  kpiLabel: {
+    color: '#8c6d45',
+    fontSize: '12px',
+    marginBottom: '8px',
+    textTransform: 'uppercase',
+    letterSpacing: '.08em',
+    fontWeight: 700,
+  },
+  kpiValue: {
+    fontSize: '28px',
+    fontWeight: 700,
+    color: '#381535',
+  },
+  kpiValueSmall: {
+    fontSize: '18px',
+    fontWeight: 700,
+    lineHeight: 1.3,
+    color: '#381535',
+  },
+  sectionGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 2fr) minmax(320px, 1fr)',
+    gap: '16px',
+  },
+  paymentLayout: {
+    display: 'grid',
+    gap: '16px',
+  },
+  paymentGrid: {
+    display: 'grid',
+    gridTemplateColumns: 'minmax(0, 1.5fr) minmax(280px, 1fr)',
+    gap: '16px',
+  },
+  card: {
+    background: '#ffffff',
+    border: '1px solid #eadfce',
+    borderRadius: '22px',
+    padding: '20px',
+    boxShadow: '0 8px 22px rgba(71, 15, 67, 0.05)',
+  },
+  mobileHeroCard: {
+    background: 'linear-gradient(135deg, #fffaf6 0%, #f8ebf6 100%)',
+    border: '1px solid #eadfce',
+    borderRadius: '24px',
+    padding: '22px',
+    boxShadow: '0 10px 26px rgba(71, 15, 67, 0.06)',
+    display: 'grid',
+    gap: '16px',
+  },
+  mobileHeroTextWrap: {
+    display: 'grid',
+    gap: '8px',
+  },
+  mobileHeroEyebrow: {
+    color: '#c79b62',
+    textTransform: 'uppercase',
+    letterSpacing: '.09em',
+    fontWeight: 700,
+    fontSize: '12px',
+  },
+  mobileHeroTitle: {
+    margin: 0,
+    color: '#7b0f73',
+    fontSize: '30px',
+    lineHeight: 1.1,
+  },
+  mobileHeroText: {
+    margin: 0,
+    color: '#5b4a3b',
+    fontSize: '15px',
+    lineHeight: 1.5,
+  },
+  cardTitle: {
+    marginTop: 0,
+    marginBottom: '12px',
+    fontSize: '22px',
+    color: '#381535',
+  },
+  label: {
+    display: 'block',
+    marginBottom: '6px',
+    marginTop: '12px',
+    fontSize: '14px',
+    fontWeight: 700,
+    color: '#5a1a54',
+  },
+  input: {
+    width: '100%',
+    boxSizing: 'border-box',
+    padding: '13px 14px',
+    borderRadius: '14px',
+    border: '1px solid #d9c2cf',
+    background: '#fff',
+    fontSize: '15px',
+    color: '#261525',
+  },
+  textarea: {
+    width: '100%',
+    boxSizing: 'border-box',
+    padding: '13px 14px',
+    borderRadius: '14px',
+    border: '1px solid #d9c2cf',
+    background: '#fff',
+    fontSize: '15px',
+    color: '#261525',
+    resize: 'vertical',
+    fontFamily: 'Arial, sans-serif',
+  },
+  primaryButton: {
+    marginTop: '16px',
+    background: '#7b0f73',
+    color: '#fff',
+    border: 'none',
+    borderRadius: '14px',
+    padding: '13px 18px',
+    cursor: 'pointer',
+    fontWeight: 700,
+    boxShadow: '0 8px 18px rgba(123, 15, 115, 0.22)',
+  },
+  secondaryButton: {
+    background: '#f3e7d7',
+    color: '#5b3b18',
+    border: '1px solid #e2c59c',
+    borderRadius: '14px',
+    padding: '13px 18px',
+    cursor: 'pointer',
+    fontWeight: 700,
+  },
+  buttonRow: {
+    display: 'flex',
+    gap: '10px',
+    flexWrap: 'wrap',
+    marginTop: '14px',
+  },
+  mobileButtonRow: {
+    display: 'flex',
+    gap: '10px',
+    flexWrap: 'wrap',
+    marginTop: '8px',
+  },
+  tableWrap: {
+    overflowX: 'auto',
+  },
+  table: {
+    width: '100%',
+    borderCollapse: 'collapse',
+  },
+  th: {
+    textAlign: 'left',
+    padding: '10px 8px',
+    borderBottom: '1px solid #eadfce',
+    fontSize: '13px',
+    color: '#8c6d45',
+    whiteSpace: 'nowrap',
+    textTransform: 'uppercase',
+    letterSpacing: '.04em',
+  },
+  td: {
+    padding: '12px 8px',
+    borderBottom: '1px solid #f0e6d9',
+    fontSize: '14px',
+  },
+  smallMuted: {
+    color: '#8c6d45',
+    fontSize: '14px',
+  },
+  message: {
+    marginTop: '16px',
+    color: '#9f1239',
+    fontSize: '14px',
+  },
+  messageBanner: {
+    marginBottom: '18px',
+    background: '#fff7ed',
+    border: '1px solid #fdba74',
+    color: '#9a3412',
+    borderRadius: '14px',
+    padding: '12px 14px',
+    fontSize: '14px',
+  },
+  mobileChecklist: {
+    display: 'grid',
+    gap: '10px',
+  },
+  mobileChecklistItem: {
+    padding: '12px 14px',
+    borderRadius: '14px',
+    background: '#fcf7f3',
+    border: '1px solid #eadfce',
+    color: '#4d2d4a',
+    fontSize: '14px',
+  },
+  mobilePreviewCard: {
+    marginTop: '16px',
+    padding: '16px',
+    borderRadius: '18px',
+    background: '#fffaf6',
+    border: '1px solid #eadfce',
+  },
+  mobilePreviewLabel: {
+    fontSize: '12px',
+    color: '#8c6d45',
+    textTransform: 'uppercase',
+    letterSpacing: '.08em',
+    fontWeight: 700,
+    marginBottom: '6px',
+  },
+  mobilePreviewValue: {
+    fontSize: '17px',
+    color: '#381535',
+    fontWeight: 700,
+    lineHeight: 1.4,
+  },
 }
