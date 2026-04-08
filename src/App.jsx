@@ -2088,8 +2088,21 @@ This permanently removes the payment from the ledger.`
 
   return (
     <div style={styles.page}>
-      <style>{`\n        @media (max-width: 900px) {\n          .responsive-section-grid { grid-template-columns: 1fr !important; }\n          .responsive-payment-grid { grid-template-columns: 1fr !important; }\n        }\n      `}</style>
-      <div style={styles.header}>
+      <style>{`
+        @media (max-width: 900px) {
+          .responsive-section-grid {
+            grid-template-columns: 1fr !important;
+          }
+          .responsive-payment-grid {
+            grid-template-columns: 1fr !important;
+          }
+          .responsive-header {
+            align-items: flex-start !important;
+          }
+        }
+      `}</style>
+
+      <div className="responsive-header" style={styles.header}>
         <div style={styles.brandHeaderLeft}>
           <div style={styles.logoWrap}>
             <img src="/logo.png" alt="Open Door Support" style={styles.logo} />
@@ -2568,7 +2581,11 @@ This permanently removes the payment from the ledger.`
           </div>
 
           <div style={styles.card}>
-            <h2 style={styles.cardTitle}>Quick Payment Entry</h2>
+            <div style={styles.mobileHeroCard}>
+              <div style={styles.mobileHeroEyebrow}>Open Door Support</div>
+              <h2 style={styles.mobileHeroTitle}>Quick Payment Entry</h2>
+              <p style={styles.mobileHeroText}>Built for easier phone use with larger controls, stacked spacing, and voice-friendly entry tools.</p>
+            </div>
             <p style={styles.smallMuted}>Default date starts on today, the last saved payment method is remembered, and you can save another payment without rebuilding the form.</p>
             <div style={styles.infoBanner}>Payments post by the payment date you enter, not the month currently showing at the top. After you save, the month selector will follow that payment date so you can see it in the right month.</div>
 
@@ -3510,8 +3527,6 @@ Object.assign(styles, {
   secondaryButton: { ...styles.secondaryButton, background: '#f3e7d7', color: '#5b3b18', border: '1px solid #e2c59c', borderRadius: '14px', fontWeight: 700 },
   smallPrimaryButton: { ...styles.smallPrimaryButton, background: '#7b0f73' },
   smallSecondaryButton: { ...styles.smallSecondaryButton, background: '#f3e7d7', color: '#5b3b18', border: '1px solid #e2c59c' },
-  sectionGrid: { ...styles.sectionGrid, gridTemplateColumns: 'minmax(0, 2fr) minmax(320px, 1fr)' },
-  reportHeaderRow: { ...styles.reportHeaderRow, alignItems: 'center' },
   th: { ...styles.th, borderBottom: '1px solid #eadfce', color: '#8c6d45', textTransform: 'uppercase', letterSpacing: '.04em' },
   td: { ...styles.td, borderBottom: '1px solid #f0e6d9' },
   smallMuted: { ...styles.smallMuted, color: '#8c6d45' },
@@ -3525,6 +3540,9 @@ Object.assign(styles, {
   searchSummaryBar: { ...styles.searchSummaryBar, background: '#fcf7f3', border: '1px solid #eadfce', color: '#4d2d4a' },
   linkButton: { ...styles.linkButton, color: '#7b0f73' },
   messageBanner: { ...styles.messageBanner, borderRadius: '14px' },
-  successBanner: { ...styles.successBanner, borderRadius: '14px' }
+  successBanner: { ...styles.successBanner, borderRadius: '14px' },
+  mobileHeroCard: { marginBottom: '16px', background: 'linear-gradient(135deg, #fffaf6 0%, #f8ebf6 100%)', border: '1px solid #eadfce', borderRadius: '24px', padding: '18px', boxShadow: '0 10px 26px rgba(71, 15, 67, 0.06)' },
+  mobileHeroEyebrow: { color: '#c79b62', textTransform: 'uppercase', letterSpacing: '.09em', fontWeight: 700, fontSize: '12px', marginBottom: '8px' },
+  mobileHeroTitle: { margin: '0 0 8px 0', color: '#7b0f73', fontSize: '28px', lineHeight: 1.1 },
+  mobileHeroText: { margin: 0, color: '#5b4a3b', fontSize: '15px', lineHeight: 1.5 }
 })
-
