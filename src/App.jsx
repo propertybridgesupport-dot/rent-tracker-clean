@@ -3590,5 +3590,11 @@ Object.assign(styles, {
   mobileHeroCard: { marginBottom: '16px', background: 'linear-gradient(135deg, #fffaf6 0%, #f8ebf6 100%)', border: '1px solid #eadfce', borderRadius: '24px', padding: '18px', boxShadow: '0 10px 26px rgba(71, 15, 67, 0.06)' },
   mobileHeroEyebrow: { color: '#c79b62', textTransform: 'uppercase', letterSpacing: '.09em', fontWeight: 700, fontSize: '12px', marginBottom: '8px' },
   mobileHeroTitle: { margin: '0 0 8px 0', color: '#7b0f73', fontSize: '28px', lineHeight: 1.1 },
-  mobileHeroText: { margin: 0, color: '#5b4a3b', fontSize: '15px', lineHeight: 1.5 }
+  mobileHeroText: { margin: 0, color: '#5b4a3b', fontSize: '15px', lineHeight: 1.5 },
+  brandHeader: { ...styles.header, background: 'linear-gradient(135deg, #2f102d 0%, #4a1546 100%)', border: '1px solid #4f234a', borderRadius: '22px', padding: '18px 20px', boxShadow: '0 10px 30px rgba(47, 16, 45, 0.25)' },
+  brandHeaderLeft: { display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' },
+  logoWrap: { background: 'rgba(255, 250, 246, 0.10)', border: '1px solid rgba(231, 212, 187, 0.22)', borderRadius: '18px', padding: '10px 12px' },
+  logo: { width: '170px', maxWidth: '42vw', objectFit: 'contain', display: 'block' },
+  brandTitle: { margin: 0, fontSize: '28px', lineHeight: 1.1, color: '#ffffff' },
+  brandSubtitle: { margin: '6px 0 0 0', color: '#e7d4bb', fontSize: '14px', letterSpacing: '.06em', textTransform: 'uppercase', fontWeight: 700 }
 })
