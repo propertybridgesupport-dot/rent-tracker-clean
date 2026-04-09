@@ -230,6 +230,7 @@ export default function App() {
   const [selectedNotesPropertyId, setSelectedNotesPropertyId] = useState('')
   const [notesDraft, setNotesDraft] = useState('')
   const [logoRefreshKey, setLogoRefreshKey] = useState(0)
+  const [embeddedReportLogoSrc, setEmbeddedReportLogoSrc] = useState('')
 
   const [companyForm, setCompanyForm] = useState({
     companyName: '',
@@ -376,6 +377,33 @@ export default function App() {
     if (typeof window === 'undefined') return
     window.localStorage.setItem('rentTrackerPropertyNotes', JSON.stringify(propertyNotes))
   }, [propertyNotes])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    let isCancelled = false
+
+    async function loadEmbeddedLogo() {
+      try {
+        const response = await fetch(logoSrc, { cache: 'reload' })
+        const blob = await response.blob()
+        const reader = new FileReader()
+        reader.onloadend = () => {
+          if (!isCancelled) {
+            setEmbeddedReportLogoSrc(typeof reader.result === 'string' ? reader.result : '')
+          }
+        }
+        reader.readAsDataURL(blob)
+      } catch (error) {
+        console.error('Unable to embed report logo.', error)
+        if (!isCancelled) setEmbeddedReportLogoSrc('')
+      }
+    }
+
+    loadEmbeddedLogo()
+    return () => {
+      isCancelled = true
+    }
+  }, [logoSrc])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -1328,6 +1356,7 @@ This permanently removes the payment from the ledger.`
     if (typeof window === 'undefined') return '/logo.png'
     return `${window.location.origin}/logo.png?v=${logoRefreshKey}`
   }, [logoRefreshKey])
+  const reportLogoSrc = embeddedReportLogoSrc || logoSrc
 
   function refreshLogos() {
     setLogoRefreshKey(Date.now())
@@ -2074,8 +2103,11 @@ This permanently removes the payment from the ledger.`
     `)
     printWindow.document.close()
     printWindow.focus()
+    printWindow.onafterprint = () => {
+      try { printWindow.close() } catch (error) { console.error('Unable to close print window.', error) }
+      refreshLogos()
+    }
     printWindow.print()
-    printWindow.close()
   }
 
 
@@ -3319,7 +3351,7 @@ This permanently removes the payment from the ledger.`
               <div style={styles.reportBrandShell}>
                 <div style={styles.reportBrandTop}>
                   <div style={styles.reportBrandLogoWrap}>
-                    <img src={logoSrc} alt="Open Door Support" style={styles.reportBrandLogo} />
+                    <img src={reportLogoSrc} alt="Open Door Support" style={styles.reportBrandLogo} />
                   </div>
                   <div>
                     <div style={styles.reportBrandTitle}>Open Door Support</div>
@@ -3416,7 +3448,7 @@ This permanently removes the payment from the ledger.`
               <div style={styles.reportBrandShell}>
                 <div style={styles.reportBrandTop}>
                   <div style={styles.reportBrandLogoWrap}>
-                    <img src={logoSrc} alt="Open Door Support" style={styles.reportBrandLogo} />
+                    <img src={reportLogoSrc} alt="Open Door Support" style={styles.reportBrandLogo} />
                   </div>
                   <div>
                     <div style={styles.reportBrandTitle}>Open Door Support</div>
