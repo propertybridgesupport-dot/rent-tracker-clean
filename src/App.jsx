@@ -380,7 +380,7 @@ export default function App() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return
-    let isCancelled = false
+    let cancelled = false
 
     async function loadEmbeddedLogo() {
       try {
@@ -388,25 +388,26 @@ export default function App() {
         const blob = await response.blob()
         const reader = new FileReader()
         reader.onloadend = () => {
-          if (!isCancelled) {
+          if (!cancelled) {
             setEmbeddedReportLogoSrc(typeof reader.result === 'string' ? reader.result : '')
           }
         }
         reader.readAsDataURL(blob)
       } catch (error) {
         console.error('Unable to embed report logo.', error)
-        if (!isCancelled) setEmbeddedReportLogoSrc('')
+        if (!cancelled) setEmbeddedReportLogoSrc('')
       }
     }
 
     loadEmbeddedLogo()
     return () => {
-      isCancelled = true
+      cancelled = true
     }
   }, [logoSrc])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
+
     function handleReturnFromPrint() {
       setTimeout(() => {
         refreshLogos()
@@ -2066,17 +2067,13 @@ This permanently removes the payment from the ledger.`
         <head>
           <title>${title}</title>
           <style>
+            * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+            @page { margin: 0.45in; }
             body { font-family: Arial, sans-serif; padding: 28px; color: #261525; background: #ffffff; }
             .print-shell { max-width: 1100px; margin: 0 auto; }
-            .reportBrandShell { background: linear-gradient(135deg, #220821 0%, #4a1546 58%, #5a1a54 100%) !important; border-top: 4px solid #d89a2b !important; border-radius: 0 !important; box-shadow: none !important; }
-            .reportBrandTop { display: flex !important; align-items: center !important; gap: 16px !important; flex-wrap: wrap !important; }
-            .reportBrandLogoWrap { background: #f5ebdf !important; border: 1px solid rgba(231, 212, 187, 0.45) !important; border-radius: 8px !important; width: 180px !important; height: 64px !important; padding: 8px 14px !important; display: flex !important; align-items: center !important; justify-content: center !important; box-sizing: border-box !important; overflow: hidden !important; }
-            .reportBrandLogo { width: 100% !important; max-width: 150px !important; object-fit: contain !important; display: block !important; }
-            .reportBrandTitle { color: #f5ebdf !important; font-family: Georgia, 'Times New Roman', serif !important; font-size: 28px !important; font-weight: 700 !important; letter-spacing: -0.02em !important; }
-            .reportBrandSubtitle { color: #e7d4bb !important; font-size: 12px !important; letter-spacing: 2px !important; text-transform: uppercase !important; font-weight: 700 !important; margin-top: 6px !important; }
-            .report-brand-shell { margin-bottom: 18px; background: linear-gradient(135deg, #220821 0%, #4a1546 58%, #5a1a54 100%); border-top: 4px solid #d89a2b; border-radius: 18px; padding: 16px 18px; box-shadow: 0 8px 22px rgba(34, 8, 33, 0.18); }
+            .report-brand-shell { margin-bottom: 18px; background: linear-gradient(135deg, #220821 0%, #4a1546 58%, #5a1a54 100%) !important; border-top: 4px solid #d89a2b !important; border-radius: 0 !important; padding: 16px 18px; box-shadow: none !important; }
             .report-brand-top { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
-            .report-brand-logo-wrap { background: #f5ebdf; border: 1px solid rgba(231, 212, 187, 0.45); border-radius: 14px; padding: 8px 14px; width: 180px; height: 64px; display: flex; align-items: center; justify-content: center; box-sizing: border-box; }
+            .report-brand-logo-wrap { background: #f5ebdf; border: 1px solid rgba(231, 212, 187, 0.45); border-radius: 8px; padding: 8px 14px; width: 180px; height: 64px; display: flex; align-items: center; justify-content: center; box-sizing: border-box; overflow: hidden; }
             .report-brand-logo { width: 100%; max-width: 150px; object-fit: contain; display: block; }
             .report-brand-title { font-size: 28px; line-height: 1.02; color: #f5ebdf; font-family: Georgia, 'Times New Roman', serif; font-weight: 700; letter-spacing: -0.02em; }
             .report-brand-subtitle { margin-top: 6px; color: #e7d4bb; font-size: 12px; letter-spacing: .14em; text-transform: uppercase; font-weight: 700; }
@@ -3819,7 +3816,7 @@ const styles = {
   textarea: { width: '100%', minHeight: '180px', boxSizing: 'border-box', padding: '12px', borderRadius: '12px', border: '1px solid #cbd5e1', background: '#fff', fontSize: '14px', fontFamily: 'Arial, sans-serif', resize: 'vertical' },
   reportBrandShell: { marginBottom: '14px', background: 'linear-gradient(135deg, #220821 0%, #4a1546 58%, #5a1a54 100%)', borderTop: '4px solid #d89a2b', borderRadius: '0', padding: '16px 18px', boxShadow: 'none' },
   reportBrandTop: { display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' },
-  reportBrandLogoWrap: { background: '#f5ebdf', border: '1px solid rgba(231, 212, 187, 0.45)', borderRadius: '14px', padding: '8px 14px', width: '180px', height: '64px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box' },
+  reportBrandLogoWrap: { background: '#f5ebdf', border: '1px solid rgba(231, 212, 187, 0.45)', borderRadius: '8px', padding: '8px 14px', width: '180px', height: '64px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box', overflow: 'hidden' },
   reportBrandLogo: { width: '100%', maxWidth: '150px', objectFit: 'contain', display: 'block' },
   reportBrandTitle: { fontSize: '28px', lineHeight: 1.02, color: '#f5ebdf', fontFamily: 'Georgia, Times New Roman, serif', fontWeight: 700, letterSpacing: '-0.02em' },
   reportBrandSubtitle: { marginTop: '6px', color: '#e7d4bb', fontSize: '12px', letterSpacing: '.14em', textTransform: 'uppercase', fontWeight: 700 },
