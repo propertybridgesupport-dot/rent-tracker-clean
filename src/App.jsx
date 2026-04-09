@@ -1312,7 +1312,7 @@ This permanently removes the payment from the ledger.`
   const nextMonthKey = useMemo(() => getNextMonthKey(selectedMonth), [selectedMonth])
   const logoSrc = useMemo(() => {
     if (typeof window === 'undefined') return '/logo.png'
-    return `${window.location.origin}/logo.png?v=3`
+    return `${window.location.origin}/logo.png?v=4`
   }, [])
 
   const normalizedSearchQuery = useMemo(() => normalizeSearchText(searchQuery), [searchQuery])
@@ -2018,6 +2018,11 @@ This permanently removes the payment from the ledger.`
           <style>
             body { font-family: Arial, sans-serif; padding: 28px; color: #261525; background: #ffffff; }
             .print-shell { max-width: 1100px; margin: 0 auto; }
+            .reportBrandShell, .reportBrandTop { background: #3b0a2a !important; }
+            .reportBrandShell { border-top: 3px solid #d89a2b !important; border-radius: 0 !important; box-shadow: none !important; }
+            .reportBrandTitle { color: #f5ebdf !important; }
+            .reportBrandSubtitle { color: #e7d4bb !important; }
+            .reportBrandLogoWrap { background: #f5ebdf !important; border-radius: 8px !important; box-shadow: none !important; }
             .report-brand-shell { margin-bottom: 18px; background: linear-gradient(135deg, #220821 0%, #4a1546 58%, #5a1a54 100%); border-top: 4px solid #d89a2b; border-radius: 18px; padding: 16px 18px; box-shadow: 0 8px 22px rgba(34, 8, 33, 0.18); }
             .report-brand-top { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
             .report-brand-logo-wrap { background: #f5ebdf; border: 1px solid rgba(231, 212, 187, 0.45); border-radius: 14px; padding: 8px 14px; width: 180px; height: 64px; display: flex; align-items: center; justify-content: center; box-sizing: border-box; }
@@ -2051,21 +2056,7 @@ This permanently removes the payment from the ledger.`
     printWindow.document.close()
     printWindow.focus()
     printWindow.onafterprint = () => {
-      try {
-        printWindow.close()
-      } catch (error) {
-        console.error('Unable to close print window.', error)
-      }
-      setTimeout(() => {
-        const images = document.querySelectorAll('img')
-        images.forEach((img) => {
-          const currentSrc = img.getAttribute('src') || ''
-          if (currentSrc.includes('/logo.png')) {
-            const base = currentSrc.split('?')[0]
-            img.setAttribute('src', `${base}?v=${Date.now()}`)
-          }
-        })
-      }, 50)
+      try { printWindow.close() } catch (error) { console.error('Unable to close print window.', error) }
     }
     printWindow.print()
   }
@@ -3770,12 +3761,12 @@ const styles = {
   notesCountPill: { display: 'inline-block', background: '#ecfeff', border: '1px solid #67e8f9', color: '#155e75', borderRadius: '999px', padding: '4px 10px', fontSize: '12px', fontWeight: 700 },
   notesMetaGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px', marginTop: '16px', marginBottom: '8px' },
   textarea: { width: '100%', minHeight: '180px', boxSizing: 'border-box', padding: '12px', borderRadius: '12px', border: '1px solid #cbd5e1', background: '#fff', fontSize: '14px', fontFamily: 'Arial, sans-serif', resize: 'vertical' },
-  reportBrandShell: { marginBottom: '14px', background: 'linear-gradient(135deg, #220821 0%, #4a1546 58%, #5a1a54 100%)', borderTop: '4px solid #d89a2b', borderRadius: '18px', padding: '16px 18px', boxShadow: '0 8px 22px rgba(34, 8, 33, 0.18)' },
-  reportBrandTop: { display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' },
+  reportBrandShell: { marginBottom: '14px', background: '#3b0a2a', borderTop: '3px solid #d89a2b', borderRadius: '0', padding: '16px 18px' },
+  reportBrandTop: { display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap', background: '#3b0a2a' },
   reportBrandLogoWrap: { background: '#f5ebdf', border: '1px solid rgba(231, 212, 187, 0.45)', borderRadius: '14px', padding: '8px 14px', width: '180px', height: '64px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box' },
   reportBrandLogo: { width: '100%', maxWidth: '150px', objectFit: 'contain', display: 'block' },
-  reportBrandTitle: { fontSize: '28px', lineHeight: 1.02, color: '#f5ebdf', fontFamily: 'Georgia, Times New Roman, serif', fontWeight: 700, letterSpacing: '-0.02em' },
-  reportBrandSubtitle: { marginTop: '6px', color: '#e7d4bb', fontSize: '12px', letterSpacing: '.14em', textTransform: 'uppercase', fontWeight: 700 },
+  reportBrandTitle: { fontSize: '28px', lineHeight: 1.02, color: '#f5ebdf', fontFamily: 'Georgia, Times New Roman, serif', fontWeight: 700, letterSpacing: '-0.02em', background: '#3b0a2a' },
+  reportBrandSubtitle: { marginTop: '6px', color: '#e7d4bb', fontSize: '12px', letterSpacing: '.14em', textTransform: 'uppercase', fontWeight: 700, background: '#3b0a2a' },
   invoiceSummaryGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginTop: '12px' },
   invoiceSummaryCard: { background: '#fffaf6', border: '1px solid #eadfce', borderRadius: '14px', padding: '14px' },
   invoiceSummaryLabel: { color: '#9a6d2f', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em', fontWeight: 700, marginBottom: '8px' },
