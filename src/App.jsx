@@ -25,6 +25,22 @@ function formatMonthYear(month) {
   return monthLabel(month)
 }
 
+
+function buildReportHeaderImage(logoUrl) {
+  const safeLogoUrl = String(logoUrl || '').replace(/&/g, '&amp;').replace(/"/g, '&quot;')
+  const svg = `
+    <svg xmlns="http://www.w3.org/2000/svg" width="1200" height="132" viewBox="0 0 1200 132">
+      <rect x="0" y="0" width="1200" height="132" fill="#3b0a2a"/>
+      <rect x="0" y="0" width="1200" height="4" fill="#d89a2b"/>
+      <rect x="34" y="26" rx="8" ry="8" width="182" height="54" fill="#f5ebdf" stroke="rgba(231,212,187,0.55)"/>
+      <image href="${safeLogoUrl}" x="50" y="35" width="150" height="34" preserveAspectRatio="xMidYMid meet"/>
+      <text x="245" y="51" fill="#f5ebdf" font-size="28" font-family="Georgia, 'Times New Roman', serif" font-weight="700">Open Door Support</text>
+      <text x="245" y="74" fill="#e7d4bb" font-size="12" letter-spacing="2.6" font-family="Arial, sans-serif" font-weight="700">PROPERTY MANAGEMENT SYSTEM</text>
+    </svg>
+  `.trim()
+  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`
+}
+
 function isMobileViewport() {
   if (typeof window === 'undefined') return false
   return window.innerWidth <= 768
@@ -379,18 +395,14 @@ export default function App() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return
-
-    function handleReturnFromPrint() {
-      setTimeout(() => {
-        refreshLogos()
-      }, 100)
+    function handleReturn() {
+      setTimeout(() => refreshLogos(), 120)
     }
-
-    window.addEventListener('focus', handleReturnFromPrint)
-    window.addEventListener('pageshow', handleReturnFromPrint)
+    window.addEventListener('focus', handleReturn)
+    window.addEventListener('pageshow', handleReturn)
     return () => {
-      window.removeEventListener('focus', handleReturnFromPrint)
-      window.removeEventListener('pageshow', handleReturnFromPrint)
+      window.removeEventListener('focus', handleReturn)
+      window.removeEventListener('pageshow', handleReturn)
     }
   }, [])
 
@@ -1332,6 +1344,7 @@ This permanently removes the payment from the ledger.`
     if (typeof window === 'undefined') return '/logo.png'
     return `${window.location.origin}/logo.png?v=${logoRefreshKey}`
   }, [logoRefreshKey])
+  const reportHeaderImageSrc = useMemo(() => buildReportHeaderImage(logoSrc), [logoSrc])
 
   function refreshLogos() {
     setLogoRefreshKey(Date.now())
@@ -2072,8 +2085,11 @@ This permanently removes the payment from the ledger.`
     `)
     printWindow.document.close()
     printWindow.focus()
+    printWindow.onafterprint = () => {
+      try { printWindow.close() } catch (error) { console.error('Unable to close print window.', error) }
+      refreshLogos()
+    }
     printWindow.print()
-    printWindow.close()
   }
 
 
@@ -3314,16 +3330,8 @@ This permanently removes the payment from the ledger.`
             </div>
 
             <div ref={ownerReportRef}>
-              <div style={styles.reportBrandShell}>
-                <div style={styles.reportBrandTop}>
-                  <div style={styles.reportBrandLogoWrap}>
-                    <img src={logoSrc} alt="Open Door Support" style={styles.reportBrandLogo} />
-                  </div>
-                  <div>
-                    <div style={styles.reportBrandTitle}>Open Door Support</div>
-                    <div style={styles.reportBrandSubtitle}>Property Management System</div>
-                  </div>
-                </div>
+              <div style={styles.reportHeaderImageWrap}>
+                <img src={reportHeaderImageSrc} alt="Open Door Support report header" style={styles.reportHeaderImage} />
               </div>
 
               <div style={styles.reportPrintHeader}>
@@ -3411,16 +3419,8 @@ This permanently removes the payment from the ledger.`
             </div>
 
             <div ref={managementInvoiceRef}>
-              <div style={styles.reportBrandShell}>
-                <div style={styles.reportBrandTop}>
-                  <div style={styles.reportBrandLogoWrap}>
-                    <img src={logoSrc} alt="Open Door Support" style={styles.reportBrandLogo} />
-                  </div>
-                  <div>
-                    <div style={styles.reportBrandTitle}>Open Door Support</div>
-                    <div style={styles.reportBrandSubtitle}>Property Management System</div>
-                  </div>
-                </div>
+              <div style={styles.reportHeaderImageWrap}>
+                <img src={reportHeaderImageSrc} alt="Open Door Support report header" style={styles.reportHeaderImage} />
               </div>
 
               <div style={styles.reportPrintHeader}>
@@ -3776,7 +3776,9 @@ const styles = {
   notesCountPill: { display: 'inline-block', background: '#ecfeff', border: '1px solid #67e8f9', color: '#155e75', borderRadius: '999px', padding: '4px 10px', fontSize: '12px', fontWeight: 700 },
   notesMetaGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px', marginTop: '16px', marginBottom: '8px' },
   textarea: { width: '100%', minHeight: '180px', boxSizing: 'border-box', padding: '12px', borderRadius: '12px', border: '1px solid #cbd5e1', background: '#fff', fontSize: '14px', fontFamily: 'Arial, sans-serif', resize: 'vertical' },
-  reportBrandShell: { marginBottom: '14px', background: 'linear-gradient(135deg, #220821 0%, #4a1546 58%, #5a1a54 100%)', borderTop: '4px solid #d89a2b', borderRadius: '18px', padding: '16px 18px', boxShadow: '0 8px 22px rgba(34, 8, 33, 0.18)' },
+  reportHeaderImageWrap: { marginBottom: '14px' },
+  reportHeaderImage: { display: 'block', width: '100%', height: 'auto' },
+  reportBrandShell: { marginBottom: '14px', background: '#3b0a2a', borderTop: '3px solid #d89a2b', borderRadius: '0', padding: '16px 18px', boxShadow: 'none' },
   reportBrandTop: { display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' },
   reportBrandLogoWrap: { background: '#f5ebdf', border: '1px solid rgba(231, 212, 187, 0.45)', borderRadius: '14px', padding: '8px 14px', width: '180px', height: '64px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box' },
   reportBrandLogo: { width: '100%', maxWidth: '150px', objectFit: 'contain', display: 'block' },
