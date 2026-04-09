@@ -1310,6 +1310,10 @@ This permanently removes the payment from the ledger.`
   const reportDateRangeLabel = getReportDateRangeLabel(reportStartDate, reportEndDate)
   const generatedOnLabel = getGeneratedOnLabel()
   const nextMonthKey = useMemo(() => getNextMonthKey(selectedMonth), [selectedMonth])
+  const logoSrc = useMemo(() => {
+    if (typeof window === 'undefined') return '/logo.png'
+    return `${window.location.origin}/logo.png?v=3`
+  }, [])
 
   const normalizedSearchQuery = useMemo(() => normalizeSearchText(searchQuery), [searchQuery])
 
@@ -2046,8 +2050,24 @@ This permanently removes the payment from the ledger.`
     `)
     printWindow.document.close()
     printWindow.focus()
+    printWindow.onafterprint = () => {
+      try {
+        printWindow.close()
+      } catch (error) {
+        console.error('Unable to close print window.', error)
+      }
+      setTimeout(() => {
+        const images = document.querySelectorAll('img')
+        images.forEach((img) => {
+          const currentSrc = img.getAttribute('src') || ''
+          if (currentSrc.includes('/logo.png')) {
+            const base = currentSrc.split('?')[0]
+            img.setAttribute('src', `${base}?v=${Date.now()}`)
+          }
+        })
+      }, 50)
+    }
     printWindow.print()
-    printWindow.close()
   }
 
 
@@ -2132,7 +2152,7 @@ This permanently removes the payment from the ledger.`
       <div style={styles.authPage}>
         <div style={styles.authCard}>
           <div style={styles.authLogoWrap}>
-            <img src="/logo.png" alt="Open Door Support" style={styles.authLogo} />
+            <img src={logoSrc} alt="Open Door Support" style={styles.authLogo} />
           </div>
           <h1 style={styles.authTitle}>Open Door Support</h1>
           <p style={styles.authSubtitle}>Sign in to manage companies, properties, payments, and reports.</p>
@@ -2269,7 +2289,7 @@ This permanently removes the payment from the ledger.`
 
         <div className="mobile-logo-panel" style={styles.logoPanel}>
           <div className="mobile-logo-wrap" style={styles.logoWrap}>
-            <img className="mobile-logo" src="/logo.png" alt="Open Door Support" style={styles.logo} />
+            <img className="mobile-logo" src={logoSrc} alt="Open Door Support" style={styles.logo} />
           </div>
         </div>
       </div>
@@ -3291,7 +3311,7 @@ This permanently removes the payment from the ledger.`
               <div style={styles.reportBrandShell}>
                 <div style={styles.reportBrandTop}>
                   <div style={styles.reportBrandLogoWrap}>
-                    <img src="/logo.png" alt="Open Door Support" style={styles.reportBrandLogo} />
+                    <img src={logoSrc} alt="Open Door Support" style={styles.reportBrandLogo} />
                   </div>
                   <div>
                     <div style={styles.reportBrandTitle}>Open Door Support</div>
@@ -3388,7 +3408,7 @@ This permanently removes the payment from the ledger.`
               <div style={styles.reportBrandShell}>
                 <div style={styles.reportBrandTop}>
                   <div style={styles.reportBrandLogoWrap}>
-                    <img src="/logo.png" alt="Open Door Support" style={styles.reportBrandLogo} />
+                    <img src={logoSrc} alt="Open Door Support" style={styles.reportBrandLogo} />
                   </div>
                   <div>
                     <div style={styles.reportBrandTitle}>Open Door Support</div>
@@ -3733,7 +3753,7 @@ const styles = {
   message: { marginTop: '16px', color: '#c79b62', fontSize: '14px' },
   messageBanner: { marginBottom: '18px', background: '#fff7ed', border: '1px solid #fdba74', color: '#9a3412', borderRadius: '12px', padding: '12px 14px', fontSize: '14px' },
   successBanner: { marginBottom: '16px', background: '#ecfdf5', border: '1px solid #86efac', color: '#166534', borderRadius: '12px', padding: '12px 14px', fontSize: '14px' },
-  notesBox: { marginTop: '16px', background: '#fbf7f1', border: '1px solid #e8dccb', borderRadius: '8px', padding: '12px 14px', fontSize: '14px', color: '#4b5563' },
+  notesBox: { marginTop: '16px', background: '#fbf7f1', border: '1px solid #e8dccb', borderRadius: '12px', padding: '12px 14px', fontSize: '14px', color: '#4b5563' },
   reportPrintHeader: { marginBottom: '14px', paddingBottom: '12px', borderBottom: '1px solid #d9cfc0' },
   reportPrintCompany: { fontSize: '18px', fontWeight: 700, marginBottom: '6px', color: '#2f102d' },
   reportPrintTitle: { fontSize: '24px', fontWeight: 700, marginBottom: '6px', color: '#2f102d' },
@@ -3750,14 +3770,14 @@ const styles = {
   notesCountPill: { display: 'inline-block', background: '#ecfeff', border: '1px solid #67e8f9', color: '#155e75', borderRadius: '999px', padding: '4px 10px', fontSize: '12px', fontWeight: 700 },
   notesMetaGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px', marginTop: '16px', marginBottom: '8px' },
   textarea: { width: '100%', minHeight: '180px', boxSizing: 'border-box', padding: '12px', borderRadius: '12px', border: '1px solid #cbd5e1', background: '#fff', fontSize: '14px', fontFamily: 'Arial, sans-serif', resize: 'vertical' },
-  reportBrandShell: { marginBottom: '14px', background: '#3b0a2a', borderTop: '3px solid #d89a2b', borderRadius: '0', padding: '16px 18px' },
+  reportBrandShell: { marginBottom: '14px', background: 'linear-gradient(135deg, #220821 0%, #4a1546 58%, #5a1a54 100%)', borderTop: '4px solid #d89a2b', borderRadius: '18px', padding: '16px 18px', boxShadow: '0 8px 22px rgba(34, 8, 33, 0.18)' },
   reportBrandTop: { display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' },
-  reportBrandLogoWrap: { background: '#f5ebdf', border: '1px solid rgba(231, 212, 187, 0.45)', borderRadius: '8px', padding: '8px 14px', width: '180px', height: '64px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box' },
+  reportBrandLogoWrap: { background: '#f5ebdf', border: '1px solid rgba(231, 212, 187, 0.45)', borderRadius: '14px', padding: '8px 14px', width: '180px', height: '64px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box' },
   reportBrandLogo: { width: '100%', maxWidth: '150px', objectFit: 'contain', display: 'block' },
   reportBrandTitle: { fontSize: '28px', lineHeight: 1.02, color: '#f5ebdf', fontFamily: 'Georgia, Times New Roman, serif', fontWeight: 700, letterSpacing: '-0.02em' },
   reportBrandSubtitle: { marginTop: '6px', color: '#e7d4bb', fontSize: '12px', letterSpacing: '.14em', textTransform: 'uppercase', fontWeight: 700 },
   invoiceSummaryGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginTop: '12px' },
-  invoiceSummaryCard: { background: '#fffaf6', border: '1px solid #eadfce', borderRadius: '8px', padding: '14px' },
+  invoiceSummaryCard: { background: '#fffaf6', border: '1px solid #eadfce', borderRadius: '14px', padding: '14px' },
   invoiceSummaryLabel: { color: '#9a6d2f', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em', fontWeight: 700, marginBottom: '8px' },
   invoiceSummaryValue: { color: '#2f102d', fontSize: '24px', fontWeight: 700 },
 }
