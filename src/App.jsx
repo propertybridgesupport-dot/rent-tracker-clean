@@ -287,6 +287,7 @@ export default function App() {
   const ownerReportRef = useRef(null)
   const propertyStatementRef = useRef(null)
   const tenantStatementRef = useRef(null)
+  const managementInvoiceRef = useRef(null)
   const propertyLedgerRef = useRef(null)
   const speechRecognitionRef = useRef(null)
   const voiceTranscriptRef = useRef(null)
@@ -2008,6 +2009,42 @@ This permanently removes the payment from the ledger.`
   }
 
 
+
+  function getManagementInvoiceNumber() {
+    const compactMonth = selectedMonth.replace('-', '')
+    const slug = (selectedCompanyName || 'company')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 18)
+    return `INV-${compactMonth}-${slug || 'company'}`
+  }
+
+  function emailManagementInvoice() {
+    if (!selectedCompanyEmail) {
+      setMessage('This company does not have an owner email saved yet.')
+      return
+    }
+
+    const subject = `${selectedCompanyName} - Property Management Fee Invoice - ${monthLabel(selectedMonth)}`
+    const lines = [
+      'Open Door Support',
+      'Property Management System',
+      '',
+      `Invoice: Property Management Fee Invoice`,
+      `Billing Month: ${monthLabel(selectedMonth)}`,
+      `Invoice #: ${getManagementInvoiceNumber()}`,
+      `Billed To: ${selectedCompanyName}`,
+      '',
+      `Collected Rent: ${currency(totalCollected)}`,
+      `Management Fee Rate: 10%`,
+      `Amount Due: ${currency(managementFeeCollected)}`,
+      '',
+      'Thank you for your business.',
+    ]
+    window.location.href = `mailto:${selectedCompanyEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(lines.join('\n'))}`
+  }
+
   function exportPropertyLedgerCsv() {
     if (!selectedReportProperty) {
       setMessage('Please select a property first.')
@@ -3245,9 +3282,20 @@ This permanently removes the payment from the ledger.`
             </div>
 
             <div ref={ownerReportRef}>
+
+              <div style={styles.reportBrandShell}>
+                <div style={styles.reportBrandTop}>
+                  <div style={styles.reportBrandLogoWrap}>
+                    <img src="/logo.png" alt="Open Door Support" style={styles.reportBrandLogo} />
+                  </div>
+                  <div>
+                    <div style={styles.reportBrandTitle}>Open Door Support</div>
+                    <div style={styles.reportBrandSubtitle}>Property Management System</div>
+                  </div>
+                </div>
+              </div>
               <div style={styles.reportPrintHeader}>
-                <div style={styles.reportPrintCompany}>{selectedCompanyName}</div>
-                <div style={styles.reportPrintTitle}>Owner Monthly Report</div>
+                <div style={styles.reportPrintTitle}>{selectedCompanyName} Owner Monthly Report</div>
                 <div style={styles.reportPrintMeta}>
                   <strong>Reporting Month:</strong> {monthLabel(selectedMonth)}
                 </div>
@@ -3300,6 +3348,85 @@ This permanently removes the payment from the ledger.`
 
               <div style={styles.reportPrintFooter}>
                 <span>{selectedCompanyName}</span>
+                <span>Generated {generatedOnLabel}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="mobile-card" style={styles.card}>
+            <div style={styles.reportHeaderRow}>
+              <div>
+                <h2 style={styles.cardTitle}>Property Management Fee Invoice</h2>
+                <p style={styles.smallMuted}>{selectedCompanyName}</p>
+              </div>
+              <div style={styles.actionRow}>
+                <button
+                  style={styles.smallSecondaryButton}
+                  type="button"
+                  onClick={() => printSection(managementInvoiceRef, 'Property Management Fee Invoice')}
+                >
+                  Print Invoice
+                </button>
+                <button
+                  style={styles.smallPrimaryButton}
+                  type="button"
+                  onClick={emailManagementInvoice}
+                >
+                  Email Invoice
+                </button>
+              </div>
+            </div>
+
+            <div ref={managementInvoiceRef}>
+              <div style={styles.reportBrandShell}>
+                <div style={styles.reportBrandTop}>
+                  <div style={styles.reportBrandLogoWrap}>
+                    <img src="/logo.png" alt="Open Door Support" style={styles.reportBrandLogo} />
+                  </div>
+                  <div>
+                    <div style={styles.reportBrandTitle}>Open Door Support</div>
+                    <div style={styles.reportBrandSubtitle}>Property Management System</div>
+                  </div>
+                </div>
+              </div>
+
+              <div style={styles.reportPrintHeader}>
+                <div style={styles.reportPrintTitle}>Property Management Fee Invoice</div>
+                <div style={styles.reportPrintMeta}>
+                  <strong>{monthLabel(selectedMonth)}</strong>
+                </div>
+                <div style={styles.reportPrintMeta}>
+                  <strong>Billed To:</strong> {selectedCompanyName}
+                </div>
+                <div style={styles.reportPrintMeta}>
+                  <strong>Invoice #:</strong> {getManagementInvoiceNumber()}
+                </div>
+                <div style={styles.reportPrintMeta}>
+                  <strong>Generated:</strong> {generatedOnLabel}
+                </div>
+              </div>
+
+              <div style={styles.invoiceSummaryGrid}>
+                <div style={styles.invoiceSummaryCard}>
+                  <div style={styles.invoiceSummaryLabel}>Collected Rent</div>
+                  <div style={styles.invoiceSummaryValue}>{currency(totalCollected)}</div>
+                </div>
+                <div style={styles.invoiceSummaryCard}>
+                  <div style={styles.invoiceSummaryLabel}>Management Fee Rate</div>
+                  <div style={styles.invoiceSummaryValue}>10%</div>
+                </div>
+                <div style={styles.invoiceSummaryCard}>
+                  <div style={styles.invoiceSummaryLabel}>Amount Due</div>
+                  <div style={styles.invoiceSummaryValue}>{currency(managementFeeCollected)}</div>
+                </div>
+              </div>
+
+              <div style={styles.notesBox}>
+                <strong>Invoice Notes:</strong> Property management fee for {monthLabel(selectedMonth)} based on rent collected for {selectedCompanyName}.
+              </div>
+
+              <div style={styles.reportPrintFooter}>
+                <span>Open Door Support</span>
                 <span>Generated {generatedOnLabel}</span>
               </div>
             </div>
@@ -3394,9 +3521,20 @@ This permanently removes the payment from the ledger.`
             </div>
 
             <div ref={propertyStatementRef}>
+
+              <div style={styles.reportBrandShell}>
+                <div style={styles.reportBrandTop}>
+                  <div style={styles.reportBrandLogoWrap}>
+                    <img src="/logo.png" alt="Open Door Support" style={styles.reportBrandLogo} />
+                  </div>
+                  <div>
+                    <div style={styles.reportBrandTitle}>Open Door Support</div>
+                    <div style={styles.reportBrandSubtitle}>Property Management System</div>
+                  </div>
+                </div>
+              </div>
               <div style={styles.reportPrintHeader}>
-                <div style={styles.reportPrintCompany}>{selectedCompanyName}</div>
-                <div style={styles.reportPrintTitle}>Property Account Statement</div>
+                <div style={styles.reportPrintTitle}>{selectedCompanyName} Property Account Statement</div>
                 <div style={styles.reportPrintMeta}>
                   <strong>Property:</strong> {selectedReportProperty ? selectedReportProperty.address : '—'}
                 </div>
@@ -3479,9 +3617,20 @@ This permanently removes the payment from the ledger.`
             </div>
 
             <div ref={tenantStatementRef}>
+
+              <div style={styles.reportBrandShell}>
+                <div style={styles.reportBrandTop}>
+                  <div style={styles.reportBrandLogoWrap}>
+                    <img src="/logo.png" alt="Open Door Support" style={styles.reportBrandLogo} />
+                  </div>
+                  <div>
+                    <div style={styles.reportBrandTitle}>Open Door Support</div>
+                    <div style={styles.reportBrandSubtitle}>Property Management System</div>
+                  </div>
+                </div>
+              </div>
               <div style={styles.reportPrintHeader}>
-                <div style={styles.reportPrintCompany}>{selectedCompanyName}</div>
-                <div style={styles.reportPrintTitle}>Tenant Account Statement</div>
+                <div style={styles.reportPrintTitle}>{selectedCompanyName} Tenant Account Statement</div>
                 <div style={styles.reportPrintMeta}>
                   <strong>Tenant:</strong> {selectedTenantName || '—'}
                 </div>
@@ -3607,12 +3756,12 @@ const styles = {
   message: { marginTop: '16px', color: '#c79b62', fontSize: '14px' },
   messageBanner: { marginBottom: '18px', background: '#fff7ed', border: '1px solid #fdba74', color: '#9a3412', borderRadius: '12px', padding: '12px 14px', fontSize: '14px' },
   successBanner: { marginBottom: '16px', background: '#ecfdf5', border: '1px solid #86efac', color: '#166534', borderRadius: '12px', padding: '12px 14px', fontSize: '14px' },
-  notesBox: { marginTop: '16px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '12px', padding: '12px 14px', fontSize: '14px', color: '#334155' },
-  reportPrintHeader: { marginBottom: '14px', paddingBottom: '12px', borderBottom: '1px solid #e2e8f0' },
-  reportPrintCompany: { fontSize: '18px', fontWeight: 700, marginBottom: '6px' },
-  reportPrintTitle: { fontSize: '24px', fontWeight: 700, marginBottom: '6px' },
-  reportPrintMeta: { fontSize: '14px', color: '#334155', marginBottom: '4px' },
-  reportPrintFooter: { marginTop: '16px', paddingTop: '12px', borderTop: '1px solid #e2e8f0', display: 'flex', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', color: '#64748b', fontSize: '12px' },
+  notesBox: { marginTop: '16px', background: '#fbf7f1', border: '1px solid #e8dccb', borderRadius: '12px', padding: '12px 14px', fontSize: '14px', color: '#4b5563' },
+  reportPrintHeader: { marginBottom: '14px', paddingBottom: '12px', borderBottom: '1px solid #d9cfc0' },
+  reportPrintCompany: { fontSize: '18px', fontWeight: 700, marginBottom: '6px', color: '#2f102d' },
+  reportPrintTitle: { fontSize: '24px', fontWeight: 700, marginBottom: '6px', color: '#2f102d' },
+  reportPrintMeta: { fontSize: '14px', color: '#4b5563', marginBottom: '4px' },
+  reportPrintFooter: { marginTop: '16px', paddingTop: '12px', borderTop: '1px solid #d9cfc0', display: 'flex', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap', color: '#6b7280', fontSize: '12px' },
   alertList: { display: 'grid', gap: '12px' },
   alertCard: { border: '1px solid #e2e8f0', borderRadius: '14px', padding: '14px', background: '#ffffff' },
   alertCardTopRow: { display: 'flex', justifyContent: 'space-between', gap: '10px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '8px' },
@@ -3624,6 +3773,17 @@ const styles = {
   notesCountPill: { display: 'inline-block', background: '#ecfeff', border: '1px solid #67e8f9', color: '#155e75', borderRadius: '999px', padding: '4px 10px', fontSize: '12px', fontWeight: 700 },
   notesMetaGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px', marginTop: '16px', marginBottom: '8px' },
   textarea: { width: '100%', minHeight: '180px', boxSizing: 'border-box', padding: '12px', borderRadius: '12px', border: '1px solid #cbd5e1', background: '#fff', fontSize: '14px', fontFamily: 'Arial, sans-serif', resize: 'vertical' },
+  reportBrandShell: { marginBottom: '14px', background: 'linear-gradient(135deg, #220821 0%, #4a1546 58%, #5a1a54 100%)', borderTop: '4px solid #d89a2b', borderRadius: '18px', padding: '16px 18px', boxShadow: '0 8px 22px rgba(34, 8, 33, 0.18)' },
+  reportBrandTop: { display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' },
+  reportBrandLogoWrap: { background: '#f5ebdf', border: '1px solid rgba(231, 212, 187, 0.45)', borderRadius: '14px', padding: '8px 12px', minWidth: '140px', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  reportBrandLogo: { width: '100%', maxWidth: '180px', objectFit: 'contain', display: 'block' },
+  reportBrandTitle: { fontSize: '28px', lineHeight: 1.02, color: '#f5ebdf', fontFamily: 'Georgia, Times New Roman, serif', fontWeight: 700, letterSpacing: '-0.02em' },
+  reportBrandSubtitle: { marginTop: '6px', color: '#e7d4bb', fontSize: '12px', letterSpacing: '.14em', textTransform: 'uppercase', fontWeight: 700 },
+  invoiceSummaryGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginTop: '12px' },
+  invoiceSummaryCard: { background: '#fffaf6', border: '1px solid #eadfce', borderRadius: '14px', padding: '14px' },
+  invoiceSummaryLabel: { color: '#9a6d2f', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em', fontWeight: 700, marginBottom: '8px' },
+  invoiceSummaryValue: { color: '#2f102d', fontSize: '24px', fontWeight: 700 },
+
 }
 
 
