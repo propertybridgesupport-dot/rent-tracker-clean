@@ -2115,118 +2115,116 @@ This permanently removes the payment from the ledger.`
     <div style={styles.page}>
       <style>{`
         @media (max-width: 900px) {
-          .responsive-section-grid,
-          .responsive-payment-grid {
+          .responsive-section-grid {
             grid-template-columns: 1fr !important;
-          }
-          .responsive-header {
-            align-items: flex-start !important;
           }
         }
 
         @media (max-width: 768px) {
           html, body, #root {
-            overflow-x: hidden !important;
-            max-width: 100% !important;
-          }
-
-          .responsive-header,
-          .mobile-brand-header {
-            padding: 12px !important;
-            gap: 10px !important;
-          }
-
-          .mobile-brand-header-left {
-            width: 100% !important;
-            gap: 10px !important;
-            align-items: center !important;
-            flex-wrap: nowrap !important;
-          }
-
-          .mobile-logo-wrap {
-            padding: 6px 8px !important;
-            flex: 0 0 auto !important;
-          }
-
-          .mobile-logo {
-            width: 140px !important;
-            max-width: 140px !important;
-          }
-
-          .mobile-brand-title {
-            font-size: 22px !important;
-            line-height: 1.05 !important;
-          }
-
-          .mobile-brand-subtitle {
-            font-size: 10px !important;
-          }
-
-          .mobile-header-actions {
-            width: 100% !important;
-            display: flex !important;
-            gap: 8px !important;
-            flex-direction: column !important;
-          }
-
-          .mobile-header-actions button {
-            width: 100% !important;
-            margin-top: 0 !important;
+            overflow-x: hidden;
+            width: 100%;
+            max-width: 100%;
           }
 
           .mobile-top-controls,
-          .mobile-card-grid,
           .responsive-section-grid,
-          .responsive-payment-grid {
+          .responsive-ledger-grid,
+          .responsive-report-grid {
             grid-template-columns: 1fr !important;
           }
 
           .mobile-card-grid {
+            grid-template-columns: 1fr 1fr !important;
+          }
+
+          .mobile-brand-header {
+            display: grid !important;
+            grid-template-columns: 1fr !important;
+            gap: 12px !important;
+            padding: 16px !important;
+            border-radius: 18px !important;
+          }
+
+          .mobile-logo-panel {
+            order: -1;
+          }
+
+          .mobile-logo-wrap {
+            padding: 10px 12px !important;
+            width: 100% !important;
+            box-sizing: border-box !important;
+          }
+
+          .mobile-logo {
+            width: 100% !important;
+            max-width: 220px !important;
+            height: auto !important;
+            margin: 0 auto !important;
+            display: block !important;
+          }
+
+          .mobile-brand-title {
+            font-size: 24px !important;
+          }
+
+          .mobile-brand-subtitle {
+            font-size: 12px !important;
+          }
+
+          .mobile-header-actions {
+            width: 100%;
+            display: grid !important;
+            grid-template-columns: 1fr 1fr;
             gap: 10px !important;
+          }
+
+          .mobile-header-actions button {
+            width: 100%;
+            margin-top: 0 !important;
           }
 
           .mobile-control-block,
           .mobile-card,
-          .mobile-hero-card,
-          .mobile-kpi-card {
+          .mobile-hero-card {
             padding: 14px !important;
-          }
-
-          .mobile-tab-row {
-            overflow-x: auto !important;
-            flex-wrap: nowrap !important;
-            -webkit-overflow-scrolling: touch !important;
           }
 
           .mobile-input,
           .mobile-textarea {
             width: 100% !important;
             max-width: 100% !important;
-            min-width: 0 !important;
             font-size: 16px !important;
-            box-sizing: border-box !important;
           }
 
-          table {
-            min-width: 0 !important;
+          .mobile-payment-button-row {
+            flex-direction: column !important;
+          }
+
+          .mobile-payment-button-row button {
+            width: 100%;
+            margin-top: 0 !important;
           }
         }
       `}</style>
 
       <div className="responsive-header mobile-brand-header" style={styles.brandHeader}>
-        <div className="mobile-brand-header-left" style={styles.brandHeaderLeft}>
-          <div className="mobile-logo-wrap" style={styles.logoWrap}>
-            <img className="mobile-logo" src="/logo.png" alt="Open Door Support" style={styles.logo} />
-          </div>
+        <div style={styles.brandTextColumn}>
           <div>
             <h1 className="mobile-brand-title" style={styles.brandTitle}>Open Door Support</h1>
             <p className="mobile-brand-subtitle" style={styles.brandSubtitle}>Property Management System</p>
           </div>
+
+          <div className="mobile-header-actions" style={styles.headerActions}>
+            <button style={styles.secondaryButton} onClick={printOwnerReport}>Print Report</button>
+            <button style={styles.secondaryButton} onClick={signOut}>Sign Out</button>
+          </div>
         </div>
 
-        <div className="mobile-header-actions" style={styles.headerActions}>
-          <button style={styles.secondaryButton} onClick={printOwnerReport}>Print Report</button>
-          <button style={styles.secondaryButton} onClick={signOut}>Sign Out</button>
+        <div className="mobile-logo-panel" style={styles.logoPanel}>
+          <div className="mobile-logo-wrap" style={styles.logoWrap}>
+            <img className="mobile-logo" src="/logo.png" alt="Open Door Support" style={styles.logo} />
+          </div>
         </div>
       </div>
 
@@ -3636,9 +3634,11 @@ Object.assign(styles, {
   authSubtitle: { ...styles.authSubtitle, color: '#8c6d45', textAlign: 'center' },
   loadingCard: { ...styles.loadingCard, borderRadius: '20px', border: '1px solid #eadfce', boxShadow: '0 8px 24px rgba(71, 15, 67, 0.08)' },
   header: { ...styles.header, background: '#ffffff', border: '1px solid #eadfce', borderRadius: '22px', padding: '18px 20px', boxShadow: '0 10px 30px rgba(71, 15, 67, 0.08)' },
+  brandTextColumn: { display: 'grid', gap: '18px', minWidth: 0 },
+  logoPanel: { display: 'flex', justifyContent: 'flex-end', alignItems: 'center' },
   brandHeaderLeft: { display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' },
   logoWrap: { background: '#fffaf6', border: '1px solid #eadfce', borderRadius: '18px', padding: '10px 12px' },
-  logo: { width: '170px', maxWidth: '42vw', objectFit: 'contain', display: 'block' },
+  logo: { width: '100%', maxWidth: '340px', objectFit: 'contain', display: 'block' },
   title: { ...styles.title, color: '#7b0f73', fontSize: '28px' },
   subtitle: { ...styles.subtitle, color: '#c79b62', fontSize: '14px', letterSpacing: '.06em', textTransform: 'uppercase', fontWeight: 700 },
   controlBlock: { ...styles.controlBlock, border: '1px solid #eadfce', borderRadius: '18px', boxShadow: '0 4px 14px rgba(71, 15, 67, 0.05)' },
@@ -3677,10 +3677,10 @@ Object.assign(styles, {
   mobileHeroEyebrow: { color: '#c79b62', textTransform: 'uppercase', letterSpacing: '.09em', fontWeight: 700, fontSize: '12px', marginBottom: '8px' },
   mobileHeroTitle: { margin: '0 0 8px 0', color: '#7b0f73', fontSize: '28px', lineHeight: 1.1 },
   mobileHeroText: { margin: 0, color: '#5b4a3b', fontSize: '15px', lineHeight: 1.5 },
-  brandHeader: { ...styles.header, background: 'linear-gradient(135deg, #2f102d 0%, #4a1546 100%)', border: '1px solid #4f234a', borderRadius: '22px', padding: '18px 20px', boxShadow: '0 10px 30px rgba(47, 16, 45, 0.25)' },
+  brandHeader: { ...styles.header, background: 'linear-gradient(135deg, #220821 0%, #4a1546 58%, #5a1a54 100%)', border: '1px solid #5b2a58', borderRadius: '22px', padding: '22px 24px', boxShadow: '0 14px 34px rgba(34, 8, 33, 0.28)', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: '18px', alignItems: 'center' },
   brandHeaderLeft: { display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' },
-  logoWrap: { background: 'rgba(255, 250, 246, 0.10)', border: '1px solid rgba(231, 212, 187, 0.22)', borderRadius: '18px', padding: '10px 12px' },
-  logo: { width: '170px', maxWidth: '42vw', objectFit: 'contain', display: 'block' },
-  brandTitle: { margin: 0, fontSize: '28px', lineHeight: 1.1, color: '#ffffff' },
-  brandSubtitle: { margin: '6px 0 0 0', color: '#e7d4bb', fontSize: '14px', letterSpacing: '.06em', textTransform: 'uppercase', fontWeight: 700 }
+  logoWrap: { background: '#f5ebdf', border: '1px solid rgba(231, 212, 187, 0.45)', borderRadius: '18px', padding: '14px 18px', boxSizing: 'border-box' },
+  logo: { width: '100%', maxWidth: '340px', objectFit: 'contain', display: 'block' },
+  brandTitle: { margin: 0, fontSize: '30px', lineHeight: 1.08, color: '#ffffff' },
+  brandSubtitle: { margin: '8px 0 0 0', color: '#e7d4bb', fontSize: '15px', letterSpacing: '.06em', textTransform: 'uppercase', fontWeight: 700 }
 })
