@@ -65,6 +65,14 @@ function getGeneratedOnLabel() {
   })
 }
 
+
+function getCurrentMonthKey() {
+  const today = new Date()
+  const year = today.getFullYear()
+  const month = String(today.getMonth() + 1).padStart(2, '0')
+  return `${year}-${month}`
+}
+
 function getTodayDateInput() {
   const today = new Date()
   const year = today.getFullYear()
@@ -219,7 +227,7 @@ export default function App() {
   const [monthlyOverrides, setMonthlyOverrides] = useState([])
 
   const [selectedCompanyId, setSelectedCompanyId] = useState('')
-  const [selectedMonth, setSelectedMonth] = useState('2026-03')
+  const [selectedMonth, setSelectedMonth] = useState(getCurrentMonthKey())
   const [selectedReportPropertyId, setSelectedReportPropertyId] = useState('')
   const [selectedTenantName, setSelectedTenantName] = useState('')
   const [reportStartDate, setReportStartDate] = useState('')
@@ -359,6 +367,27 @@ export default function App() {
       }))
     }
   }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    const savedMonth = window.localStorage.getItem('rentTrackerSelectedMonth')
+    const currentMonth = getCurrentMonthKey()
+
+    if (savedMonth && monthOptions.includes(savedMonth)) {
+      setSelectedMonth(savedMonth)
+      return
+    }
+
+    if (monthOptions.includes(currentMonth)) {
+      setSelectedMonth(currentMonth)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem('rentTrackerSelectedMonth', selectedMonth)
+  }, [selectedMonth])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
