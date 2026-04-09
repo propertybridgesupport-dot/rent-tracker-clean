@@ -407,14 +407,17 @@ export default function App() {
 
   useEffect(() => {
     if (typeof window === 'undefined') return
-    function handleReturn() {
-      setTimeout(() => refreshLogos(), 120)
+    function handleReturnFromPrint() {
+      setTimeout(() => {
+        refreshLogos()
+      }, 100)
     }
-    window.addEventListener('focus', handleReturn)
-    window.addEventListener('pageshow', handleReturn)
+
+    window.addEventListener('focus', handleReturnFromPrint)
+    window.addEventListener('pageshow', handleReturnFromPrint)
     return () => {
-      window.removeEventListener('focus', handleReturn)
-      window.removeEventListener('pageshow', handleReturn)
+      window.removeEventListener('focus', handleReturnFromPrint)
+      window.removeEventListener('pageshow', handleReturnFromPrint)
     }
   }, [])
 
@@ -2104,7 +2107,11 @@ This permanently removes the payment from the ledger.`
     printWindow.document.close()
     printWindow.focus()
     printWindow.onafterprint = () => {
-      try { printWindow.close() } catch (error) { console.error('Unable to close print window.', error) }
+      try {
+        printWindow.close()
+      } catch (error) {
+        console.error('Unable to close print window.', error)
+      }
       refreshLogos()
     }
     printWindow.print()
@@ -3811,8 +3818,8 @@ const styles = {
   notesMetaGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: '12px', marginTop: '16px', marginBottom: '8px' },
   textarea: { width: '100%', minHeight: '180px', boxSizing: 'border-box', padding: '12px', borderRadius: '12px', border: '1px solid #cbd5e1', background: '#fff', fontSize: '14px', fontFamily: 'Arial, sans-serif', resize: 'vertical' },
   reportBrandShell: { marginBottom: '14px', background: 'linear-gradient(135deg, #220821 0%, #4a1546 58%, #5a1a54 100%)', borderTop: '4px solid #d89a2b', borderRadius: '0', padding: '16px 18px', boxShadow: 'none' },
-  reportBrandTop: { display: 'flex', alignItems: 'center', gap: '16px', flexWrap: 'wrap' },
-  reportBrandLogoWrap: { background: '#f5ebdf', border: '1px solid rgba(231, 212, 187, 0.45)', borderRadius: '8px', padding: '8px 14px', width: '180px', height: '64px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box', overflow: 'hidden' },
+  reportBrandTop: { display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' },
+  reportBrandLogoWrap: { background: '#f5ebdf', border: '1px solid rgba(231, 212, 187, 0.45)', borderRadius: '14px', padding: '8px 14px', width: '180px', height: '64px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box' },
   reportBrandLogo: { width: '100%', maxWidth: '150px', objectFit: 'contain', display: 'block' },
   reportBrandTitle: { fontSize: '28px', lineHeight: 1.02, color: '#f5ebdf', fontFamily: 'Georgia, Times New Roman, serif', fontWeight: 700, letterSpacing: '-0.02em' },
   reportBrandSubtitle: { marginTop: '6px', color: '#e7d4bb', fontSize: '12px', letterSpacing: '.14em', textTransform: 'uppercase', fontWeight: 700 },
