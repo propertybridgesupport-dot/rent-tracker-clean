@@ -21,6 +21,10 @@ function monthLabel(month) {
   })
 }
 
+function formatMonthYear(month) {
+  return monthLabel(month)
+}
+
 function isMobileViewport() {
   if (typeof window === 'undefined') return false
   return window.innerWidth <= 768
@@ -1951,6 +1955,44 @@ This permanently removes the payment from the ledger.`
     window.URL.revokeObjectURL(url)
   }
 
+  function getManagementInvoiceNumber() {
+    const compactMonth = selectedMonth.replace('-', '')
+    const slug = (selectedCompanyName || 'company')
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '')
+      .slice(0, 18)
+    return `INV-${compactMonth}-${slug || 'company'}`
+  }
+
+  function emailManagementInvoice() {
+    if (!selectedCompanyEmail) {
+      setMessage('This company does not have an owner email saved yet.')
+      return
+    }
+
+    const subject = `${selectedCompanyName} - Property Management Fee Invoice - ${formatMonthYear(selectedMonth)}`
+    const lines = [
+      'Open Door Support',
+      'Property Management System',
+      '',
+      'Property Management Fee Invoice',
+      formatMonthYear(selectedMonth),
+      '',
+      `Billed To: ${selectedCompanyName}`,
+      `Invoice #: ${getManagementInvoiceNumber()}`,
+      `Generated: ${generatedOnLabel}`,
+      '',
+      `Collected Rent: ${currency(totalCollected)}`,
+      `Management Fee Rate: 10%`,
+      `Amount Due: ${currency(managementFeeCollected)}`,
+      '',
+      'Thank you for your business.',
+    ]
+    window.location.href = `mailto:${selectedCompanyEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(lines.join('\n'))}`
+  }
+
+
   function printSection(sectionRef, title) {
     const sectionHtml = sectionRef?.current?.innerHTML
 
@@ -1970,21 +2012,25 @@ This permanently removes the payment from the ledger.`
         <head>
           <title>${title}</title>
           <style>
-            body { font-family: Arial, sans-serif; padding: 28px; color: #0f172a; }
+            body { font-family: Arial, sans-serif; padding: 28px; color: #261525; background: #ffffff; }
             .print-shell { max-width: 1100px; margin: 0 auto; }
-            .print-banner { margin-bottom: 18px; padding-bottom: 14px; border-bottom: 2px solid #0f172a; }
-            .print-company { font-size: 26px; font-weight: 700; margin-bottom: 4px; }
-            .print-subtitle { font-size: 14px; color: #475569; }
-            .report-print-header { margin-bottom: 16px; }
-            .report-print-title { font-size: 24px; font-weight: 700; margin-bottom: 6px; }
-            .report-print-meta { font-size: 14px; color: #334155; margin-bottom: 4px; }
-            .report-print-footer { margin-top: 18px; padding-top: 12px; border-top: 1px solid #cbd5e1; font-size: 12px; color: #64748b; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-            .notes-box { margin-top: 16px; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 12px; padding: 12px 14px; font-size: 14px; color: #334155; }
+            .report-brand-shell { margin-bottom: 18px; background: linear-gradient(135deg, #220821 0%, #4a1546 58%, #5a1a54 100%); border-top: 4px solid #d89a2b; border-radius: 18px; padding: 16px 18px; box-shadow: 0 8px 22px rgba(34, 8, 33, 0.18); }
+            .report-brand-top { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+            .report-brand-logo-wrap { background: #f5ebdf; border: 1px solid rgba(231, 212, 187, 0.45); border-radius: 14px; padding: 8px 14px; width: 180px; height: 64px; display: flex; align-items: center; justify-content: center; box-sizing: border-box; }
+            .report-brand-logo { width: 100%; max-width: 150px; object-fit: contain; display: block; }
+            .report-brand-title { font-size: 28px; line-height: 1.02; color: #f5ebdf; font-family: Georgia, 'Times New Roman', serif; font-weight: 700; letter-spacing: -0.02em; }
+            .report-brand-subtitle { margin-top: 6px; color: #e7d4bb; font-size: 12px; letter-spacing: .14em; text-transform: uppercase; font-weight: 700; }
+            .report-print-header { margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #d9cfc0; }
+            .report-print-company { font-size: 18px; font-weight: 700; margin-bottom: 6px; color: #2f102d; }
+            .report-print-title { font-size: 24px; font-weight: 700; margin-bottom: 6px; color: #2f102d; }
+            .report-print-meta { font-size: 14px; color: #4b5563; margin-bottom: 4px; }
+            .report-print-footer { margin-top: 18px; padding-top: 12px; border-top: 1px solid #d9cfc0; font-size: 12px; color: #6b7280; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+            .notes-box { margin-top: 16px; background: #fbf7f1; border: 1px solid #e8dccb; border-radius: 12px; padding: 12px 14px; font-size: 14px; color: #4b5563; }
             .report-totals { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-top: 16px; font-size: 14px; }
-            .small-muted { color: #64748b; font-size: 14px; }
+            .small-muted { color: #6b7280; font-size: 14px; }
             table { width: 100%; border-collapse: collapse; margin-top: 16px; }
-            th, td { border: 1px solid #cbd5e1; padding: 10px; text-align: left; vertical-align: top; }
-            th { background: #f8fafc; }
+            th, td { border: 1px solid #d9cfc0; padding: 10px; text-align: left; vertical-align: top; }
+            th { background: #fbf7f1; color: #9a6d2f; text-transform: uppercase; letter-spacing: .04em; font-size: 12px; }
             @media print {
               body { padding: 0; }
               .print-shell { max-width: none; }
@@ -1993,10 +2039,6 @@ This permanently removes the payment from the ledger.`
         </head>
         <body>
           <div class="print-shell">
-            <div class="print-banner">
-              <div class="print-company">${selectedCompanyName}</div>
-              <div class="print-subtitle">Rent Tracker Report</div>
-            </div>
             ${sectionHtml}
           </div>
         </body>
@@ -2008,42 +2050,6 @@ This permanently removes the payment from the ledger.`
     printWindow.close()
   }
 
-
-
-  function getManagementInvoiceNumber() {
-    const compactMonth = selectedMonth.replace('-', '')
-    const slug = (selectedCompanyName || 'company')
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-+|-+$/g, '')
-      .slice(0, 18)
-    return `INV-${compactMonth}-${slug || 'company'}`
-  }
-
-  function emailManagementInvoice() {
-    if (!selectedCompanyEmail) {
-      setMessage('This company does not have an owner email saved yet.')
-      return
-    }
-
-    const subject = `${selectedCompanyName} - Property Management Fee Invoice - ${monthLabel(selectedMonth)}`
-    const lines = [
-      'Open Door Support',
-      'Property Management System',
-      '',
-      `Invoice: Property Management Fee Invoice`,
-      `Billing Month: ${monthLabel(selectedMonth)}`,
-      `Invoice #: ${getManagementInvoiceNumber()}`,
-      `Billed To: ${selectedCompanyName}`,
-      '',
-      `Collected Rent: ${currency(totalCollected)}`,
-      `Management Fee Rate: 10%`,
-      `Amount Due: ${currency(managementFeeCollected)}`,
-      '',
-      'Thank you for your business.',
-    ]
-    window.location.href = `mailto:${selectedCompanyEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(lines.join('\n'))}`
-  }
 
   function exportPropertyLedgerCsv() {
     if (!selectedReportProperty) {
@@ -3282,7 +3288,6 @@ This permanently removes the payment from the ledger.`
             </div>
 
             <div ref={ownerReportRef}>
-
               <div style={styles.reportBrandShell}>
                 <div style={styles.reportBrandTop}>
                   <div style={styles.reportBrandLogoWrap}>
@@ -3294,10 +3299,12 @@ This permanently removes the payment from the ledger.`
                   </div>
                 </div>
               </div>
+
               <div style={styles.reportPrintHeader}>
-                <div style={styles.reportPrintTitle}>{selectedCompanyName} Owner Monthly Report</div>
+                <div style={styles.reportPrintCompany}>{selectedCompanyName}</div>
+                <div style={styles.reportPrintTitle}>Owner Monthly Report</div>
                 <div style={styles.reportPrintMeta}>
-                  <strong>Reporting Month:</strong> {monthLabel(selectedMonth)}
+                  <strong>Reporting Month:</strong> {formatMonthYear(selectedMonth)}
                 </div>
                 <div style={styles.reportPrintMeta}>
                   <strong>Generated:</strong> {generatedOnLabel}
@@ -3357,7 +3364,7 @@ This permanently removes the payment from the ledger.`
             <div style={styles.reportHeaderRow}>
               <div>
                 <h2 style={styles.cardTitle}>Property Management Fee Invoice</h2>
-                <p style={styles.smallMuted}>{selectedCompanyName}</p>
+                <p style={styles.smallMuted}>{selectedCompanyName} — {formatMonthYear(selectedMonth)}</p>
               </div>
               <div style={styles.actionRow}>
                 <button
@@ -3392,18 +3399,10 @@ This permanently removes the payment from the ledger.`
 
               <div style={styles.reportPrintHeader}>
                 <div style={styles.reportPrintTitle}>Property Management Fee Invoice</div>
-                <div style={styles.reportPrintMeta}>
-                  <strong>{monthLabel(selectedMonth)}</strong>
-                </div>
-                <div style={styles.reportPrintMeta}>
-                  <strong>Billed To:</strong> {selectedCompanyName}
-                </div>
-                <div style={styles.reportPrintMeta}>
-                  <strong>Invoice #:</strong> {getManagementInvoiceNumber()}
-                </div>
-                <div style={styles.reportPrintMeta}>
-                  <strong>Generated:</strong> {generatedOnLabel}
-                </div>
+                <div style={styles.reportPrintMeta}>{formatMonthYear(selectedMonth)}</div>
+                <div style={styles.reportPrintMeta}><strong>Billed To:</strong> {selectedCompanyName}</div>
+                <div style={styles.reportPrintMeta}><strong>Invoice #:</strong> {getManagementInvoiceNumber()}</div>
+                <div style={styles.reportPrintMeta}><strong>Generated:</strong> {generatedOnLabel}</div>
               </div>
 
               <div style={styles.invoiceSummaryGrid}>
@@ -3422,7 +3421,7 @@ This permanently removes the payment from the ledger.`
               </div>
 
               <div style={styles.notesBox}>
-                <strong>Invoice Notes:</strong> Property management fee for {monthLabel(selectedMonth)} based on rent collected for {selectedCompanyName}.
+                <strong>Invoice Notes:</strong> Property management fee for {formatMonthYear(selectedMonth)} based on rent collected for {selectedCompanyName}.
               </div>
 
               <div style={styles.reportPrintFooter}>
@@ -3521,20 +3520,9 @@ This permanently removes the payment from the ledger.`
             </div>
 
             <div ref={propertyStatementRef}>
-
-              <div style={styles.reportBrandShell}>
-                <div style={styles.reportBrandTop}>
-                  <div style={styles.reportBrandLogoWrap}>
-                    <img src="/logo.png" alt="Open Door Support" style={styles.reportBrandLogo} />
-                  </div>
-                  <div>
-                    <div style={styles.reportBrandTitle}>Open Door Support</div>
-                    <div style={styles.reportBrandSubtitle}>Property Management System</div>
-                  </div>
-                </div>
-              </div>
               <div style={styles.reportPrintHeader}>
-                <div style={styles.reportPrintTitle}>{selectedCompanyName} Property Account Statement</div>
+                <div style={styles.reportPrintCompany}>{selectedCompanyName}</div>
+                <div style={styles.reportPrintTitle}>Property Account Statement</div>
                 <div style={styles.reportPrintMeta}>
                   <strong>Property:</strong> {selectedReportProperty ? selectedReportProperty.address : '—'}
                 </div>
@@ -3617,20 +3605,9 @@ This permanently removes the payment from the ledger.`
             </div>
 
             <div ref={tenantStatementRef}>
-
-              <div style={styles.reportBrandShell}>
-                <div style={styles.reportBrandTop}>
-                  <div style={styles.reportBrandLogoWrap}>
-                    <img src="/logo.png" alt="Open Door Support" style={styles.reportBrandLogo} />
-                  </div>
-                  <div>
-                    <div style={styles.reportBrandTitle}>Open Door Support</div>
-                    <div style={styles.reportBrandSubtitle}>Property Management System</div>
-                  </div>
-                </div>
-              </div>
               <div style={styles.reportPrintHeader}>
-                <div style={styles.reportPrintTitle}>{selectedCompanyName} Tenant Account Statement</div>
+                <div style={styles.reportPrintCompany}>{selectedCompanyName}</div>
+                <div style={styles.reportPrintTitle}>Tenant Account Statement</div>
                 <div style={styles.reportPrintMeta}>
                   <strong>Tenant:</strong> {selectedTenantName || '—'}
                 </div>
@@ -3775,15 +3752,14 @@ const styles = {
   textarea: { width: '100%', minHeight: '180px', boxSizing: 'border-box', padding: '12px', borderRadius: '12px', border: '1px solid #cbd5e1', background: '#fff', fontSize: '14px', fontFamily: 'Arial, sans-serif', resize: 'vertical' },
   reportBrandShell: { marginBottom: '14px', background: 'linear-gradient(135deg, #220821 0%, #4a1546 58%, #5a1a54 100%)', borderTop: '4px solid #d89a2b', borderRadius: '18px', padding: '16px 18px', boxShadow: '0 8px 22px rgba(34, 8, 33, 0.18)' },
   reportBrandTop: { display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' },
-  reportBrandLogoWrap: { background: '#f5ebdf', border: '1px solid rgba(231, 212, 187, 0.45)', borderRadius: '14px', padding: '8px 12px', minWidth: '140px', display: 'flex', alignItems: 'center', justifyContent: 'center' },
-  reportBrandLogo: { width: '100%', maxWidth: '180px', objectFit: 'contain', display: 'block' },
+  reportBrandLogoWrap: { background: '#f5ebdf', border: '1px solid rgba(231, 212, 187, 0.45)', borderRadius: '14px', padding: '8px 14px', width: '180px', height: '64px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box' },
+  reportBrandLogo: { width: '100%', maxWidth: '150px', objectFit: 'contain', display: 'block' },
   reportBrandTitle: { fontSize: '28px', lineHeight: 1.02, color: '#f5ebdf', fontFamily: 'Georgia, Times New Roman, serif', fontWeight: 700, letterSpacing: '-0.02em' },
   reportBrandSubtitle: { marginTop: '6px', color: '#e7d4bb', fontSize: '12px', letterSpacing: '.14em', textTransform: 'uppercase', fontWeight: 700 },
   invoiceSummaryGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginTop: '12px' },
   invoiceSummaryCard: { background: '#fffaf6', border: '1px solid #eadfce', borderRadius: '14px', padding: '14px' },
   invoiceSummaryLabel: { color: '#9a6d2f', fontSize: '12px', textTransform: 'uppercase', letterSpacing: '.08em', fontWeight: 700, marginBottom: '8px' },
   invoiceSummaryValue: { color: '#2f102d', fontSize: '24px', fontWeight: 700 },
-
 }
 
 
