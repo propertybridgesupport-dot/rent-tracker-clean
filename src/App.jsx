@@ -1878,36 +1878,6 @@ This permanently removes the payment from the ledger.`
   function printOwnerReport() {
     window.print()
   }
-
-  function emailOwnerReport() {
-    if (!selectedCompanyEmail) {
-      setMessage('This company does not have an owner email saved yet.')
-      return
-    }
-
-    const subject = `${selectedCompanyName} - Owner Report - ${monthLabel(selectedMonth)}`
-    const lines = [
-      `Company: ${selectedCompanyName}`,
-      `Month: ${monthLabel(selectedMonth)}`,
-      '',
-      `Properties: ${totalProperties}`,
-      `Monthly Rent: ${currency(totalMonthlyRent)}`,
-      `Collected: ${currency(totalCollected)}`,
-      `Outstanding: ${currency(totalOutstanding)}`,
-      `10% Management Fee: ${currency(managementFeeCollected)}`,
-      '',
-      'Owner Summary:',
-      ...filteredLedgerRows.map((row) =>
-        `${row.address} | ${row.effectiveTenant} | Rent: ${currency(row.effectiveRent)} | Collected: ${currency(row.totalPaid)} | Balance: ${currency(row.balanceRemaining)}`
-      ),
-      '',
-      'Notes:',
-      'Balances reflect prior unpaid amounts carried forward. Prorated rents and tenant changes are applied where applicable. Management fee is calculated at 10% of collected rent.',
-    ]
-
-    window.location.href = `mailto:${selectedCompanyEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(lines.join('\n'))}`
-  }
-
   function getManagementInvoiceNumber() {
     const compactMonth = selectedMonth.replace('-', '')
     const slug = (selectedCompanyName || 'company')
@@ -1939,6 +1909,35 @@ This permanently removes the payment from the ledger.`
       `Amount Due: ${currency(managementFeeCollected)}`,
       '',
       'Thank you for your business.',
+    ]
+    window.location.href = `mailto:${selectedCompanyEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(lines.join('\n'))}`
+  }
+
+
+  function emailOwnerReport() {
+    if (!selectedCompanyEmail) {
+      setMessage('This company does not have an owner email saved yet.')
+      return
+    }
+
+    const subject = `${selectedCompanyName} - Owner Report - ${monthLabel(selectedMonth)}`
+    const lines = [
+      `Company: ${selectedCompanyName}`,
+      `Month: ${monthLabel(selectedMonth)}`,
+      '',
+      `Properties: ${totalProperties}`,
+      `Monthly Rent: ${currency(totalMonthlyRent)}`,
+      `Collected: ${currency(totalCollected)}`,
+      `Outstanding: ${currency(totalOutstanding)}`,
+      `10% Management Fee: ${currency(managementFeeCollected)}`,
+      '',
+      'Owner Summary:',
+      ...filteredLedgerRows.map((row) =>
+        `${row.address} | ${row.effectiveTenant} | Rent: ${currency(row.effectiveRent)} | Collected: ${currency(row.totalPaid)} | Balance: ${currency(row.balanceRemaining)}`
+      ),
+      '',
+      'Notes:',
+      'Balances reflect prior unpaid amounts carried forward. Prorated rents and tenant changes are applied where applicable. Management fee is calculated at 10% of collected rent.',
     ]
 
     window.location.href = `mailto:${selectedCompanyEmail}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(lines.join('\n'))}`
@@ -3282,6 +3281,17 @@ This permanently removes the payment from the ledger.`
             </div>
 
             <div ref={ownerReportRef}>
+              <div style={styles.reportBrandShell}>
+                <div style={styles.reportBrandTop}>
+                  <div style={styles.reportBrandLogoWrap}>
+                    <img src="/logo.png" alt="Open Door Support" style={styles.reportBrandLogo} />
+                  </div>
+                  <div>
+                    <div style={styles.reportBrandTitle}>Open Door Support</div>
+                    <div style={styles.reportBrandSubtitle}>Property Management System</div>
+                  </div>
+                </div>
+              </div>
               <div style={styles.reportPrintHeader}>
                 <div style={styles.reportPrintCompany}>{selectedCompanyName}</div>
                 <div style={styles.reportPrintTitle}>Owner Monthly Report</div>
@@ -3384,7 +3394,7 @@ This permanently removes the payment from the ledger.`
                 <div style={styles.reportPrintTitle}>Management Fee Invoice</div>
                 <div style={styles.reportPrintMeta}><strong>Invoice #:</strong> {getManagementInvoiceNumber()}</div>
                 <div style={styles.reportPrintMeta}><strong>Billing Month:</strong> {monthLabel(selectedMonth)}</div>
-                <div style={styles.reportPrintMeta}><strong>Invoice Date:</strong> {generatedOnLabel}</div>
+                <div style={styles.reportPrintMeta}><strong>Generated:</strong> {generatedOnLabel}</div>
               </div>
 
               <div style={styles.invoiceSummaryGrid}>
@@ -3393,7 +3403,7 @@ This permanently removes the payment from the ledger.`
                   <div style={styles.invoiceSummaryValue}>{currency(totalCollected)}</div>
                 </div>
                 <div style={styles.invoiceSummaryCard}>
-                  <div style={styles.invoiceSummaryLabel}>Management Fee Rate</div>
+                  <div style={styles.invoiceSummaryLabel}>Fee Rate</div>
                   <div style={styles.invoiceSummaryValue}>10%</div>
                 </div>
                 <div style={styles.invoiceSummaryCard}>
@@ -3502,6 +3512,17 @@ This permanently removes the payment from the ledger.`
             </div>
 
             <div ref={propertyStatementRef}>
+              <div style={styles.reportBrandShell}>
+                <div style={styles.reportBrandTop}>
+                  <div style={styles.reportBrandLogoWrap}>
+                    <img src="/logo.png" alt="Open Door Support" style={styles.reportBrandLogo} />
+                  </div>
+                  <div>
+                    <div style={styles.reportBrandTitle}>Open Door Support</div>
+                    <div style={styles.reportBrandSubtitle}>Property Management System</div>
+                  </div>
+                </div>
+              </div>
               <div style={styles.reportPrintHeader}>
                 <div style={styles.reportPrintCompany}>{selectedCompanyName}</div>
                 <div style={styles.reportPrintTitle}>Property Account Statement</div>
@@ -3587,6 +3608,17 @@ This permanently removes the payment from the ledger.`
             </div>
 
             <div ref={tenantStatementRef}>
+              <div style={styles.reportBrandShell}>
+                <div style={styles.reportBrandTop}>
+                  <div style={styles.reportBrandLogoWrap}>
+                    <img src="/logo.png" alt="Open Door Support" style={styles.reportBrandLogo} />
+                  </div>
+                  <div>
+                    <div style={styles.reportBrandTitle}>Open Door Support</div>
+                    <div style={styles.reportBrandSubtitle}>Property Management System</div>
+                  </div>
+                </div>
+              </div>
               <div style={styles.reportPrintHeader}>
                 <div style={styles.reportPrintCompany}>{selectedCompanyName}</div>
                 <div style={styles.reportPrintTitle}>Tenant Account Statement</div>
@@ -3792,7 +3824,7 @@ Object.assign(styles, {
   brandHeaderLeft: { display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' },
   logoWrap: { background: '#f5ebdf', border: '1px solid rgba(231, 212, 187, 0.45)', borderRadius: '18px', padding: '16px 24px', boxSizing: 'border-box', width: '100%', minHeight: '150px', display: 'flex', alignItems: 'center', justifyContent: 'center' },
   logo: { width: '100%', maxWidth: '500px', objectFit: 'contain', display: 'block' },
-  brandTitle: { margin: 0, fontSize: '34px', lineHeight: 1.04, color: '#f5ebdf', fontFamily: 'Georgia, Times New Roman, serif', fontWeight: 700, letterSpacing: '-0.02em' },
+  brandTitle: { margin: 0, fontSize: '34px', lineHeight: 1.04, color: '#2f102d', fontFamily: 'Georgia, Times New Roman, serif', fontWeight: 700, letterSpacing: '-0.02em' },
   brandSubtitle: { margin: '10px 0 0 0', color: '#e7d4bb', fontSize: '14px', letterSpacing: '.14em', textTransform: 'uppercase', fontWeight: 700 },
   reportBrandShell: { marginBottom: '14px', background: 'linear-gradient(135deg, #220821 0%, #4a1546 58%, #5a1a54 100%)', borderTop: '4px solid #d89a2b', borderRadius: '18px', padding: '16px 18px', boxShadow: '0 8px 22px rgba(34, 8, 33, 0.18)' },
   reportBrandTop: { display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' },
