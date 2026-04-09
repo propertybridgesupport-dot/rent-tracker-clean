@@ -2148,17 +2148,19 @@ This permanently removes the payment from the ledger.`
 
           .mobile-logo-panel {
             order: -1;
+            min-width: 0 !important;
           }
 
           .mobile-logo-wrap {
-            padding: 10px 12px !important;
+            padding: 12px 14px !important;
             width: 100% !important;
+            min-height: 120px !important;
             box-sizing: border-box !important;
           }
 
           .mobile-logo {
             width: 100% !important;
-            max-width: 220px !important;
+            max-width: 260px !important;
             height: auto !important;
             margin: 0 auto !important;
             display: block !important;
@@ -2177,6 +2179,7 @@ This permanently removes the payment from the ledger.`
             display: grid !important;
             grid-template-columns: 1fr 1fr;
             gap: 10px !important;
+            padding-top: 12px !important;
           }
 
           .mobile-header-actions button {
@@ -3551,7 +3554,7 @@ const styles = {
   header: { display: 'flex', justifyContent: 'space-between', gap: '16px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '20px' },
   title: { margin: 0, fontSize: '42px', lineHeight: 1.1 },
   subtitle: { margin: '8px 0 0 0', color: '#64748b', fontSize: '15px' },
-  headerActions: { display: 'flex', gap: '10px', flexWrap: 'wrap' },
+  headerActions: { display: 'flex', gap: '12px', flexWrap: 'wrap', alignItems: 'center', paddingTop: '10px', borderTop: '1px solid rgba(231, 212, 187, 0.22)' },
   topControls: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '14px', marginBottom: '18px' },
   searchSummaryBar: { display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap', marginBottom: '16px', padding: '10px 14px', background: '#f8fafc', border: '1px solid #dbeafe', borderRadius: '12px', color: '#334155' },
   linkButton: { background: 'transparent', border: 'none', color: '#2563eb', cursor: 'pointer', fontWeight: 600, padding: 0 },
@@ -3634,11 +3637,11 @@ Object.assign(styles, {
   authSubtitle: { ...styles.authSubtitle, color: '#8c6d45', textAlign: 'center' },
   loadingCard: { ...styles.loadingCard, borderRadius: '20px', border: '1px solid #eadfce', boxShadow: '0 8px 24px rgba(71, 15, 67, 0.08)' },
   header: { ...styles.header, background: '#ffffff', border: '1px solid #eadfce', borderRadius: '22px', padding: '18px 20px', boxShadow: '0 10px 30px rgba(71, 15, 67, 0.08)' },
-  brandTextColumn: { display: 'grid', gap: '18px', minWidth: 0 },
-  logoPanel: { display: 'flex', justifyContent: 'flex-end', alignItems: 'center' },
+  brandTextColumn: { display: 'grid', gap: '20px', minWidth: 0, alignContent: 'center', padding: '8px 0' },
+  logoPanel: { display: 'flex', justifyContent: 'flex-end', alignItems: 'stretch', minWidth: '360px' },
   brandHeaderLeft: { display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' },
   logoWrap: { background: '#fffaf6', border: '1px solid #eadfce', borderRadius: '18px', padding: '10px 12px' },
-  logo: { width: '100%', maxWidth: '340px', objectFit: 'contain', display: 'block' },
+  logo: { width: '100%', maxWidth: '420px', objectFit: 'contain', display: 'block' },
   title: { ...styles.title, color: '#7b0f73', fontSize: '28px' },
   subtitle: { ...styles.subtitle, color: '#c79b62', fontSize: '14px', letterSpacing: '.06em', textTransform: 'uppercase', fontWeight: 700 },
   controlBlock: { ...styles.controlBlock, border: '1px solid #eadfce', borderRadius: '18px', boxShadow: '0 4px 14px rgba(71, 15, 67, 0.05)' },
@@ -3677,10 +3680,10 @@ Object.assign(styles, {
   mobileHeroEyebrow: { color: '#c79b62', textTransform: 'uppercase', letterSpacing: '.09em', fontWeight: 700, fontSize: '12px', marginBottom: '8px' },
   mobileHeroTitle: { margin: '0 0 8px 0', color: '#7b0f73', fontSize: '28px', lineHeight: 1.1 },
   mobileHeroText: { margin: 0, color: '#5b4a3b', fontSize: '15px', lineHeight: 1.5 },
-  brandHeader: { ...styles.header, background: 'linear-gradient(135deg, #220821 0%, #4a1546 58%, #5a1a54 100%)', border: '1px solid #5b2a58', borderRadius: '22px', padding: '22px 24px', boxShadow: '0 14px 34px rgba(34, 8, 33, 0.28)', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: '18px', alignItems: 'center' },
+  brandHeader: { ...styles.header, background: 'linear-gradient(135deg, #220821 0%, #4a1546 58%, #5a1a54 100%)', border: '1px solid #5b2a58', borderTop: '4px solid #d89a2b', borderRadius: '22px', padding: '22px 24px', boxShadow: '0 14px 34px rgba(34, 8, 33, 0.28)', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: '22px', alignItems: 'stretch' },
   brandHeaderLeft: { display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' },
-  logoWrap: { background: '#f5ebdf', border: '1px solid rgba(231, 212, 187, 0.45)', borderRadius: '18px', padding: '14px 18px', boxSizing: 'border-box' },
-  logo: { width: '100%', maxWidth: '340px', objectFit: 'contain', display: 'block' },
+  logoWrap: { background: '#f5ebdf', border: '1px solid rgba(231, 212, 187, 0.45)', borderRadius: '18px', padding: '18px 24px', boxSizing: 'border-box', width: '100%', minHeight: '170px', display: 'flex', alignItems: 'center', justifyContent: 'center' },
+  logo: { width: '100%', maxWidth: '420px', objectFit: 'contain', display: 'block' },
   brandTitle: { margin: 0, fontSize: '30px', lineHeight: 1.08, color: '#ffffff' },
   brandSubtitle: { margin: '8px 0 0 0', color: '#e7d4bb', fontSize: '15px', letterSpacing: '.06em', textTransform: 'uppercase', fontWeight: 700 }
 })
