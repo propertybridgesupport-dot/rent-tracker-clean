@@ -403,7 +403,7 @@ export default function App() {
     return () => {
       isCancelled = true
     }
-  }, [logoSrc])
+  }, [logoRefreshKey])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -1365,26 +1365,6 @@ This permanently removes the payment from the ledger.`
     setLogoRefreshKey(Date.now())
   }
 
-  async function ensureEmbeddedLogo() {
-    if (embeddedReportLogoSrc) return embeddedReportLogoSrc
-
-    try {
-      const response = await fetch(logoSrc, { cache: 'reload' })
-      const blob = await response.blob()
-      const dataUrl = await new Promise((resolve, reject) => {
-        const reader = new FileReader()
-        reader.onloadend = () => resolve(typeof reader.result === 'string' ? reader.result : '')
-        reader.onerror = reject
-        reader.readAsDataURL(blob)
-      })
-      setEmbeddedReportLogoSrc(dataUrl)
-      return dataUrl
-    } catch (error) {
-      console.error('Unable to prepare embedded logo for printing.', error)
-      return logoSrc
-    }
-  }
-
   const normalizedSearchQuery = useMemo(() => normalizeSearchText(searchQuery), [searchQuery])
 
   const filteredCompanies = useMemo(() => {
@@ -2067,16 +2047,13 @@ This permanently removes the payment from the ledger.`
   }
 
 
-  async function printSection(sectionRef, title) {
-    const rawSectionHtml = sectionRef?.current?.innerHTML
+  function printSection(sectionRef, title) {
+    const sectionHtml = sectionRef?.current?.innerHTML
 
-    if (!rawSectionHtml) {
+    if (!sectionHtml) {
       setMessage(`Nothing to print for ${title}.`)
       return
     }
-
-    const embeddedLogo = await ensureEmbeddedLogo()
-    const sectionHtml = rawSectionHtml.replace(/src="[^"]*"/g, `src="${embeddedLogo}"`)
 
     const printWindow = window.open('', '_blank', 'width=1000,height=800')
     if (!printWindow) {
@@ -3843,7 +3820,7 @@ const styles = {
   reportBrandShell: { marginBottom: '14px', background: 'linear-gradient(135deg, #220821 0%, #4a1546 58%, #5a1a54 100%)', borderTop: '4px solid #d89a2b', borderRadius: '0', padding: '16px 18px', boxShadow: 'none' },
   reportBrandTop: { display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' },
   reportBrandLogoWrap: { background: '#f5ebdf', border: '1px solid rgba(231, 212, 187, 0.45)', borderRadius: '14px', padding: '8px 14px', width: '180px', height: '64px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxSizing: 'border-box' },
-  reportBrandLogo: { width: '100%', maxWidth: '178px', objectFit: 'contain', display: 'block' },
+  reportBrandLogo: { width: '100%', maxWidth: '150px', objectFit: 'contain', display: 'block' },
   reportBrandTitle: { fontSize: '28px', lineHeight: 1.02, color: '#f5ebdf', fontFamily: 'Georgia, Times New Roman, serif', fontWeight: 700, letterSpacing: '-0.02em' },
   reportBrandSubtitle: { marginTop: '6px', color: '#e7d4bb', fontSize: '12px', letterSpacing: '.14em', textTransform: 'uppercase', fontWeight: 700 },
   invoiceSummaryGrid: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: '12px', marginTop: '12px' },
