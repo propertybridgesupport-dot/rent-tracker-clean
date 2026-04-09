@@ -2096,9 +2096,9 @@ This permanently removes the payment from the ledger.`
 
           <form onSubmit={signIn}>
             <label style={styles.label}>Email</label>
-            <input style={styles.input} type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
+            <input className="mobile-input" style={styles.input} type="email" value={email} onChange={(e) => setEmail(e.target.value)} />
             <label style={styles.label}>Password</label>
-            <input style={styles.input} type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
+            <input className="mobile-input" style={styles.input} type="password" value={password} onChange={(e) => setPassword(e.target.value)} />
             <div className="mobile-button-row" style={styles.buttonRow}>
               <button style={styles.primaryButton} type="submit">Sign In</button>
               <button style={styles.secondaryButton} type="button" onClick={signUp}>Create Account</button>
@@ -2115,9 +2115,7 @@ This permanently removes the payment from the ledger.`
     <div style={styles.page}>
       <style>{`
         @media (max-width: 900px) {
-          .responsive-section-grid {
-            grid-template-columns: 1fr !important;
-          }
+          .responsive-section-grid,
           .responsive-payment-grid {
             grid-template-columns: 1fr !important;
           }
@@ -2125,16 +2123,104 @@ This permanently removes the payment from the ledger.`
             align-items: flex-start !important;
           }
         }
+
+        @media (max-width: 768px) {
+          html, body, #root {
+            overflow-x: hidden !important;
+            max-width: 100% !important;
+          }
+
+          .responsive-header,
+          .mobile-brand-header {
+            padding: 12px !important;
+            gap: 10px !important;
+          }
+
+          .mobile-brand-header-left {
+            width: 100% !important;
+            gap: 10px !important;
+            align-items: center !important;
+            flex-wrap: nowrap !important;
+          }
+
+          .mobile-logo-wrap {
+            padding: 6px 8px !important;
+            flex: 0 0 auto !important;
+          }
+
+          .mobile-logo {
+            width: 140px !important;
+            max-width: 140px !important;
+          }
+
+          .mobile-brand-title {
+            font-size: 22px !important;
+            line-height: 1.05 !important;
+          }
+
+          .mobile-brand-subtitle {
+            font-size: 10px !important;
+          }
+
+          .mobile-header-actions {
+            width: 100% !important;
+            display: flex !important;
+            gap: 8px !important;
+            flex-direction: column !important;
+          }
+
+          .mobile-header-actions button {
+            width: 100% !important;
+            margin-top: 0 !important;
+          }
+
+          .mobile-top-controls,
+          .mobile-card-grid,
+          .responsive-section-grid,
+          .responsive-payment-grid {
+            grid-template-columns: 1fr !important;
+          }
+
+          .mobile-card-grid {
+            gap: 10px !important;
+          }
+
+          .mobile-control-block,
+          .mobile-card,
+          .mobile-hero-card,
+          .mobile-kpi-card {
+            padding: 14px !important;
+          }
+
+          .mobile-tab-row {
+            overflow-x: auto !important;
+            flex-wrap: nowrap !important;
+            -webkit-overflow-scrolling: touch !important;
+          }
+
+          .mobile-input,
+          .mobile-textarea {
+            width: 100% !important;
+            max-width: 100% !important;
+            min-width: 0 !important;
+            font-size: 16px !important;
+            box-sizing: border-box !important;
+          }
+
+          table {
+            min-width: 0 !important;
+          }
+        }
       `}</style>
 
-      <div className="responsive-header" style={styles.header}>
+      <div className="responsive-header mobile-brand-header" style={styles.brandHeader}>
         <div className="mobile-brand-header-left" style={styles.brandHeaderLeft}>
           <div className="mobile-logo-wrap" style={styles.logoWrap}>
             <img className="mobile-logo" src="/logo.png" alt="Open Door Support" style={styles.logo} />
           </div>
           <div>
-            <h1 style={styles.title}>Open Door Support</h1>
-            <p style={styles.subtitle}>Property Management System</p>
+            <h1 className="mobile-brand-title" style={styles.brandTitle}>Open Door Support</h1>
+            <p className="mobile-brand-subtitle" style={styles.brandSubtitle}>Property Management System</p>
           </div>
         </div>
 
@@ -2155,7 +2241,7 @@ This permanently removes the payment from the ledger.`
       <div className="mobile-top-controls" style={styles.topControls}>
         <div className="mobile-control-block" style={styles.controlBlock}>
           <label style={styles.label}>Company</label>
-          <select style={styles.input} value={selectedCompanyId} onChange={(e) => setSelectedCompanyId(e.target.value)}>
+          <select className="mobile-input" style={styles.input} value={selectedCompanyId} onChange={(e) => setSelectedCompanyId(e.target.value)}>
             <option value="">Select a company</option>
             {filteredCompanies.map((company) => (
               <option key={company.id} value={company.id}>
@@ -2167,7 +2253,7 @@ This permanently removes the payment from the ledger.`
 
         <div className="mobile-control-block" style={styles.controlBlock}>
           <label style={styles.label}>Month</label>
-          <select style={styles.input} value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)}>
+          <select className="mobile-input" style={styles.input} value={selectedMonth} onChange={(e) => setSelectedMonth(e.target.value)}>
             {monthOptions.map((month) => (
               <option key={month} value={month}>{monthLabel(month)}</option>
             ))}
@@ -2520,15 +2606,15 @@ This permanently removes the payment from the ledger.`
             <h2 style={styles.cardTitle}>Add Property</h2>
             <form onSubmit={addProperty}>
               <label style={styles.label}>Address</label>
-              <input style={styles.input} value={propertyForm.address} onChange={(e) => setPropertyForm({ ...propertyForm, address: e.target.value })} />
+              <input className="mobile-input" style={styles.input} value={propertyForm.address} onChange={(e) => setPropertyForm({ ...propertyForm, address: e.target.value })} />
               <label style={styles.label}>Tenant</label>
-              <input style={styles.input} value={propertyForm.tenant} onChange={(e) => setPropertyForm({ ...propertyForm, tenant: e.target.value })} />
+              <input className="mobile-input" style={styles.input} value={propertyForm.tenant} onChange={(e) => setPropertyForm({ ...propertyForm, tenant: e.target.value })} />
               <label style={styles.label}>Monthly Rent</label>
-              <input style={styles.input} type="number" value={propertyForm.monthlyRent} onChange={(e) => setPropertyForm({ ...propertyForm, monthlyRent: e.target.value })} />
+              <input className="mobile-input" style={styles.input} type="number" value={propertyForm.monthlyRent} onChange={(e) => setPropertyForm({ ...propertyForm, monthlyRent: e.target.value })} />
               <label style={styles.label}>Due Day</label>
-              <input style={styles.input} type="number" value={propertyForm.dueDay} onChange={(e) => setPropertyForm({ ...propertyForm, dueDay: e.target.value })} />
+              <input className="mobile-input" style={styles.input} type="number" value={propertyForm.dueDay} onChange={(e) => setPropertyForm({ ...propertyForm, dueDay: e.target.value })} />
               <label style={styles.label}>Late Fee</label>
-              <input style={styles.input} type="number" value={propertyForm.lateFee} onChange={(e) => setPropertyForm({ ...propertyForm, lateFee: e.target.value })} />
+              <input className="mobile-input" style={styles.input} type="number" value={propertyForm.lateFee} onChange={(e) => setPropertyForm({ ...propertyForm, lateFee: e.target.value })} />
               <button style={styles.primaryButton} type="submit">Save Property</button>
             </form>
           </div>
