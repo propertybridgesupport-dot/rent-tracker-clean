@@ -211,10 +211,6 @@ function matchesSearch(text, search) {
   return normalizeSearchText(text).includes(search)
 }
 
-function isManualLateFeeEntry(payment) {
-  return String(payment?.method || '').toLowerCase() === 'late fee'
-}
-
 export default function App() {
   const [session, setSession] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -927,7 +923,7 @@ export default function App() {
     await loadData()
   }
 
-  async function savePaymentEntry({ addAnother = false, entryType = 'payment' } = {}) {
+  async function savePayment({ addAnother = false } = {}) {
     setMessage('')
     setPaymentSuccessMessage('')
 
@@ -941,18 +937,8 @@ export default function App() {
       return
     }
 
-    const property = activeCompanyProperties.find((item) => item.id === paymentForm.propertyId) || companyProperties.find((item) => item.id === paymentForm.propertyId)
-    const amountToUse =
-      paymentForm.amount && Number(paymentForm.amount) > 0
-        ? Number(paymentForm.amount)
-        : entryType === 'late_fee'
-          ? Number(property?.late_fee || 0)
-          : 0
-
-    if (!amountToUse || Number(amountToUse) <= 0) {
-      setMessage(entryType === 'late_fee'
-        ? 'Please enter a late fee amount greater than zero, or save a default late fee on the property first.'
-        : 'Please enter a payment amount greater than zero.')
+    if (!paymentForm.amount || Number(paymentForm.amount) <= 0) {
+      setMessage('Please enter a payment amount greater than zero.')
       return
     }
 
@@ -960,8 +946,8 @@ export default function App() {
     const payload = {
       property_id: paymentForm.propertyId,
       payment_date: paymentForm.paymentDate,
-      amount: Number(amountToUse || 0),
-      method: entryType === 'late_fee' ? 'Late Fee' : paymentForm.method,
+      amount: Number(paymentForm.amount || 0),
+      method: paymentForm.method,
       note: paymentForm.note || null,
     }
 
@@ -976,7 +962,9 @@ export default function App() {
       return
     }
 
-    if (typeof window !== 'undefined' && entryType !== 'late_fee') {
+    const property = activeCompanyProperties.find((item) => item.id === paymentForm.propertyId) || companyProperties.find((item) => item.id === paymentForm.propertyId)
+
+    if (typeof window !== 'undefined') {
       window.localStorage.setItem('rentTrackerLastPaymentMethod', paymentForm.method)
     }
 
@@ -988,17 +976,13 @@ export default function App() {
       setSelectedMonth(postedMonth)
     }
 
-    setPaymentSuccessMessage(
-      entryType === 'late_fee'
-        ? `Late fee saved for ${property?.address || 'selected property'} — ${currency(amountToUse)} on ${formatDate(paymentForm.paymentDate)}. Posted to ${monthLabel(postedMonth || selectedMonth)}.`
-        : `Payment saved for ${property?.address || 'selected property'} — ${currency(amountToUse)} on ${formatDate(paymentForm.paymentDate)}. Posted to ${monthLabel(postedMonth || selectedMonth)}.`
-    )
+    setPaymentSuccessMessage(`Payment saved for ${property?.address || 'selected property'} — ${currency(paymentForm.amount)} on ${formatDate(paymentForm.paymentDate)}. Posted to ${monthLabel(postedMonth || selectedMonth)}.`)
 
     setPaymentForm((current) => ({
       propertyId: addAnother ? current.propertyId : '',
       paymentDate: getTodayDateInput(),
       amount: '',
-      method: entryType === 'late_fee' ? (current.method === 'Late Fee' ? 'Cash' : current.method || 'Cash') : current.method || 'Cash',
+      method: current.method || 'Cash',
       note: '',
     }))
 
@@ -1007,15 +991,11 @@ export default function App() {
 
   async function addPayment(e) {
     e.preventDefault()
-    await savePaymentEntry({ addAnother: false, entryType: 'payment' })
+    await savePayment({ addAnother: false })
   }
 
   async function addPaymentAndContinue() {
-    await savePaymentEntry({ addAnother: true, entryType: 'payment' })
-  }
-
-  async function addLateFee() {
-    await savePaymentEntry({ addAnother: false, entryType: 'late_fee' })
+    await savePayment({ addAnother: true })
   }
 
   function startEditingProperty(property) {
@@ -1198,7 +1178,7 @@ This keeps the record for reporting but removes it from your active list.`
 
     cancelEditingPayment()
     await loadData()
-    setMessage(`${editPaymentForm.method === 'Late Fee' ? 'Late fee' : 'Payment'} updated and posted to ${monthLabel(postedMonth || selectedMonth)}.`)
+    setMessage(`Payment updated and posted to ${monthLabel(postedMonth || selectedMonth)}.`)
   }
 
   async function deletePayment(paymentId) {
@@ -1644,28 +1624,33 @@ This permanently removes the payment from the ledger.`
         })
       }
 
-      const manualLateFeeTotal = monthPaymentsForProperty
-        .filter((payment) => isManualLateFeeEntry(payment))
-        .reduce((sum, payment) => sum + Number(payment.amount || 0), 0)
+      if (occupancy.isOccupied && lateFee !== 0) {
+        runningBalance += lateFee
+        entries.push({
+          propertyId: property.id,
+          propertyAddress: property.address,
+          tenantName: effectiveTenant,
+          month,
+          date: monthStart,
+          type: 'late_fee',
+          description: 'Late fee',
+          amount: lateFee,
+          note: '',
+          runningBalance,
+        })
+      }
 
       monthPaymentsForProperty.forEach((payment) => {
-        const isLateFeeEntry = isManualLateFeeEntry(payment)
-
-        if (isLateFeeEntry) {
-          runningBalance += Number(payment.amount || 0)
-        } else {
-          runningBalance -= Number(payment.amount || 0)
-        }
-
+        runningBalance -= Number(payment.amount || 0)
         entries.push({
           propertyId: property.id,
           propertyAddress: property.address,
           tenantName: getTenantForDate(property, propertyOverrides, payment.payment_date) || effectiveTenant,
           month,
           date: payment.payment_date,
-          type: isLateFeeEntry ? 'late_fee' : 'payment',
-          description: isLateFeeEntry ? 'Late fee' : `Payment - ${payment.method || 'Method not listed'}`,
-          amount: isLateFeeEntry ? Number(payment.amount || 0) : -Number(payment.amount || 0),
+          type: 'payment',
+          description: `Payment - ${payment.method || 'Method not listed'}`,
+          amount: -Number(payment.amount || 0),
           note: payment.note || '',
           paymentId: payment.id,
           runningBalance,
@@ -1679,10 +1664,8 @@ This permanently removes the payment from the ledger.`
         occupancy,
         balanceForward,
         startingBalance,
-        lateFee: manualLateFeeTotal,
-        totalPaid: monthPaymentsForProperty
-          .filter((payment) => !isManualLateFeeEntry(payment))
-          .reduce((sum, payment) => sum + Number(payment.amount || 0), 0),
+        lateFee,
+        totalPaid: monthPaymentsForProperty.reduce((sum, payment) => sum + Number(payment.amount || 0), 0),
         endingBalance: runningBalance,
         notes: override?.notes || '',
         currentOverride: override || null,
@@ -1781,11 +1764,30 @@ This permanently removes the payment from the ledger.`
   const selectedPropertyLedgerRows = useMemo(() => {
     if (!selectedPropertyLedger) return []
 
-    return selectedPropertyLedger.entries.filter((entry) => {
-      if (!reportStartDate && !reportEndDate) return true
-      if (entry.type === 'balance_forward') return true
+    const entriesUpToEndDate = selectedPropertyLedger.entries.filter((entry) => {
+      if (!reportEndDate) return true
+      return String(entry.date || '').slice(0, 10) <= reportEndDate
+    })
+
+    if (!reportStartDate) {
+      return entriesUpToEndDate
+    }
+
+    const latestBalanceForward = [...entriesUpToEndDate]
+      .filter((entry) => entry.type === 'balance_forward' && String(entry.date || '').slice(0, 10) <= reportStartDate)
+      .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')))
+      .pop()
+
+    const rangedRows = entriesUpToEndDate.filter((entry) => {
+      if (entry.type === 'balance_forward') return false
       return isWithinDateRange(entry.date, reportStartDate, reportEndDate)
     })
+
+    if (!latestBalanceForward) {
+      return rangedRows
+    }
+
+    return [latestBalanceForward, ...rangedRows]
   }, [selectedPropertyLedger, reportStartDate, reportEndDate])
 
   const selectedPropertyLedgerTotals = useMemo(() => {
@@ -1857,10 +1859,30 @@ This permanently removes the payment from the ledger.`
     const ledger = propertyLedgerMap[selectedReportProperty.id]
     if (!ledger) return []
 
-    return ledger.entries.filter((entry) => {
-      if (entry.type === 'balance_forward') return true
+    const entriesUpToEndDate = ledger.entries.filter((entry) => {
+      if (!reportEndDate) return true
+      return String(entry.date || '').slice(0, 10) <= reportEndDate
+    })
+
+    if (!reportStartDate) {
+      return entriesUpToEndDate
+    }
+
+    const latestBalanceForward = [...entriesUpToEndDate]
+      .filter((entry) => entry.type === 'balance_forward' && String(entry.date || '').slice(0, 10) <= reportStartDate)
+      .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')))
+      .pop()
+
+    const rangedRows = entriesUpToEndDate.filter((entry) => {
+      if (entry.type === 'balance_forward') return false
       return isWithinDateRange(entry.date, reportStartDate, reportEndDate)
     })
+
+    if (!latestBalanceForward) {
+      return rangedRows
+    }
+
+    return [latestBalanceForward, ...rangedRows]
   }, [selectedReportProperty, propertyLedgerMap, reportStartDate, reportEndDate])
 
   const selectedTenantStatementRows = useMemo(() => {
@@ -2787,7 +2809,7 @@ This permanently removes the payment from the ledger.`
             </div>
           ) : null}
           <div className="mobile-card" style={styles.card}>
-            <h2 style={styles.cardTitle}>Payments & Charges This Month</h2>
+            <h2 style={styles.cardTitle}>Payments This Month</h2>
             <p style={styles.smallMuted}>{selectedCompanyName} — {monthLabel(selectedMonth)}</p>
             <div style={styles.tableWrap}>
               <table style={styles.table}>
@@ -2818,7 +2840,7 @@ This permanently removes the payment from the ledger.`
                           <td style={styles.td}>
                             {editingPaymentId === payment.id ? (
                               <input style={styles.tableInput} type="number" value={editPaymentForm.amount} onChange={(e) => setEditPaymentForm({ ...editPaymentForm, amount: e.target.value })} />
-                            ) : (isManualLateFeeEntry(payment) ? currency(payment.amount) : currency(payment.amount))}
+                            ) : currency(payment.amount)}
                           </td>
                           <td style={styles.td}>
                             {editingPaymentId === payment.id ? (
@@ -2830,7 +2852,6 @@ This permanently removes the payment from the ledger.`
                                 <option value="Cash App">Cash App</option>
                                 <option value="Zelle">Zelle</option>
                                 <option value="Venmo">Venmo</option>
-                                <option value="Late Fee">Late Fee</option>
                               </select>
                             ) : (payment.method || '—')}
                           </td>
@@ -2870,7 +2891,7 @@ This permanently removes the payment from the ledger.`
               <p style={styles.mobileHeroText}>Built for easier phone use with larger controls, stacked spacing, and voice-friendly entry tools.</p>
             </div>
             <p style={styles.smallMuted}>Default date starts on today, the last saved payment method is remembered, and you can save another payment without rebuilding the form.</p>
-            <div style={styles.infoBanner}>Payments post by the payment date you enter, not the month currently showing at the top. After you save, the month selector will follow that payment date so you can see it in the right month. Add Late Fee creates a separate ledger charge. If the amount field is blank, it will use the default late fee saved on the property.</div>
+            <div style={styles.infoBanner}>Payments post by the payment date you enter, not the month currently showing at the top. After you save, the month selector will follow that payment date so you can see it in the right month.</div>
 
             <div style={styles.voiceCard}>
               <div style={styles.voiceHeaderRow}>
@@ -2999,7 +3020,6 @@ This permanently removes the payment from the ledger.`
                 <option value="Cash App">Cash App</option>
                 <option value="Zelle">Zelle</option>
                 <option value="Venmo">Venmo</option>
-                <option value="Late Fee">Late Fee</option>
               </select>
 
               <div style={styles.smallMuted}>Last used method will carry forward after you save.</div>
@@ -3014,12 +3034,9 @@ This permanently removes the payment from the ledger.`
                 }}
               />
 
-              <div style={styles.smallMuted}>Use Add Late Fee for a separate charge that shows on the ledger as a late fee instead of increasing rent.</div>
-
               <div className="mobile-button-row" style={styles.buttonRow}>
                 <button style={styles.primaryButton} type="submit">Save Payment</button>
                 <button style={styles.secondaryButton} type="button" onClick={addPaymentAndContinue}>Save + Add Another</button>
-                <button style={styles.secondaryButton} type="button" onClick={addLateFee}>Add Late Fee</button>
               </div>
             </form>
           </div>
