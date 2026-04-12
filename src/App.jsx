@@ -1359,6 +1359,52 @@ This keeps the record for reporting but removes it from your active list.`
     setMessage('Security deposit payment deleted.')
   }
 
+  async function editSecurityDepositPayment(payment) {
+    if (!selectedDepositPropertyId) return
+
+    const amountInput = window.prompt('Edit deposit payment amount:', String(payment.amount || ''))
+    if (amountInput === null) return
+
+    const amountValue = Number(amountInput)
+    if (Number.isNaN(amountValue) || amountValue <= 0) {
+      setMessage('Please enter a valid deposit payment amount greater than zero.')
+      return
+    }
+
+    const dateInput = window.prompt('Edit deposit payment date (YYYY-MM-DD):', normalizeDateInputValue(payment.paymentDate))
+    if (dateInput === null) return
+
+    const normalizedDate = normalizeDateInputValue(dateInput)
+    if (!normalizedDate) {
+      setMessage('Please enter a valid deposit payment date.')
+      return
+    }
+
+    const methodInput = window.prompt('Edit deposit payment method:', payment.method || 'Cash')
+    if (methodInput === null) return
+
+    const noteInput = window.prompt('Edit deposit payment note:', payment.note || '')
+    if (noteInput === null) return
+
+    const { error } = await supabase
+      .from('security_deposit_payments')
+      .update({
+        payment_date: normalizedDate,
+        amount: amountValue,
+        method: methodInput || 'Cash',
+        note: noteInput || null,
+      })
+      .eq('id', payment.id)
+
+    if (error) {
+      setMessage(error.message)
+      return
+    }
+
+    await loadData()
+    setMessage('Security deposit payment updated.')
+  }
+
   function startEditingPayment(payment) {
     setEditingPaymentId(payment.id)
     setEditPaymentForm({
@@ -3839,7 +3885,10 @@ This permanently removes the payment from the ledger.`
                             <td style={styles.td}>{currency(payment.amount)}</td>
                             <td style={styles.td}>{payment.note || '—'}</td>
                             <td style={styles.td}>
-                              <button style={styles.smallDangerButton} type="button" onClick={() => deleteSecurityDepositPayment(payment.id)}>Delete</button>
+                              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                                <button style={styles.smallSecondaryButton} type="button" onClick={() => editSecurityDepositPayment(payment)}>Edit</button>
+                                <button style={styles.smallDangerButton} type="button" onClick={() => deleteSecurityDepositPayment(payment.id)}>Delete</button>
+                              </div>
                             </td>
                           </tr>
                         ))
