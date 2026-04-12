@@ -211,6 +211,22 @@ function matchesSearch(text, search) {
   return normalizeSearchText(text).includes(search)
 }
 
+function isManualLateFeeEntry(payment) {
+  return String(payment?.method || '').toLowerCase() === 'late fee'
+}
+
+function buildSecurityDepositRecord(current = {}) {
+  return {
+    requiredAmount: current.requiredAmount || '',
+    dueDate: current.dueDate || '',
+    payments: Array.isArray(current.payments) ? current.payments : [],
+    refundDate: current.refundDate || '',
+    refundAmount: current.refundAmount || '',
+    deductionAmount: current.deductionAmount || '',
+    deductionNote: current.deductionNote || '',
+  }
+}
+
 export default function App() {
   const [session, setSession] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -239,6 +255,14 @@ export default function App() {
   const [notesDraft, setNotesDraft] = useState('')
   const [logoRefreshKey, setLogoRefreshKey] = useState(0)
   const [embeddedReportLogoSrc, setEmbeddedReportLogoSrc] = useState('')
+  const [securityDeposits, setSecurityDeposits] = useState({})
+  const [selectedDepositPropertyId, setSelectedDepositPropertyId] = useState('')
+  const [depositPaymentForm, setDepositPaymentForm] = useState({
+    paymentDate: getTodayDateInput(),
+    amount: '',
+    method: 'Cash',
+    note: '',
+  })
 
   const [companyForm, setCompanyForm] = useState({
     companyName: '',
@@ -406,6 +430,24 @@ export default function App() {
     if (typeof window === 'undefined') return
     window.localStorage.setItem('rentTrackerPropertyNotes', JSON.stringify(propertyNotes))
   }, [propertyNotes])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    try {
+      const savedDeposits = window.localStorage.getItem('rentTrackerSecurityDeposits')
+      if (savedDeposits) {
+        setSecurityDeposits(JSON.parse(savedDeposits))
+      }
+    } catch (error) {
+      console.error('Unable to load saved security deposits.', error)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem('rentTrackerSecurityDeposits', JSON.stringify(securityDeposits))
+  }, [securityDeposits])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -923,7 +965,7 @@ export default function App() {
     await loadData()
   }
 
-  async function savePayment({ addAnother = false } = {}) {
+  async function savePaymentEntry({ addAnother = false, entryType = 'payment' } = {}) {
     setMessage('')
     setPaymentSuccessMessage('')
 
@@ -937,8 +979,18 @@ export default function App() {
       return
     }
 
-    if (!paymentForm.amount || Number(paymentForm.amount) <= 0) {
-      setMessage('Please enter a payment amount greater than zero.')
+    const property = activeCompanyProperties.find((item) => item.id === paymentForm.propertyId) || companyProperties.find((item) => item.id === paymentForm.propertyId)
+    const amountToUse =
+      paymentForm.amount && Number(paymentForm.amount) > 0
+        ? Number(paymentForm.amount)
+        : entryType === 'late_fee'
+          ? Number(property?.late_fee || 0)
+          : 0
+
+    if (!amountToUse || Number(amountToUse) <= 0) {
+      setMessage(entryType === 'late_fee'
+        ? 'Please enter a late fee amount greater than zero, or save a default late fee on the property first.'
+        : 'Please enter a payment amount greater than zero.')
       return
     }
 
@@ -946,8 +998,8 @@ export default function App() {
     const payload = {
       property_id: paymentForm.propertyId,
       payment_date: paymentForm.paymentDate,
-      amount: Number(paymentForm.amount || 0),
-      method: paymentForm.method,
+      amount: Number(amountToUse || 0),
+      method: entryType === 'late_fee' ? 'Late Fee' : paymentForm.method,
       note: paymentForm.note || null,
     }
 
@@ -962,9 +1014,7 @@ export default function App() {
       return
     }
 
-    const property = activeCompanyProperties.find((item) => item.id === paymentForm.propertyId) || companyProperties.find((item) => item.id === paymentForm.propertyId)
-
-    if (typeof window !== 'undefined') {
+    if (typeof window !== 'undefined' && entryType !== 'late_fee') {
       window.localStorage.setItem('rentTrackerLastPaymentMethod', paymentForm.method)
     }
 
@@ -976,13 +1026,17 @@ export default function App() {
       setSelectedMonth(postedMonth)
     }
 
-    setPaymentSuccessMessage(`Payment saved for ${property?.address || 'selected property'} — ${currency(paymentForm.amount)} on ${formatDate(paymentForm.paymentDate)}. Posted to ${monthLabel(postedMonth || selectedMonth)}.`)
+    setPaymentSuccessMessage(
+      entryType === 'late_fee'
+        ? `Late fee saved for ${property?.address || 'selected property'} — ${currency(amountToUse)} on ${formatDate(paymentForm.paymentDate)}. Posted to ${monthLabel(postedMonth || selectedMonth)}.`
+        : `Payment saved for ${property?.address || 'selected property'} — ${currency(amountToUse)} on ${formatDate(paymentForm.paymentDate)}. Posted to ${monthLabel(postedMonth || selectedMonth)}.`
+    )
 
     setPaymentForm((current) => ({
       propertyId: addAnother ? current.propertyId : '',
       paymentDate: getTodayDateInput(),
       amount: '',
-      method: current.method || 'Cash',
+      method: entryType === 'late_fee' ? (current.method === 'Late Fee' ? 'Cash' : current.method || 'Cash') : current.method || 'Cash',
       note: '',
     }))
 
@@ -991,11 +1045,15 @@ export default function App() {
 
   async function addPayment(e) {
     e.preventDefault()
-    await savePayment({ addAnother: false })
+    await savePaymentEntry({ addAnother: false, entryType: 'payment' })
   }
 
   async function addPaymentAndContinue() {
-    await savePayment({ addAnother: true })
+    await savePaymentEntry({ addAnother: true, entryType: 'payment' })
+  }
+
+  async function addLateFee() {
+    await savePaymentEntry({ addAnother: false, entryType: 'late_fee' })
   }
 
   function startEditingProperty(property) {
@@ -1127,6 +1185,75 @@ This keeps the record for reporting but removes it from your active list.`
     setMessage(`Notes cleared for ${property?.address || 'selected property'}.`)
   }
 
+  function updateDepositRecord(patch) {
+    if (!selectedDepositPropertyId) return
+    setSecurityDeposits((current) => ({
+      ...current,
+      [selectedDepositPropertyId]: {
+        ...buildSecurityDepositRecord(current[selectedDepositPropertyId]),
+        ...patch,
+      },
+    }))
+  }
+
+  function addSecurityDepositPayment() {
+    if (!selectedDepositPropertyId) {
+      setMessage('Please select a property for security deposit tracking.')
+      return
+    }
+
+    if (!depositPaymentForm.paymentDate || !depositPaymentForm.amount || Number(depositPaymentForm.amount) <= 0) {
+      setMessage('Please enter a deposit payment date and amount greater than zero.')
+      return
+    }
+
+    const nextPayment = {
+      id: `${Date.now()}`,
+      paymentDate: depositPaymentForm.paymentDate,
+      amount: Number(depositPaymentForm.amount || 0),
+      method: depositPaymentForm.method,
+      note: depositPaymentForm.note || '',
+    }
+
+    setSecurityDeposits((current) => {
+      const existing = buildSecurityDepositRecord(current[selectedDepositPropertyId])
+      return {
+        ...current,
+        [selectedDepositPropertyId]: {
+          ...existing,
+          payments: [...existing.payments, nextPayment].sort((a, b) => String(a.paymentDate).localeCompare(String(b.paymentDate))),
+        },
+      }
+    })
+
+    setDepositPaymentForm({
+      paymentDate: getTodayDateInput(),
+      amount: '',
+      method: depositPaymentForm.method || 'Cash',
+      note: '',
+    })
+    setMessage('Security deposit payment saved.')
+  }
+
+  function deleteSecurityDepositPayment(paymentId) {
+    if (!selectedDepositPropertyId) return
+
+    const confirmed = window.confirm('Delete this security deposit payment?')
+    if (!confirmed) return
+
+    setSecurityDeposits((current) => {
+      const existing = buildSecurityDepositRecord(current[selectedDepositPropertyId])
+      return {
+        ...current,
+        [selectedDepositPropertyId]: {
+          ...existing,
+          payments: existing.payments.filter((item) => item.id !== paymentId),
+        },
+      }
+    })
+    setMessage('Security deposit payment deleted.')
+  }
+
   function startEditingPayment(payment) {
     setEditingPaymentId(payment.id)
     setEditPaymentForm({
@@ -1178,7 +1305,7 @@ This keeps the record for reporting but removes it from your active list.`
 
     cancelEditingPayment()
     await loadData()
-    setMessage(`Payment updated and posted to ${monthLabel(postedMonth || selectedMonth)}.`)
+    setMessage(`${editPaymentForm.method === 'Late Fee' ? 'Late fee' : 'Payment'} updated and posted to ${monthLabel(postedMonth || selectedMonth)}.`)
   }
 
   async function deletePayment(paymentId) {
@@ -1444,6 +1571,30 @@ This permanently removes the payment from the ledger.`
     return companyProperties.find((property) => property.id === selectedNotesPropertyId) || null
   }, [companyProperties, selectedNotesPropertyId])
 
+  const selectedDepositProperty = useMemo(() => {
+    return companyProperties.find((property) => property.id === selectedDepositPropertyId) || null
+  }, [companyProperties, selectedDepositPropertyId])
+
+  const selectedDepositRecord = useMemo(() => {
+    return buildSecurityDepositRecord(securityDeposits[selectedDepositPropertyId])
+  }, [securityDeposits, selectedDepositPropertyId])
+
+  const selectedDepositSummary = useMemo(() => {
+    const paymentsList = selectedDepositRecord.payments || []
+    const totalPaid = paymentsList.reduce((sum, item) => sum + Number(item.amount || 0), 0)
+    const requiredAmount = Number(selectedDepositRecord.requiredAmount || 0)
+    const balanceOwed = Math.max(requiredAmount - totalPaid, 0)
+    const refundAmount = Number(selectedDepositRecord.refundAmount || 0)
+    const deductionAmount = Number(selectedDepositRecord.deductionAmount || 0)
+    return {
+      totalPaid,
+      requiredAmount,
+      balanceOwed,
+      refundAmount,
+      deductionAmount,
+    }
+  }, [selectedDepositRecord])
+
   const notesPropertyTenant = useMemo(() => {
     if (!notesProperty) return ''
     const propertyOverrides = monthlyOverrides.filter((item) => item.property_id === notesProperty.id)
@@ -1480,6 +1631,18 @@ This permanently removes the payment from the ledger.`
 
     setNotesDraft(propertyNotes[selectedNotesPropertyId]?.text || '')
   }, [selectedNotesPropertyId, propertyNotes])
+
+  useEffect(() => {
+    if (companyProperties.length === 0) {
+      setSelectedDepositPropertyId('')
+      return
+    }
+
+    const stillExists = companyProperties.some((property) => property.id === selectedDepositPropertyId)
+    if (!stillExists) {
+      setSelectedDepositPropertyId(companyProperties[0].id)
+    }
+  }, [companyProperties, selectedDepositPropertyId])
 
   const companyPropertyIds = useMemo(() => companyProperties.map((property) => property.id), [companyProperties])
 
@@ -1624,33 +1787,28 @@ This permanently removes the payment from the ledger.`
         })
       }
 
-      if (occupancy.isOccupied && lateFee !== 0) {
-        runningBalance += lateFee
-        entries.push({
-          propertyId: property.id,
-          propertyAddress: property.address,
-          tenantName: effectiveTenant,
-          month,
-          date: monthStart,
-          type: 'late_fee',
-          description: 'Late fee',
-          amount: lateFee,
-          note: '',
-          runningBalance,
-        })
-      }
+      const manualLateFeeTotal = monthPaymentsForProperty
+        .filter((payment) => isManualLateFeeEntry(payment))
+        .reduce((sum, payment) => sum + Number(payment.amount || 0), 0)
 
       monthPaymentsForProperty.forEach((payment) => {
-        runningBalance -= Number(payment.amount || 0)
+        const isLateFeeEntry = isManualLateFeeEntry(payment)
+
+        if (isLateFeeEntry) {
+          runningBalance += Number(payment.amount || 0)
+        } else {
+          runningBalance -= Number(payment.amount || 0)
+        }
+
         entries.push({
           propertyId: property.id,
           propertyAddress: property.address,
           tenantName: getTenantForDate(property, propertyOverrides, payment.payment_date) || effectiveTenant,
           month,
           date: payment.payment_date,
-          type: 'payment',
-          description: `Payment - ${payment.method || 'Method not listed'}`,
-          amount: -Number(payment.amount || 0),
+          type: isLateFeeEntry ? 'late_fee' : 'payment',
+          description: isLateFeeEntry ? 'Late fee' : `Payment - ${payment.method || 'Method not listed'}`,
+          amount: isLateFeeEntry ? Number(payment.amount || 0) : -Number(payment.amount || 0),
           note: payment.note || '',
           paymentId: payment.id,
           runningBalance,
@@ -1664,8 +1822,8 @@ This permanently removes the payment from the ledger.`
         occupancy,
         balanceForward,
         startingBalance,
-        lateFee,
-        totalPaid: monthPaymentsForProperty.reduce((sum, payment) => sum + Number(payment.amount || 0), 0),
+        lateFee: manualLateFeeTotal,
+        totalPaid: monthPaymentsForProperty.filter((payment) => !isManualLateFeeEntry(payment)).reduce((sum, payment) => sum + Number(payment.amount || 0), 0),
         endingBalance: runningBalance,
         notes: override?.notes || '',
         currentOverride: override || null,
@@ -1884,6 +2042,10 @@ This permanently removes the payment from the ledger.`
 
     return [latestBalanceForward, ...rangedRows]
   }, [selectedReportProperty, propertyLedgerMap, reportStartDate, reportEndDate])
+
+  const selectedPropertyStatementTenant = useMemo(() => {
+    return selectedPropertyStatementRows.find((entry) => entry.tenantName)?.tenantName || ''
+  }, [selectedPropertyStatementRows])
 
   const selectedTenantStatementRows = useMemo(() => {
     if (!selectedTenantName) return []
@@ -2115,26 +2277,14 @@ This permanently removes the payment from the ledger.`
   }
 
 
-  function printSection(sectionRef, title) {
-    const sectionHtml = sectionRef?.current?.innerHTML
-
-    if (!sectionHtml) {
-      setMessage(`Nothing to print for ${title}.`)
-      return
-    }
-
-    const printWindow = window.open('', '_blank', 'width=1000,height=800')
-    if (!printWindow) {
-      setMessage('Your browser blocked the print window. Please allow pop-ups and try again.')
-      return
-    }
-
-    printWindow.document.write(`
+  function buildPrintableHtml(sectionHtml, title) {
+    return `
       <html>
         <head>
           <title>${title}</title>
+          <meta name="viewport" content="width=device-width, initial-scale=1.0" />
           <style>
-            body { font-family: Arial, sans-serif; padding: 28px; color: #261525; background: #ffffff; }
+            body { font-family: Arial, sans-serif; padding: 20px; color: #261525; background: #ffffff; }
             .print-shell { max-width: 1100px; margin: 0 auto; }
             .reportBrandShell { background: linear-gradient(135deg, #220821 0%, #4a1546 58%, #5a1a54 100%) !important; border-top: 4px solid #d89a2b !important; border-radius: 0 !important; box-shadow: none !important; }
             .reportBrandTop { display: flex !important; align-items: center !important; gap: 16px !important; flex-wrap: wrap !important; }
@@ -2142,20 +2292,13 @@ This permanently removes the payment from the ledger.`
             .reportBrandLogo { width: 100% !important; max-width: 150px !important; object-fit: contain !important; display: block !important; }
             .reportBrandTitle { color: #f5ebdf !important; font-family: Georgia, 'Times New Roman', serif !important; font-size: 28px !important; font-weight: 700 !important; letter-spacing: -0.02em !important; }
             .reportBrandSubtitle { color: #e7d4bb !important; font-size: 12px !important; letter-spacing: 2px !important; text-transform: uppercase !important; font-weight: 700 !important; margin-top: 6px !important; }
-            .report-brand-shell { margin-bottom: 18px; background: linear-gradient(135deg, #220821 0%, #4a1546 58%, #5a1a54 100%); border-top: 4px solid #d89a2b; border-radius: 18px; padding: 16px 18px; box-shadow: 0 8px 22px rgba(34, 8, 33, 0.18); }
-            .report-brand-top { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
-            .report-brand-logo-wrap { background: #f5ebdf; border: 1px solid rgba(231, 212, 187, 0.45); border-radius: 14px; padding: 8px 14px; width: 180px; height: 64px; display: flex; align-items: center; justify-content: center; box-sizing: border-box; }
-            .report-brand-logo { width: 100%; max-width: 150px; object-fit: contain; display: block; }
-            .report-brand-title { font-size: 28px; line-height: 1.02; color: #f5ebdf; font-family: Georgia, 'Times New Roman', serif; font-weight: 700; letter-spacing: -0.02em; }
-            .report-brand-subtitle { margin-top: 6px; color: #e7d4bb; font-size: 12px; letter-spacing: .14em; text-transform: uppercase; font-weight: 700; }
             .report-print-header { margin-bottom: 16px; padding-bottom: 12px; border-bottom: 1px solid #d9cfc0; }
             .report-print-company { font-size: 18px; font-weight: 700; margin-bottom: 6px; color: #2f102d; }
             .report-print-title { font-size: 24px; font-weight: 700; margin-bottom: 6px; color: #2f102d; }
             .report-print-meta { font-size: 14px; color: #4b5563; margin-bottom: 4px; }
             .report-print-footer { margin-top: 18px; padding-top: 12px; border-top: 1px solid #d9cfc0; font-size: 12px; color: #6b7280; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
-            .notes-box { margin-top: 16px; background: #fbf7f1; border: 1px solid #e8dccb; border-radius: 12px; padding: 12px 14px; font-size: 14px; color: #4b5563; }
+            .notes-box { margin-top: 16px; background: #fbf7f1; border: 1px solid #e8dccb; border-radius: 8px; padding: 12px 14px; font-size: 14px; color: #4b5563; }
             .report-totals { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-top: 16px; font-size: 14px; }
-            .small-muted { color: #6b7280; font-size: 14px; }
             table { width: 100%; border-collapse: collapse; margin-top: 16px; }
             th, td { border: 1px solid #d9cfc0; padding: 10px; text-align: left; vertical-align: top; }
             th { background: #fbf7f1; color: #9a6d2f; text-transform: uppercase; letter-spacing: .04em; font-size: 12px; }
@@ -2171,18 +2314,59 @@ This permanently removes the payment from the ledger.`
           </div>
         </body>
       </html>
-    `)
-    printWindow.document.close()
-    printWindow.focus()
-    printWindow.onafterprint = () => {
-      try {
-        printWindow.close()
-      } catch (error) {
-        console.error('Unable to close print window.', error)
-      }
-      refreshLogos()
+    `
+  }
+
+  function printSection(sectionRef, title, mode = 'print') {
+    const sectionHtml = sectionRef?.current?.innerHTML
+
+    if (!sectionHtml) {
+      setMessage(`Nothing to print for ${title}.`)
+      return
     }
-    printWindow.print()
+
+    const iframe = document.createElement('iframe')
+    iframe.style.position = 'fixed'
+    iframe.style.right = '0'
+    iframe.style.bottom = '0'
+    iframe.style.width = '0'
+    iframe.style.height = '0'
+    iframe.style.border = '0'
+    document.body.appendChild(iframe)
+
+    const doc = iframe.contentWindow.document
+    doc.open()
+    doc.write(buildPrintableHtml(sectionHtml, title))
+    doc.close()
+
+    const finish = () => {
+      setTimeout(() => {
+        try {
+          document.body.removeChild(iframe)
+        } catch (error) {
+          console.error('Unable to remove print frame.', error)
+        }
+        refreshLogos()
+      }, 800)
+    }
+
+    iframe.onload = () => {
+      try {
+        iframe.contentWindow.focus()
+        iframe.contentWindow.print()
+        setMessage(mode === 'download'
+          ? 'Choose Save as PDF in your print dialog to download the report as a PDF.'
+          : '')
+      } catch (error) {
+        console.error('Unable to open print dialog.', error)
+        setMessage('There was a problem opening the print dialog on this device.')
+      }
+      finish()
+    }
+  }
+
+  function saveSectionAsPdf(sectionRef, title) {
+    printSection(sectionRef, title, 'download')
   }
 
 
@@ -3020,9 +3204,10 @@ This permanently removes the payment from the ledger.`
                 <option value="Cash App">Cash App</option>
                 <option value="Zelle">Zelle</option>
                 <option value="Venmo">Venmo</option>
+                <option value="Late Fee">Late Fee</option>
               </select>
 
-              <div style={styles.smallMuted}>Last used method will carry forward after you save.</div>
+              <div style={styles.smallMuted}>Last used method will carry forward after you save. Use Add Late Fee below to post a separate late-fee charge instead of increasing rent.</div>
 
               <label style={styles.label}>Note</label>
               <input
@@ -3037,6 +3222,7 @@ This permanently removes the payment from the ledger.`
               <div className="mobile-button-row" style={styles.buttonRow}>
                 <button style={styles.primaryButton} type="submit">Save Payment</button>
                 <button style={styles.secondaryButton} type="button" onClick={addPaymentAndContinue}>Save + Add Another</button>
+                <button style={styles.secondaryButton} type="button" onClick={addLateFee}>Add Late Fee</button>
               </div>
             </form>
           </div>
@@ -3356,6 +3542,159 @@ This permanently removes the payment from the ledger.`
           <div className="mobile-card" style={styles.card}>
             <div style={styles.reportHeaderRow}>
               <div>
+                <h2 style={styles.cardTitle}>Security Deposit Tracker</h2>
+                <p style={styles.smallMuted}>Track required deposit, installment payments, balance owed, refunds, and any deductions.</p>
+              </div>
+            </div>
+
+            <label style={styles.label}>Property</label>
+            <select
+              style={styles.input}
+              value={selectedDepositPropertyId}
+              onChange={(e) => setSelectedDepositPropertyId(e.target.value)}
+            >
+              <option value="">Select property</option>
+              {filteredPropertyOptions.map((property) => (
+                <option key={`deposit-${property.id}`} value={property.id}>
+                  {property.address}
+                </option>
+              ))}
+            </select>
+
+            {selectedDepositProperty ? (
+              <>
+                <div style={styles.notesMetaGrid}>
+                  <div style={styles.ledgerMiniCard}>
+                    <div style={styles.kpiLabel}>Tenant</div>
+                    <div style={styles.kpiValueSmall}>{getTenantForDate(selectedDepositProperty, companyOverrides.filter((item) => item.property_id === selectedDepositProperty.id), getTodayDateInput()) || 'Vacant'}</div>
+                  </div>
+                  <div style={styles.ledgerMiniCard}>
+                    <div style={styles.kpiLabel}>Required Deposit</div>
+                    <div style={styles.kpiValueSmall}>{currency(selectedDepositSummary.requiredAmount)}</div>
+                  </div>
+                  <div style={styles.ledgerMiniCard}>
+                    <div style={styles.kpiLabel}>Paid So Far</div>
+                    <div style={styles.kpiValueSmall}>{currency(selectedDepositSummary.totalPaid)}</div>
+                  </div>
+                  <div style={styles.ledgerMiniCard}>
+                    <div style={styles.kpiLabel}>Balance Owed</div>
+                    <div style={styles.kpiValueSmall}>{currency(selectedDepositSummary.balanceOwed)}</div>
+                  </div>
+                </div>
+
+                <div style={styles.statementFilterGrid}>
+                  <div>
+                    <label style={styles.label}>Deposit Required</label>
+                    <input
+                      style={styles.input}
+                      type="number"
+                      step="0.01"
+                      value={selectedDepositRecord.requiredAmount}
+                      onChange={(e) => updateDepositRecord({ requiredAmount: e.target.value })}
+                      placeholder="Usually same as rent"
+                    />
+                  </div>
+                  <div>
+                    <label style={styles.label}>Deposit Due Date</label>
+                    <input
+                      style={styles.input}
+                      type="date"
+                      value={selectedDepositRecord.dueDate}
+                      onChange={(e) => updateDepositRecord({ dueDate: e.target.value })}
+                    />
+                  </div>
+                </div>
+
+                <div style={styles.notesBox}>
+                  <strong>Add Deposit Payment</strong>
+                  <div style={{ ...styles.statementFilterGrid, marginTop: '12px' }}>
+                    <div>
+                      <label style={styles.label}>Date</label>
+                      <input style={styles.input} type="date" value={depositPaymentForm.paymentDate} onChange={(e) => setDepositPaymentForm({ ...depositPaymentForm, paymentDate: e.target.value })} />
+                    </div>
+                    <div>
+                      <label style={styles.label}>Amount</label>
+                      <input style={styles.input} type="number" step="0.01" value={depositPaymentForm.amount} onChange={(e) => setDepositPaymentForm({ ...depositPaymentForm, amount: e.target.value })} />
+                    </div>
+                    <div>
+                      <label style={styles.label}>Method</label>
+                      <select style={styles.input} value={depositPaymentForm.method} onChange={(e) => setDepositPaymentForm({ ...depositPaymentForm, method: e.target.value })}>
+                        <option value="Cash">Cash</option>
+                        <option value="Bank Deposit">Bank Deposit</option>
+                        <option value="Check">Check</option>
+                        <option value="Money Order">Money Order</option>
+                        <option value="Cash App">Cash App</option>
+                        <option value="Zelle">Zelle</option>
+                        <option value="Venmo">Venmo</option>
+                      </select>
+                    </div>
+                  </div>
+                  <label style={styles.label}>Note</label>
+                  <input style={styles.input} value={depositPaymentForm.note} onChange={(e) => setDepositPaymentForm({ ...depositPaymentForm, note: e.target.value })} />
+                  <div className="mobile-button-row" style={styles.buttonRow}>
+                    <button style={styles.primaryButton} type="button" onClick={addSecurityDepositPayment}>Save Deposit Payment</button>
+                  </div>
+                </div>
+
+                <div style={styles.tableWrap}>
+                  <table style={styles.table}>
+                    <thead>
+                      <tr>
+                        <th style={styles.th}>Date</th>
+                        <th style={styles.th}>Method</th>
+                        <th style={styles.th}>Amount</th>
+                        <th style={styles.th}>Note</th>
+                        <th style={styles.th}>Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selectedDepositRecord.payments.length === 0 ? (
+                        <tr><td style={styles.td} colSpan="5">No deposit payments saved yet.</td></tr>
+                      ) : (
+                        selectedDepositRecord.payments.map((payment) => (
+                          <tr key={payment.id}>
+                            <td style={styles.td}>{formatDate(payment.paymentDate)}</td>
+                            <td style={styles.td}>{payment.method}</td>
+                            <td style={styles.td}>{currency(payment.amount)}</td>
+                            <td style={styles.td}>{payment.note || '—'}</td>
+                            <td style={styles.td}>
+                              <button style={styles.smallDangerButton} type="button" onClick={() => deleteSecurityDepositPayment(payment.id)}>Delete</button>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div style={styles.notesBox}>
+                  <strong>Refund / Deduction Summary</strong>
+                  <div style={{ ...styles.statementFilterGrid, marginTop: '12px' }}>
+                    <div>
+                      <label style={styles.label}>Refund Date</label>
+                      <input style={styles.input} type="date" value={selectedDepositRecord.refundDate} onChange={(e) => updateDepositRecord({ refundDate: e.target.value })} />
+                    </div>
+                    <div>
+                      <label style={styles.label}>Refund Amount</label>
+                      <input style={styles.input} type="number" step="0.01" value={selectedDepositRecord.refundAmount} onChange={(e) => updateDepositRecord({ refundAmount: e.target.value })} />
+                    </div>
+                    <div>
+                      <label style={styles.label}>Deductions Withheld</label>
+                      <input style={styles.input} type="number" step="0.01" value={selectedDepositRecord.deductionAmount} onChange={(e) => updateDepositRecord({ deductionAmount: e.target.value })} />
+                    </div>
+                  </div>
+                  <label style={styles.label}>Deduction Note</label>
+                  <textarea style={styles.textarea} value={selectedDepositRecord.deductionNote} onChange={(e) => updateDepositRecord({ deductionNote: e.target.value })} placeholder="Damages, cleaning, unpaid balance, or other deductions." />
+                </div>
+              </>
+            ) : (
+              <div style={styles.notesBox}>Select a property to track its security deposit.</div>
+            )}
+          </div>
+
+          <div className="mobile-card" style={styles.card}>
+            <div style={styles.reportHeaderRow}>
+              <div>
                 <h2 style={styles.cardTitle}>Alerts Center</h2>
                 <p style={styles.smallMuted}>This flags the things most likely to need attention first.</p>
               </div>
@@ -3411,6 +3750,13 @@ This permanently removes the payment from the ledger.`
                   onClick={() => printSection(ownerReportRef, 'Owner Monthly Report')}
                 >
                   Print Owner Report
+                </button>
+                <button
+                  style={styles.smallSecondaryButton}
+                  type="button"
+                  onClick={() => saveSectionAsPdf(ownerReportRef, 'Owner Monthly Report')}
+                >
+                  Save / Download PDF
                 </button>
                 <button
                   style={styles.smallPrimaryButton}
@@ -3508,6 +3854,13 @@ This permanently removes the payment from the ledger.`
                   onClick={() => printSection(managementInvoiceRef, 'Property Management Fee Invoice')}
                 >
                   Print Invoice
+                </button>
+                <button
+                  style={styles.smallSecondaryButton}
+                  type="button"
+                  onClick={() => saveSectionAsPdf(managementInvoiceRef, 'Property Management Fee Invoice')}
+                >
+                  Save / Download PDF
                 </button>
                 <button
                   style={styles.smallPrimaryButton}
@@ -3645,6 +3998,13 @@ This permanently removes the payment from the ledger.`
                   Print Property Statement
                 </button>
                 <button
+                  style={styles.smallSecondaryButton}
+                  type="button"
+                  onClick={() => saveSectionAsPdf(propertyStatementRef, 'Property Statement')}
+                >
+                  Save / Download PDF
+                </button>
+                <button
                   style={styles.smallPrimaryButton}
                   type="button"
                   onClick={exportPropertyStatementCsv}
@@ -3661,12 +4021,28 @@ This permanently removes the payment from the ledger.`
                 <div style={styles.reportPrintMeta}>
                   <strong>Property:</strong> {selectedReportProperty ? selectedReportProperty.address : '—'}
                 </div>
+                {selectedPropertyStatementTenant ? (
+                  <div style={styles.reportPrintMeta}>
+                    <strong>Tenant:</strong> {selectedPropertyStatementTenant}
+                  </div>
+                ) : null}
                 <div style={styles.reportPrintMeta}>
                   <strong>Date Range:</strong> {reportDateRangeLabel}
                 </div>
                 <div style={styles.reportPrintMeta}>
                   <strong>Generated:</strong> {generatedOnLabel}
                 </div>
+                {selectedDepositPropertyId === selectedReportPropertyId && (selectedDepositSummary.requiredAmount || selectedDepositSummary.totalPaid || selectedDepositRecord.refundAmount || selectedDepositRecord.deductionAmount) ? (
+                  <div style={styles.notesBox}>
+                    <strong>Security Deposit:</strong> Required {currency(selectedDepositSummary.requiredAmount)} • Paid {currency(selectedDepositSummary.totalPaid)} • Balance Owed {currency(selectedDepositSummary.balanceOwed)}
+                    {selectedDepositRecord.refundDate || selectedDepositRecord.refundAmount ? (
+                      <div style={styles.smallMuted}>Refund: {selectedDepositRecord.refundDate ? formatDate(selectedDepositRecord.refundDate) : '—'} • {currency(selectedDepositRecord.refundAmount)}</div>
+                    ) : null}
+                    {selectedDepositRecord.deductionAmount || selectedDepositRecord.deductionNote ? (
+                      <div style={styles.smallMuted}>Deductions: {currency(selectedDepositRecord.deductionAmount)}{selectedDepositRecord.deductionNote ? ` • ${selectedDepositRecord.deductionNote}` : ''}</div>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
               <div style={styles.tableWrap}>
                 <table style={styles.table}>
@@ -3728,6 +4104,13 @@ This permanently removes the payment from the ledger.`
                   onClick={() => printSection(tenantStatementRef, 'Tenant Statement')}
                 >
                   Print Tenant Statement
+                </button>
+                <button
+                  style={styles.smallSecondaryButton}
+                  type="button"
+                  onClick={() => saveSectionAsPdf(tenantStatementRef, 'Tenant Statement')}
+                >
+                  Save / Download PDF
                 </button>
                 <button
                   style={styles.smallPrimaryButton}
