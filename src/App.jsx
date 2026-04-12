@@ -333,6 +333,7 @@ export default function App() {
   const [embeddedReportLogoSrc, setEmbeddedReportLogoSrc] = useState('')
   const [securityDeposits, setSecurityDeposits] = useState({})
   const [selectedDepositPropertyId, setSelectedDepositPropertyId] = useState('')
+  const [depositDraft, setDepositDraft] = useState(buildSecurityDepositRecord())
   const [depositPaymentForm, setDepositPaymentForm] = useState({
     paymentDate: getTodayDateInput(),
     amount: '',
@@ -1252,59 +1253,39 @@ This keeps the record for reporting but removes it from your active list.`
     setMessage(`Notes cleared for ${property?.address || 'selected property'}.`)
   }
 
-  async function updateDepositRecord(patch) {
-    if (!selectedDepositPropertyId) return
+  function updateDepositRecord(patch) {
+    setDepositDraft((current) => ({
+      ...buildSecurityDepositRecord(current),
+      ...patch,
+    }))
+  }
 
-    const tenant = selectedDepositTenant || ''
-    if (!tenant) {
-      setMessage('No current tenant is set for this property, so the security deposit cannot be tied to a tenant yet.')
+  async function saveDepositRecord() {
+    if (!selectedDepositPropertyId) {
+      setMessage('Please select a property for security deposit tracking.')
       return
     }
 
-    const key = securityDepositKey(selectedDepositPropertyId, tenant)
-    const nextRecord = {
-      ...buildSecurityDepositRecord(securityDeposits[key]),
-      ...patch,
-      propertyId: selectedDepositPropertyId,
-      tenant,
+    const currentTenant = getTenantForDate(
+      selectedDepositProperty,
+      companyOverrides.filter((item) => item.property_id === selectedDepositPropertyId),
+      getTodayDateInput()
+    ) || ''
+
+    const payload = {
+      property_id: selectedDepositPropertyId,
+      tenant: currentTenant || null,
+      required_amount: depositDraft.requiredAmount === '' ? null : Number(depositDraft.requiredAmount || 0),
+      due_date: normalizeDateInputValue(depositDraft.dueDate) || null,
+      refund_date: normalizeDateInputValue(depositDraft.refundDate) || null,
+      refund_amount: depositDraft.refundAmount === '' ? null : Number(depositDraft.refundAmount || 0),
+      deduction_amount: depositDraft.deductionAmount === '' ? null : Number(depositDraft.deductionAmount || 0),
+      deduction_note: depositDraft.deductionNote || null,
     }
 
-    setSecurityDeposits((current) => ({
-      ...current,
-      [key]: nextRecord,
-    }))
-
-    const existingId = nextRecord.id
-    let error = null
-
-    if (existingId) {
-      ;({ error } = await supabase
-        .from('security_deposits')
-        .update({
-          required_amount: nextRecord.requiredAmount === '' ? null : Number(nextRecord.requiredAmount || 0),
-          due_date: nextRecord.dueDate || null,
-          refund_date: nextRecord.refundDate || null,
-          refund_amount: nextRecord.refundAmount === '' ? null : Number(nextRecord.refundAmount || 0),
-          deduction_amount: nextRecord.deductionAmount === '' ? null : Number(nextRecord.deductionAmount || 0),
-          deduction_note: nextRecord.deductionNote || null,
-        })
-        .eq('id', existingId))
-    } else {
-      const insertResult = await supabase
-        .from('security_deposits')
-        .insert({
-          property_id: selectedDepositPropertyId,
-          tenant,
-          required_amount: nextRecord.requiredAmount === '' ? null : Number(nextRecord.requiredAmount || 0),
-          due_date: nextRecord.dueDate || null,
-          refund_date: nextRecord.refundDate || null,
-          refund_amount: nextRecord.refundAmount === '' ? null : Number(nextRecord.refundAmount || 0),
-          deduction_amount: nextRecord.deductionAmount === '' ? null : Number(nextRecord.deductionAmount || 0),
-          deduction_note: nextRecord.deductionNote || null,
-        })
-
-      error = insertResult.error
-    }
+    const { error } = await supabase
+      .from('security_deposits')
+      .upsert(payload, { onConflict: 'property_id,tenant' })
 
     if (error) {
       setMessage(error.message)
@@ -1312,6 +1293,7 @@ This keeps the record for reporting but removes it from your active list.`
     }
 
     await loadData()
+    setMessage('Security deposit details saved.')
   }
 
   async function addSecurityDepositPayment() {
@@ -1336,7 +1318,7 @@ This keeps the record for reporting but removes it from your active list.`
       .insert({
         property_id: selectedDepositPropertyId,
         tenant,
-        payment_date: depositPaymentForm.paymentDate,
+        payment_date: normalizeDateInputValue(depositPaymentForm.paymentDate),
         amount: Number(depositPaymentForm.amount || 0),
         method: depositPaymentForm.method,
         note: depositPaymentForm.note || null,
@@ -3788,7 +3770,7 @@ This permanently removes the payment from the ledger.`
                       style={styles.input}
                       type="number"
                       step="0.01"
-                      value={selectedDepositRecord.requiredAmount}
+                      value={depositDraft.requiredAmount}
                       onChange={(e) => updateDepositRecord({ requiredAmount: e.target.value })}
                       placeholder="Usually same as rent"
                     />
@@ -3798,7 +3780,7 @@ This permanently removes the payment from the ledger.`
                     <input
                       style={styles.input}
                       type="date"
-                      value={normalizeDateInputValue(selectedDepositRecord.dueDate)}
+                      value={normalizeDateInputValue(depositDraft.dueDate)}
                       onChange={(e) => updateDepositRecord({ dueDate: normalizeDateInputValue(e.target.value) })}
                     />
                   </div>
@@ -3871,19 +3853,22 @@ This permanently removes the payment from the ledger.`
                   <div style={{ ...styles.statementFilterGrid, marginTop: '12px' }}>
                     <div>
                       <label style={styles.label}>Refund Date</label>
-                      <input style={styles.input} type="date" value={normalizeDateInputValue(selectedDepositRecord.refundDate)} onChange={(e) => updateDepositRecord({ refundDate: normalizeDateInputValue(e.target.value) })} />
+                      <input style={styles.input} type="date" value={normalizeDateInputValue(depositDraft.refundDate)} onChange={(e) => updateDepositRecord({ refundDate: normalizeDateInputValue(e.target.value) })} />
                     </div>
                     <div>
                       <label style={styles.label}>Refund Amount</label>
-                      <input style={styles.input} type="number" step="0.01" value={selectedDepositRecord.refundAmount} onChange={(e) => updateDepositRecord({ refundAmount: e.target.value })} />
+                      <input style={styles.input} type="number" step="0.01" value={depositDraft.refundAmount} onChange={(e) => updateDepositRecord({ refundAmount: e.target.value })} />
                     </div>
                     <div>
                       <label style={styles.label}>Deductions Withheld</label>
-                      <input style={styles.input} type="number" step="0.01" value={selectedDepositRecord.deductionAmount} onChange={(e) => updateDepositRecord({ deductionAmount: e.target.value })} />
+                      <input style={styles.input} type="number" step="0.01" value={depositDraft.deductionAmount} onChange={(e) => updateDepositRecord({ deductionAmount: e.target.value })} />
                     </div>
                   </div>
                   <label style={styles.label}>Deduction Note</label>
-                  <textarea style={styles.textarea} value={selectedDepositRecord.deductionNote} onChange={(e) => updateDepositRecord({ deductionNote: e.target.value })} placeholder="Damages, cleaning, unpaid balance, or other deductions." />
+                  <textarea style={styles.textarea} value={depositDraft.deductionNote} onChange={(e) => updateDepositRecord({ deductionNote: e.target.value })} placeholder="Damages, cleaning, unpaid balance, or other deductions." />
+                  <div className="mobile-button-row" style={styles.buttonRow}>
+                    <button style={styles.primaryButton} type="button" onClick={saveDepositRecord}>Save Deposit Details</button>
+                  </div>
                 </div>
               </>
             ) : (
