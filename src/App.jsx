@@ -81,6 +81,31 @@ function getTodayDateInput() {
   return `${year}-${month}-${day}`
 }
 
+function normalizeDateInputValue(value) {
+  if (!value) return ''
+  const raw = String(value).trim()
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    return raw
+  }
+
+  const slashMatch = raw.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/)
+  if (slashMatch) {
+    let year = Number(slashMatch[3])
+    if (year < 100) year += 2000
+    const month = String(Number(slashMatch[1])).padStart(2, '0')
+    const day = String(Number(slashMatch[2])).padStart(2, '0')
+    return `${year}-${month}-${day}`
+  }
+
+  const parsed = new Date(raw)
+  if (Number.isNaN(parsed.getTime())) return ''
+  const year = parsed.getFullYear()
+  const month = String(parsed.getMonth() + 1).padStart(2, '0')
+  const day = String(parsed.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
+}
+
 function isWithinDateRange(dateValue, startDate, endDate) {
   if (!dateValue) return false
   const dateOnly = String(dateValue).slice(0, 10)
@@ -217,46 +242,14 @@ function isManualLateFeeEntry(payment) {
 
 function buildSecurityDepositRecord(current = {}) {
   return {
-    id: current.id || '',
-    propertyId: current.propertyId || current.property_id || '',
-    requiredAmount: current.requiredAmount ?? current.required_amount ?? '',
-    dueDate: current.dueDate || current.due_date || '',
+    requiredAmount: current.requiredAmount || '',
+    dueDate: current.dueDate || '',
     payments: Array.isArray(current.payments) ? current.payments : [],
-    refundDate: current.refundDate || current.refund_date || '',
-    refundAmount: current.refundAmount ?? current.refund_amount ?? '',
-    deductionAmount: current.deductionAmount ?? current.deduction_amount ?? '',
-    deductionNote: current.deductionNote || current.deduction_note || '',
+    refundDate: current.refundDate || '',
+    refundAmount: current.refundAmount || '',
+    deductionAmount: current.deductionAmount || '',
+    deductionNote: current.deductionNote || '',
   }
-}
-
-function buildSecurityDepositMap(profileRows = [], paymentRows = []) {
-  const paymentsByProperty = paymentRows.reduce((acc, row) => {
-    const key = row.property_id
-    if (!acc[key]) acc[key] = []
-    acc[key].push({
-      id: row.id,
-      paymentDate: row.payment_date || '',
-      amount: Number(row.amount || 0),
-      method: row.method || 'Cash',
-      note: row.note || '',
-    })
-    return acc
-  }, {})
-
-  return profileRows.reduce((acc, row) => {
-    acc[row.property_id] = buildSecurityDepositRecord({
-      id: row.id,
-      propertyId: row.property_id,
-      requiredAmount: row.required_amount,
-      dueDate: row.due_date,
-      refundDate: row.refund_date,
-      refundAmount: row.refund_amount,
-      deductionAmount: row.deduction_amount,
-      deductionNote: row.deduction_note,
-      payments: (paymentsByProperty[row.property_id] || []).sort((a, b) => String(a.paymentDate).localeCompare(String(b.paymentDate))),
-    })
-    return acc
-  }, {})
 }
 
 export default function App() {
@@ -462,6 +455,24 @@ export default function App() {
     if (typeof window === 'undefined') return
     window.localStorage.setItem('rentTrackerPropertyNotes', JSON.stringify(propertyNotes))
   }, [propertyNotes])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+
+    try {
+      const savedDeposits = window.localStorage.getItem('rentTrackerSecurityDeposits')
+      if (savedDeposits) {
+        setSecurityDeposits(JSON.parse(savedDeposits))
+      }
+    } catch (error) {
+      console.error('Unable to load saved security deposits.', error)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    window.localStorage.setItem('rentTrackerSecurityDeposits', JSON.stringify(securityDeposits))
+  }, [securityDeposits])
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -798,36 +809,27 @@ export default function App() {
       { data: propertyData, error: propertyError },
       { data: paymentData, error: paymentError },
       { data: overrideData, error: overrideError },
-      { data: depositProfileData, error: depositProfileError },
-      { data: depositPaymentData, error: depositPaymentError },
     ] = await Promise.all([
       supabase.from('companies').select('*').order('created_at', { ascending: true }),
       supabase.from('properties').select('*').order('created_at', { ascending: true }),
       supabase.from('payments').select('*').order('payment_date', { ascending: false }),
       supabase.from('monthly_overrides').select('*').order('month_key', { ascending: true }),
-      supabase.from('security_deposits').select('*').order('created_at', { ascending: true }),
-      supabase.from('security_deposit_payments').select('*').order('payment_date', { ascending: true }),
     ])
 
-    const blockingErrors = [companyError, propertyError, paymentError, overrideError].filter(Boolean)
-    if (blockingErrors.length > 0) {
-      setMessage(blockingErrors[0].message)
-    } else if (depositProfileError || depositPaymentError) {
-      console.error('Security deposit tables are not available yet.', depositProfileError || depositPaymentError)
-    }
+    if (companyError) setMessage(companyError.message)
+    if (propertyError) setMessage(propertyError.message)
+    if (paymentError) setMessage(paymentError.message)
+    if (overrideError) setMessage(overrideError.message)
 
     const safeCompanies = companyData || []
     const safeProperties = propertyData || []
     const safePayments = paymentData || []
     const safeOverrides = overrideData || []
-    const safeDepositProfiles = depositProfileData || []
-    const safeDepositPayments = depositPaymentData || []
 
     setCompanies(safeCompanies)
     setProperties(safeProperties)
     setPayments(safePayments)
     setMonthlyOverrides(safeOverrides)
-    setSecurityDeposits(buildSecurityDepositMap(safeDepositProfiles, safeDepositPayments))
 
     if (safeCompanies.length > 0) {
       const stillExists = safeCompanies.find((c) => c.id === selectedCompanyId)
@@ -1208,39 +1210,18 @@ This keeps the record for reporting but removes it from your active list.`
     setMessage(`Notes cleared for ${property?.address || 'selected property'}.`)
   }
 
-  async function updateDepositRecord(patch) {
+  function updateDepositRecord(patch) {
     if (!selectedDepositPropertyId) return
-
-    const nextRecord = {
-      ...buildSecurityDepositRecord(securityDeposits[selectedDepositPropertyId]),
-      ...patch,
-      propertyId: selectedDepositPropertyId,
-    }
-
     setSecurityDeposits((current) => ({
       ...current,
-      [selectedDepositPropertyId]: nextRecord,
+      [selectedDepositPropertyId]: {
+        ...buildSecurityDepositRecord(current[selectedDepositPropertyId]),
+        ...patch,
+      },
     }))
-
-    const { error } = await supabase.from('security_deposits').upsert({
-      property_id: selectedDepositPropertyId,
-      required_amount: nextRecord.requiredAmount === '' ? null : Number(nextRecord.requiredAmount || 0),
-      due_date: nextRecord.dueDate || null,
-      refund_date: nextRecord.refundDate || null,
-      refund_amount: nextRecord.refundAmount === '' ? null : Number(nextRecord.refundAmount || 0),
-      deduction_amount: nextRecord.deductionAmount === '' ? null : Number(nextRecord.deductionAmount || 0),
-      deduction_note: nextRecord.deductionNote || null,
-    }, { onConflict: 'property_id' })
-
-    if (error) {
-      setMessage(error.message)
-      return
-    }
-
-    await loadData()
   }
 
-  async function addSecurityDepositPayment() {
+  function addSecurityDepositPayment() {
     if (!selectedDepositPropertyId) {
       setMessage('Please select a property for security deposit tracking.')
       return
@@ -1251,18 +1232,24 @@ This keeps the record for reporting but removes it from your active list.`
       return
     }
 
-    const { error } = await supabase.from('security_deposit_payments').insert({
-      property_id: selectedDepositPropertyId,
-      payment_date: depositPaymentForm.paymentDate,
+    const nextPayment = {
+      id: `${Date.now()}`,
+      paymentDate: depositPaymentForm.paymentDate,
       amount: Number(depositPaymentForm.amount || 0),
       method: depositPaymentForm.method,
-      note: depositPaymentForm.note || null,
-    })
-
-    if (error) {
-      setMessage(error.message)
-      return
+      note: depositPaymentForm.note || '',
     }
+
+    setSecurityDeposits((current) => {
+      const existing = buildSecurityDepositRecord(current[selectedDepositPropertyId])
+      return {
+        ...current,
+        [selectedDepositPropertyId]: {
+          ...existing,
+          payments: [...existing.payments, nextPayment].sort((a, b) => String(a.paymentDate).localeCompare(String(b.paymentDate))),
+        },
+      }
+    })
 
     setDepositPaymentForm({
       paymentDate: getTodayDateInput(),
@@ -1270,27 +1257,25 @@ This keeps the record for reporting but removes it from your active list.`
       method: depositPaymentForm.method || 'Cash',
       note: '',
     })
-    await loadData()
     setMessage('Security deposit payment saved.')
   }
 
-  async function deleteSecurityDepositPayment(paymentId) {
+  function deleteSecurityDepositPayment(paymentId) {
     if (!selectedDepositPropertyId) return
 
     const confirmed = window.confirm('Delete this security deposit payment?')
     if (!confirmed) return
 
-    const { error } = await supabase
-      .from('security_deposit_payments')
-      .delete()
-      .eq('id', paymentId)
-
-    if (error) {
-      setMessage(error.message)
-      return
-    }
-
-    await loadData()
+    setSecurityDeposits((current) => {
+      const existing = buildSecurityDepositRecord(current[selectedDepositPropertyId])
+      return {
+        ...current,
+        [selectedDepositPropertyId]: {
+          ...existing,
+          payments: existing.payments.filter((item) => item.id !== paymentId),
+        },
+      }
+    })
     setMessage('Security deposit payment deleted.')
   }
 
@@ -1635,23 +1620,23 @@ This permanently removes the payment from the ledger.`
     }
   }, [selectedDepositRecord])
 
-  const reportPropertyDepositRecord = useMemo(() => {
+  const selectedLedgerDepositRecord = useMemo(() => {
     return buildSecurityDepositRecord(securityDeposits[selectedReportPropertyId])
   }, [securityDeposits, selectedReportPropertyId])
 
-  const reportPropertyDepositSummary = useMemo(() => {
-    const paymentsList = reportPropertyDepositRecord.payments || []
+  const selectedLedgerDepositSummary = useMemo(() => {
+    const paymentsList = selectedLedgerDepositRecord.payments || []
     const totalPaid = paymentsList.reduce((sum, item) => sum + Number(item.amount || 0), 0)
-    const requiredAmount = Number(reportPropertyDepositRecord.requiredAmount || 0)
+    const requiredAmount = Number(selectedLedgerDepositRecord.requiredAmount || 0)
     const balanceOwed = Math.max(requiredAmount - totalPaid, 0)
     return {
       totalPaid,
       requiredAmount,
       balanceOwed,
-      refundAmount: Number(reportPropertyDepositRecord.refundAmount || 0),
-      deductionAmount: Number(reportPropertyDepositRecord.deductionAmount || 0),
+      refundAmount: Number(selectedLedgerDepositRecord.refundAmount || 0),
+      deductionAmount: Number(selectedLedgerDepositRecord.deductionAmount || 0),
     }
-  }, [reportPropertyDepositRecord])
+  }, [selectedLedgerDepositRecord])
 
   const notesPropertyTenant = useMemo(() => {
     if (!notesProperty) return ''
@@ -1758,8 +1743,6 @@ This permanently removes the payment from the ledger.`
     const propertyPayments = companyPayments
       .filter((payment) => payment.property_id === property.id)
       .sort((a, b) => String(a.payment_date).localeCompare(String(b.payment_date)))
-    const depositRecord = buildSecurityDepositRecord(securityDeposits[property.id])
-    const depositPayments = (depositRecord.payments || []).slice().sort((a, b) => String(a.paymentDate).localeCompare(String(b.paymentDate)))
 
     let runningBalance = 0
     let previousEffectiveTenant = ''
@@ -1847,76 +1830,6 @@ This permanently removes the payment from the ledger.`
         })
       }
 
-      const depositChargeDate = depositRecord.dueDate || override?.move_in_date || occupancy.firstOccupiedDate || ''
-      const depositChargeInMonth = depositChargeDate && monthKeyFromDate(depositChargeDate) === month ? Number(depositRecord.requiredAmount || 0) : 0
-      if (depositChargeInMonth > 0) {
-        runningBalance += depositChargeInMonth
-        entries.push({
-          propertyId: property.id,
-          propertyAddress: property.address,
-          tenantName: effectiveTenant,
-          month,
-          date: depositChargeDate,
-          type: 'security_deposit_charge',
-          description: 'Security deposit charge',
-          amount: depositChargeInMonth,
-          note: '',
-          runningBalance,
-        })
-      }
-
-      const depositPaymentsForMonth = depositPayments.filter((payment) => monthKeyFromDate(payment.paymentDate) === month)
-      depositPaymentsForMonth.forEach((payment) => {
-        runningBalance -= Number(payment.amount || 0)
-        entries.push({
-          propertyId: property.id,
-          propertyAddress: property.address,
-          tenantName: effectiveTenant,
-          month,
-          date: payment.paymentDate,
-          type: 'security_deposit_payment',
-          description: `Security deposit payment - ${payment.method || 'Method not listed'}`,
-          amount: -Number(payment.amount || 0),
-          note: payment.note || '',
-          paymentId: payment.id,
-          runningBalance,
-        })
-      })
-
-      const depositDeductionInMonth = depositRecord.refundDate && monthKeyFromDate(depositRecord.refundDate) === month ? Number(depositRecord.deductionAmount || 0) : 0
-      if (depositDeductionInMonth > 0) {
-        runningBalance += depositDeductionInMonth
-        entries.push({
-          propertyId: property.id,
-          propertyAddress: property.address,
-          tenantName: effectiveTenant,
-          month,
-          date: depositRecord.refundDate,
-          type: 'security_deposit_deduction',
-          description: 'Security deposit deduction retained',
-          amount: depositDeductionInMonth,
-          note: depositRecord.deductionNote || '',
-          runningBalance,
-        })
-      }
-
-      const depositRefundInMonth = depositRecord.refundDate && monthKeyFromDate(depositRecord.refundDate) === month ? Number(depositRecord.refundAmount || 0) : 0
-      if (depositRefundInMonth > 0) {
-        runningBalance -= depositRefundInMonth
-        entries.push({
-          propertyId: property.id,
-          propertyAddress: property.address,
-          tenantName: effectiveTenant,
-          month,
-          date: depositRecord.refundDate,
-          type: 'security_deposit_refund',
-          description: 'Security deposit refund',
-          amount: -depositRefundInMonth,
-          note: depositRecord.deductionNote || '',
-          runningBalance,
-        })
-      }
-
       const manualLateFeeTotal = monthPaymentsForProperty
         .filter((payment) => isManualLateFeeEntry(payment))
         .reduce((sum, payment) => sum + Number(payment.amount || 0), 0)
@@ -1953,10 +1866,6 @@ This permanently removes the payment from the ledger.`
         balanceForward,
         startingBalance,
         lateFee: manualLateFeeTotal,
-        securityDepositCharge: depositChargeInMonth,
-        securityDepositPaid: depositPaymentsForMonth.reduce((sum, payment) => sum + Number(payment.amount || 0), 0),
-        securityDepositRefund: depositRefundInMonth,
-        securityDepositDeduction: depositDeductionInMonth,
         totalPaid: monthPaymentsForProperty.filter((payment) => !isManualLateFeeEntry(payment)).reduce((sum, payment) => sum + Number(payment.amount || 0), 0),
         endingBalance: runningBalance,
         notes: override?.notes || '',
@@ -2015,9 +1924,7 @@ This permanently removes the payment from the ledger.`
         Number(monthSummary.balanceForward || 0) +
         Number(monthSummary.startingBalance || 0) +
         Number(monthSummary.effectiveRent || 0) +
-        Number(monthSummary.lateFee || 0) +
-        Number(monthSummary.securityDepositCharge || 0) +
-        Number(monthSummary.securityDepositDeduction || 0)
+        Number(monthSummary.lateFee || 0)
 
       return {
         ...property,
@@ -3467,7 +3374,7 @@ This permanently removes the payment from the ledger.`
               <div>
                 <h2 style={styles.cardTitle}>Property Ledger</h2>
                 <p style={styles.smallMuted}>
-                  One running account view for charges, late fees, adjustments, payments, and carried balances.
+                  One running account view for charges, late fees, adjustments, payments, and carried balances. Security deposit details are shown separately above.
                 </p>
               </div>
               <div style={styles.actionRow}>
@@ -3543,6 +3450,48 @@ This permanently removes the payment from the ledger.`
                 <strong>Date Range:</strong> {reportStartDate ? formatDate(reportStartDate) : 'Beginning'} - {reportEndDate ? formatDate(reportEndDate) : 'Present'}
               </div>
             </div>
+
+            {(selectedLedgerDepositSummary.requiredAmount || selectedLedgerDepositSummary.totalPaid || selectedLedgerDepositRecord.refundAmount || selectedLedgerDepositRecord.deductionAmount) ? (
+              <div style={styles.notesBox}>
+                <div style={styles.reportHeaderRow}>
+                  <div>
+                    <div style={styles.cardTitle}>Security Deposit Summary</div>
+                    <div style={styles.smallMuted}>Tracked separately from the rent ledger.</div>
+                  </div>
+                </div>
+                <div style={styles.ledgerSummaryGrid}>
+                  <div style={styles.ledgerMiniCard}>
+                    <div style={styles.kpiLabel}>Required Deposit</div>
+                    <div style={styles.ledgerMiniValue}>{currency(selectedLedgerDepositSummary.requiredAmount)}</div>
+                  </div>
+                  <div style={styles.ledgerMiniCard}>
+                    <div style={styles.kpiLabel}>Paid So Far</div>
+                    <div style={styles.ledgerMiniValue}>{currency(selectedLedgerDepositSummary.totalPaid)}</div>
+                  </div>
+                  <div style={styles.ledgerMiniCard}>
+                    <div style={styles.kpiLabel}>Balance Owed</div>
+                    <div style={styles.ledgerMiniValue}>{currency(selectedLedgerDepositSummary.balanceOwed)}</div>
+                  </div>
+                  <div style={styles.ledgerMiniCard}>
+                    <div style={styles.kpiLabel}>Refund</div>
+                    <div style={styles.ledgerMiniValue}>{currency(selectedLedgerDepositSummary.refundAmount)}</div>
+                  </div>
+                  <div style={styles.ledgerMiniCard}>
+                    <div style={styles.kpiLabel}>Deductions</div>
+                    <div style={styles.ledgerMiniValue}>{currency(selectedLedgerDepositSummary.deductionAmount)}</div>
+                  </div>
+                </div>
+                {selectedLedgerDepositRecord.dueDate ? (
+                  <div style={styles.smallMuted}>Deposit Due Date: {formatDate(selectedLedgerDepositRecord.dueDate)}</div>
+                ) : null}
+                {selectedLedgerDepositRecord.refundDate ? (
+                  <div style={styles.smallMuted}>Refund Date: {formatDate(selectedLedgerDepositRecord.refundDate)}</div>
+                ) : null}
+                {selectedLedgerDepositRecord.deductionNote ? (
+                  <div style={styles.smallMuted}>Deduction Note: {selectedLedgerDepositRecord.deductionNote}</div>
+                ) : null}
+              </div>
+            ) : null}
 
             <div style={styles.ledgerSummaryGrid}>
               <div style={styles.ledgerMiniCard}>
@@ -3678,8 +3627,8 @@ This permanently removes the payment from the ledger.`
           <div className="mobile-card" style={styles.card}>
             <div style={styles.reportHeaderRow}>
               <div>
-                <h2 style={styles.cardTitle}>Notes & Security Deposit</h2>
-                <p style={styles.smallMuted}>Track required deposit, installment payments, balance owed, refunds, and deductions. This version syncs through Supabase once the deposit tables are created.</p>
+                <h2 style={styles.cardTitle}>Note & Security Deposit</h2>
+                <p style={styles.smallMuted}>Track required deposit, installment payments, balance owed, refunds, and any deductions.</p>
               </div>
             </div>
 
@@ -3735,8 +3684,8 @@ This permanently removes the payment from the ledger.`
                     <input
                       style={styles.input}
                       type="date"
-                      value={selectedDepositRecord.dueDate}
-                      onChange={(e) => updateDepositRecord({ dueDate: e.target.value })}
+                      value={normalizeDateInputValue(selectedDepositRecord.dueDate)}
+                      onChange={(e) => updateDepositRecord({ dueDate: normalizeDateInputValue(e.target.value) })}
                     />
                   </div>
                 </div>
@@ -3746,7 +3695,7 @@ This permanently removes the payment from the ledger.`
                   <div style={{ ...styles.statementFilterGrid, marginTop: '12px' }}>
                     <div>
                       <label style={styles.label}>Date</label>
-                      <input style={styles.input} type="date" value={depositPaymentForm.paymentDate} onChange={(e) => setDepositPaymentForm({ ...depositPaymentForm, paymentDate: e.target.value })} />
+                      <input style={styles.input} type="date" value={normalizeDateInputValue(depositPaymentForm.paymentDate)} onChange={(e) => setDepositPaymentForm({ ...depositPaymentForm, paymentDate: normalizeDateInputValue(e.target.value) })} />
                     </div>
                     <div>
                       <label style={styles.label}>Amount</label>
@@ -3808,7 +3757,7 @@ This permanently removes the payment from the ledger.`
                   <div style={{ ...styles.statementFilterGrid, marginTop: '12px' }}>
                     <div>
                       <label style={styles.label}>Refund Date</label>
-                      <input style={styles.input} type="date" value={selectedDepositRecord.refundDate} onChange={(e) => updateDepositRecord({ refundDate: e.target.value })} />
+                      <input style={styles.input} type="date" value={normalizeDateInputValue(selectedDepositRecord.refundDate)} onChange={(e) => updateDepositRecord({ refundDate: normalizeDateInputValue(e.target.value) })} />
                     </div>
                     <div>
                       <label style={styles.label}>Refund Amount</label>
@@ -4168,14 +4117,14 @@ This permanently removes the payment from the ledger.`
                 <div style={styles.reportPrintMeta}>
                   <strong>Generated:</strong> {generatedOnLabel}
                 </div>
-                {(reportPropertyDepositSummary.requiredAmount || reportPropertyDepositSummary.totalPaid || reportPropertyDepositRecord.refundAmount || reportPropertyDepositRecord.deductionAmount) ? (
+                {selectedDepositPropertyId === selectedReportPropertyId && (selectedDepositSummary.requiredAmount || selectedDepositSummary.totalPaid || selectedDepositRecord.refundAmount || selectedDepositRecord.deductionAmount) ? (
                   <div style={styles.notesBox}>
-                    <strong>Security Deposit:</strong> Required {currency(reportPropertyDepositSummary.requiredAmount)} • Paid {currency(reportPropertyDepositSummary.totalPaid)} • Balance Owed {currency(reportPropertyDepositSummary.balanceOwed)}
-                    {reportPropertyDepositRecord.refundDate || reportPropertyDepositRecord.refundAmount ? (
-                      <div style={styles.smallMuted}>Refund: {reportPropertyDepositRecord.refundDate ? formatDate(reportPropertyDepositRecord.refundDate) : '—'} • {currency(reportPropertyDepositRecord.refundAmount)}</div>
+                    <strong>Security Deposit:</strong> Required {currency(selectedDepositSummary.requiredAmount)} • Paid {currency(selectedDepositSummary.totalPaid)} • Balance Owed {currency(selectedDepositSummary.balanceOwed)}
+                    {selectedDepositRecord.refundDate || selectedDepositRecord.refundAmount ? (
+                      <div style={styles.smallMuted}>Refund: {selectedDepositRecord.refundDate ? formatDate(selectedDepositRecord.refundDate) : '—'} • {currency(selectedDepositRecord.refundAmount)}</div>
                     ) : null}
-                    {reportPropertyDepositRecord.deductionAmount || reportPropertyDepositRecord.deductionNote ? (
-                      <div style={styles.smallMuted}>Deductions: {currency(reportPropertyDepositRecord.deductionAmount)}{reportPropertyDepositRecord.deductionNote ? ` • ${reportPropertyDepositRecord.deductionNote}` : ''}</div>
+                    {selectedDepositRecord.deductionAmount || selectedDepositRecord.deductionNote ? (
+                      <div style={styles.smallMuted}>Deductions: {currency(selectedDepositRecord.deductionAmount)}{selectedDepositRecord.deductionNote ? ` • ${selectedDepositRecord.deductionNote}` : ''}</div>
                     ) : null}
                   </div>
                 ) : null}
