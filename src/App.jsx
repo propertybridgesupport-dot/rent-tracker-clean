@@ -2522,6 +2522,49 @@ This permanently removes the payment from the ledger.`
       return
     }
 
+    const printableHtml = buildPrintableHtml(sectionHtml, title)
+
+    if (isMobileViewport()) {
+      const printWindow = window.open('', '_blank')
+      if (!printWindow) {
+        setMessage('Your phone blocked the print window. Please allow pop-ups and try again.')
+        return
+      }
+
+      printWindow.document.open()
+      printWindow.document.write(printableHtml)
+      printWindow.document.close()
+
+      const runMobilePrint = () => {
+        try {
+          printWindow.focus()
+          printWindow.print()
+          setMessage(mode === 'download'
+            ? 'Choose Save as PDF in your print dialog to download the report as a PDF.'
+            : '')
+        } catch (error) {
+          console.error('Unable to open mobile print dialog.', error)
+          setMessage('There was a problem opening the print dialog on this device.')
+        }
+
+        setTimeout(() => {
+          try {
+            printWindow.close()
+          } catch (error) {
+            console.error('Unable to close mobile print window.', error)
+          }
+          refreshLogos()
+        }, 1200)
+      }
+
+      if (printWindow.document.readyState === 'complete') {
+        setTimeout(runMobilePrint, 250)
+      } else {
+        printWindow.onload = () => setTimeout(runMobilePrint, 250)
+      }
+      return
+    }
+
     const iframe = document.createElement('iframe')
     iframe.style.position = 'fixed'
     iframe.style.right = '0'
@@ -2533,7 +2576,7 @@ This permanently removes the payment from the ledger.`
 
     const doc = iframe.contentWindow.document
     doc.open()
-    doc.write(buildPrintableHtml(sectionHtml, title))
+    doc.write(printableHtml)
     doc.close()
 
     const finish = () => {
