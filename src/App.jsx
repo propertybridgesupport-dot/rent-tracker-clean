@@ -122,6 +122,20 @@ function startOfMonth(month) {
   return `${month}-01`
 }
 
+function getChargeDateForMonth(month, dueDay, firstOccupiedDate = '') {
+  const monthEnd = endOfMonth(month)
+  const [year, mon] = month.split('-').map(Number)
+  const lastDay = new Date(year, mon, 0).getDate()
+  const safeDueDay = Math.min(Math.max(Number(dueDay || 1), 1), lastDay)
+  const dueDate = `${month}-${String(safeDueDay).padStart(2, '0')}`
+
+  if (firstOccupiedDate && String(firstOccupiedDate).slice(0, 10) > dueDate) {
+    return String(firstOccupiedDate).slice(0, 10)
+  }
+
+  return dueDate
+}
+
 function endOfMonth(month) {
   const [year, mon] = month.split('-').map(Number)
   return new Date(year, mon, 0).toISOString().slice(0, 10)
@@ -1952,13 +1966,14 @@ This permanently removes the payment from the ledger.`
       }
 
       if (occupancy.isOccupied && effectiveRent !== 0) {
+        const chargeDate = getChargeDateForMonth(month, property.due_day, occupancy.firstOccupiedDate)
         runningBalance += effectiveRent
         entries.push({
           propertyId: property.id,
           propertyAddress: property.address,
           tenantName: effectiveTenant,
           month,
-          date: monthStart,
+          date: chargeDate,
           type: 'charge',
           description: occupancy.occupiedDays < 28 ? 'Rent charge (partial occupancy month)' : 'Rent charge',
           amount: effectiveRent,
