@@ -336,6 +336,7 @@ export default function App() {
   const [selectedMonth, setSelectedMonth] = useState(getCurrentMonthKey())
   const [selectedReportPropertyId, setSelectedReportPropertyId] = useState('')
   const [selectedTenantName, setSelectedTenantName] = useState('')
+  const [selectedReportView, setSelectedReportView] = useState('owner')
   const [reportStartDate, setReportStartDate] = useState('')
   const [reportEndDate, setReportEndDate] = useState('')
   const [showArchivedProperties, setShowArchivedProperties] = useState(false)
@@ -4018,6 +4019,28 @@ This permanently removes the payment from the ledger.`
           <div className="mobile-card" style={styles.card}>
             <div style={styles.reportHeaderRow}>
               <div>
+                <h2 style={styles.cardTitle}>Reports</h2>
+                <p style={styles.smallMuted}>Choose one report to view, print, save, or export.</p>
+              </div>
+            </div>
+            <label style={styles.label}>Select Report</label>
+            <select
+              className="mobile-input"
+              style={styles.input}
+              value={selectedReportView}
+              onChange={(e) => setSelectedReportView(e.target.value)}
+            >
+              <option value="owner">Owner Monthly Report</option>
+              <option value="invoice">Property Management Fee Invoice</option>
+              <option value="property">Property Statement</option>
+              <option value="tenant">Tenant Statement</option>
+            </select>
+          </div>
+
+          {selectedReportView === 'owner' && (
+          <div className="mobile-card" style={styles.card}>
+            <div style={styles.reportHeaderRow}>
+              <div>
                 <h2 style={styles.cardTitle}>Owner Monthly Report</h2>
                 <p style={styles.smallMuted}>{selectedCompanyName} — {monthLabel(selectedMonth)}</p>
               </div>
@@ -4118,7 +4141,9 @@ This permanently removes the payment from the ledger.`
               </div>
             </div>
           </div>
+          )}
 
+          {selectedReportView === 'invoice' && (
           <div className="mobile-card" style={styles.card}>
             <div style={styles.reportHeaderRow}>
               <div>
@@ -4196,7 +4221,9 @@ This permanently removes the payment from the ledger.`
               </div>
             </div>
           </div>
+          )}
 
+          {(selectedReportView === 'property' || selectedReportView === 'tenant') && (
           <div className="mobile-card" style={styles.card}>
             <h2 style={styles.cardTitle}>Statement Filters</h2>
 
@@ -4258,7 +4285,9 @@ This permanently removes the payment from the ledger.`
               </div>
             </div>
           </div>
+          )}
 
+          {selectedReportView === 'property' && (
           <div className="mobile-card" style={styles.card}>
             <div style={styles.reportHeaderRow}>
               <div>
@@ -4369,7 +4398,9 @@ This permanently removes the payment from the ledger.`
               </div>
             </div>
           </div>
+          )}
 
+          {selectedReportView === 'tenant' && (
           <div className="mobile-card" style={styles.card}>
             <div style={styles.reportHeaderRow}>
               <div>
@@ -4463,6 +4494,7 @@ This permanently removes the payment from the ledger.`
               </div>
             </div>
           </div>
+          )}
         </div>
       )}
     </div>
