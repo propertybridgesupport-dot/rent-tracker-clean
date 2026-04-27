@@ -337,6 +337,8 @@ export default function App() {
   const [selectedReportPropertyId, setSelectedReportPropertyId] = useState('')
   const [selectedTenantName, setSelectedTenantName] = useState('')
   const [selectedReportView, setSelectedReportView] = useState('owner')
+  const [selectedBankDepositPeriod, setSelectedBankDepositPeriod] = useState('month')
+  const [selectedBankDepositPropertyId, setSelectedBankDepositPropertyId] = useState('')
   const [reportStartDate, setReportStartDate] = useState('')
   const [reportEndDate, setReportEndDate] = useState('')
   const [showArchivedProperties, setShowArchivedProperties] = useState(false)
@@ -418,6 +420,7 @@ export default function App() {
   const propertyStatementRef = useRef(null)
   const tenantStatementRef = useRef(null)
   const managementInvoiceRef = useRef(null)
+  const bankDepositReportRef = useRef(null)
   const propertyLedgerRef = useRef(null)
   const speechRecognitionRef = useRef(null)
   const voiceTranscriptRef = useRef(null)
@@ -2355,6 +2358,39 @@ This permanently removes the payment from the ledger.`
   const lowAlertCount = companyAlerts.filter((item) => item.severity === 'low').length
   const notesCount = Object.values(propertyNotes).filter((item) => item?.text).length
 
+  const bankDepositReportRows = useMemo(() => {
+    const selectedYear = String(selectedMonth || getCurrentMonthKey()).slice(0, 4)
+
+    return companyPayments
+      .filter((payment) => String(payment.method || '').toLowerCase() === 'bank deposit')
+      .filter((payment) => {
+        const paymentDate = String(payment.payment_date || '')
+        if (selectedBankDepositPeriod === 'year') return paymentDate.startsWith(selectedYear)
+        return paymentDate.startsWith(selectedMonth)
+      })
+      .filter((payment) => !selectedBankDepositPropertyId || payment.property_id === selectedBankDepositPropertyId)
+      .map((payment) => {
+        const property = companyProperties.find((item) => item.id === payment.property_id) || null
+        return {
+          ...payment,
+          propertyAddress: property?.address || 'Unknown property',
+        }
+      })
+      .sort((a, b) => {
+        const dateCompare = String(a.payment_date || '').localeCompare(String(b.payment_date || ''))
+        if (dateCompare !== 0) return dateCompare
+        return String(a.propertyAddress || '').localeCompare(String(b.propertyAddress || ''))
+      })
+  }, [companyPayments, companyProperties, selectedBankDepositPeriod, selectedBankDepositPropertyId, selectedMonth])
+
+  const bankDepositReportTotal = bankDepositReportRows.reduce((sum, payment) => sum + Number(payment.amount || 0), 0)
+  const bankDepositReportTitle = selectedBankDepositPeriod === 'year'
+    ? `Bank Deposit Reconciliation Report - ${String(selectedMonth || getCurrentMonthKey()).slice(0, 4)}`
+    : `Bank Deposit Reconciliation Report - ${formatMonthYear(selectedMonth)}`
+  const bankDepositReportPropertyLabel = selectedBankDepositPropertyId
+    ? companyProperties.find((item) => item.id === selectedBankDepositPropertyId)?.address || 'Selected property'
+    : 'All properties'
+
   const totalProperties = filteredLedgerRows.length
   const totalMonthlyRent = filteredLedgerRows.reduce((sum, row) => sum + Number(row.effectiveRent || 0), 0)
   const totalCollected = filteredLedgerRows.reduce((sum, row) => sum + Number(row.totalPaid || 0), 0)
@@ -2664,6 +2700,29 @@ This permanently removes the payment from the ledger.`
     ]
 
     downloadCsv(`${selectedTenantName.replace(/[^a-z0-9]+/gi, '_')}_${selectedMonth}.csv`, rows)
+  }
+
+  function exportBankDepositCsv() {
+    const reportPeriod = selectedBankDepositPeriod === 'year'
+      ? String(selectedMonth || getCurrentMonthKey()).slice(0, 4)
+      : selectedMonth
+    const propertyPart = selectedBankDepositPropertyId
+      ? bankDepositReportPropertyLabel.replace(/[^a-z0-9]+/gi, '_')
+      : 'all_properties'
+
+    const rows = [
+      ['Date', 'Property', 'Method', 'Amount', 'Note'],
+      ...bankDepositReportRows.map((payment) => [
+        formatDate(payment.payment_date),
+        payment.propertyAddress,
+        payment.method || 'Bank Deposit',
+        Number(payment.amount || 0).toFixed(2),
+        payment.note || '',
+      ]),
+      ['', '', 'Total Bank Deposits', bankDepositReportTotal.toFixed(2), ''],
+    ]
+
+    downloadCsv(`bank_deposits_${reportPeriod}_${propertyPart}.csv`, rows)
   }
 
   if (loading) {
@@ -4034,6 +4093,7 @@ This permanently removes the payment from the ledger.`
               <option value="invoice">Property Management Fee Invoice</option>
               <option value="property">Property Statement</option>
               <option value="tenant">Tenant Statement</option>
+              <option value="bankDeposits">Bank Deposit Reconciliation</option>
             </select>
           </div>
 
@@ -4490,6 +4550,160 @@ This permanently removes the payment from the ledger.`
 
               <div style={styles.reportPrintFooter}>
                 <span>{selectedCompanyName}</span>
+                <span>Generated {generatedOnLabel}</span>
+              </div>
+            </div>
+          </div>
+          )}
+
+
+          {selectedReportView === 'bankDeposits' && (
+          <div className="mobile-card" style={styles.card}>
+            <div style={styles.reportHeaderRow}>
+              <div>
+                <h2 style={styles.cardTitle}>Bank Deposit Reconciliation</h2>
+                <p style={styles.smallMuted}>Bank Deposit payments only — for QuickBooks and bank reconciliation.</p>
+              </div>
+              <div style={styles.actionRow}>
+                <button
+                  style={styles.smallSecondaryButton}
+                  type="button"
+                  onClick={() => printSection(bankDepositReportRef, 'Bank Deposit Reconciliation Report')}
+                >
+                  Print Report
+                </button>
+                <button
+                  style={styles.smallSecondaryButton}
+                  type="button"
+                  onClick={() => saveSectionAsPdf(bankDepositReportRef, 'Bank Deposit Reconciliation Report')}
+                >
+                  Save / Download PDF
+                </button>
+                <button
+                  style={styles.smallPrimaryButton}
+                  type="button"
+                  onClick={exportBankDepositCsv}
+                >
+                  Export CSV
+                </button>
+              </div>
+            </div>
+
+            <div style={styles.statementFilterGrid}>
+              <div>
+                <label style={styles.label}>Report Period</label>
+                <select
+                  className="mobile-input"
+                  style={styles.input}
+                  value={selectedBankDepositPeriod}
+                  onChange={(e) => setSelectedBankDepositPeriod(e.target.value)}
+                >
+                  <option value="month">Selected Month</option>
+                  <option value="year">Selected Year</option>
+                </select>
+              </div>
+              <div>
+                <label style={styles.label}>Property</label>
+                <select
+                  className="mobile-input"
+                  style={styles.input}
+                  value={selectedBankDepositPropertyId}
+                  onChange={(e) => setSelectedBankDepositPropertyId(e.target.value)}
+                >
+                  <option value="">All Properties</option>
+                  {companyProperties.map((property) => (
+                    <option key={`bank-deposit-property-${property.id}`} value={property.id}>{property.address}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div ref={bankDepositReportRef}>
+              <div style={styles.reportBrandShell}>
+                <div style={styles.reportBrandTop}>
+                  <div style={styles.reportBrandLogoWrap}>
+                    <img src={reportLogoSrc} alt="Open Door Support" style={styles.reportBrandLogo} />
+                  </div>
+                  <div>
+                    <div style={styles.reportBrandTitle}>Open Door Support</div>
+                    <div style={styles.reportBrandSubtitle}>Property Management System</div>
+                  </div>
+                </div>
+              </div>
+
+              <div style={styles.reportPrintHeader}>
+                <div style={styles.reportPrintCompany}>{selectedCompanyName}</div>
+                <div style={styles.reportPrintTitle}>Bank Deposit Reconciliation Report</div>
+                <div style={styles.reportPrintMeta}>
+                  <strong>Period:</strong> {selectedBankDepositPeriod === 'year' ? String(selectedMonth || getCurrentMonthKey()).slice(0, 4) : formatMonthYear(selectedMonth)}
+                </div>
+                <div style={styles.reportPrintMeta}>
+                  <strong>Property:</strong> {bankDepositReportPropertyLabel}
+                </div>
+                <div style={styles.reportPrintMeta}>
+                  <strong>Included Method:</strong> Bank Deposit only
+                </div>
+                <div style={styles.reportPrintMeta}>
+                  <strong>Generated:</strong> {generatedOnLabel}
+                </div>
+              </div>
+
+              <div style={styles.invoiceSummaryGrid}>
+                <div style={styles.invoiceSummaryCard}>
+                  <div style={styles.invoiceSummaryLabel}>Bank Deposit Count</div>
+                  <div style={styles.invoiceSummaryValue}>{bankDepositReportRows.length}</div>
+                </div>
+                <div style={styles.invoiceSummaryCard}>
+                  <div style={styles.invoiceSummaryLabel}>Total Bank Deposits</div>
+                  <div style={styles.invoiceSummaryValue}>{currency(bankDepositReportTotal)}</div>
+                </div>
+                <div style={styles.invoiceSummaryCard}>
+                  <div style={styles.invoiceSummaryLabel}>Property Filter</div>
+                  <div style={styles.invoiceSummaryValue}>{selectedBankDepositPropertyId ? 'One Property' : 'All Properties'}</div>
+                </div>
+              </div>
+
+              <div style={styles.tableWrap}>
+                <table style={styles.table}>
+                  <thead>
+                    <tr>
+                      <th style={styles.th}>Date</th>
+                      <th style={styles.th}>Property</th>
+                      <th style={styles.th}>Method</th>
+                      <th style={styles.th}>Amount</th>
+                      <th style={styles.th}>Note</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {bankDepositReportRows.length === 0 ? (
+                      <tr>
+                        <td style={styles.td} colSpan="5">No bank deposit payments found for the selected period and property filter.</td>
+                      </tr>
+                    ) : (
+                      bankDepositReportRows.map((payment) => (
+                        <tr key={`bank-deposit-${payment.id}`}>
+                          <td style={styles.td}>{formatDate(payment.payment_date)}</td>
+                          <td style={styles.td}>{payment.propertyAddress}</td>
+                          <td style={styles.td}>{payment.method || 'Bank Deposit'}</td>
+                          <td style={styles.td}>{currency(payment.amount)}</td>
+                          <td style={styles.td}>{payment.note || '—'}</td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <div style={styles.reportTotals}>
+                <div><strong>Total Bank Deposits:</strong> {currency(bankDepositReportTotal)}</div>
+              </div>
+
+              <div style={styles.notesBox}>
+                <strong>Reconciliation Notes:</strong> This report includes only payments entered with the method Bank Deposit. Cash and other payment methods are excluded.
+              </div>
+
+              <div style={styles.reportPrintFooter}>
+                <span>Open Door Support</span>
                 <span>Generated {generatedOnLabel}</span>
               </div>
             </div>
