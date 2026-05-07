@@ -2632,24 +2632,33 @@ This permanently removes the payment from the ledger.`
             table { width: 100%; border-collapse: collapse; margin-top: 16px; }
             th, td { border: 1px solid #d9cfc0; padding: 10px; text-align: left; vertical-align: top; }
             th { background: #fbf7f1; color: #9a6d2f; text-transform: uppercase; letter-spacing: .04em; font-size: 12px; }
-            .lease-package { max-width: 8.5in; margin: 0 auto; color: #111827; font-family: 'Times New Roman', Times, serif; font-size: 11px; line-height: 1.25; }
-            .lease-page { min-height: 10.4in; padding: 0.35in 0.45in; box-sizing: border-box; page-break-after: always; background: #fff; }
-            .lease-page:last-child { page-break-after: auto; }
-            .lease-title { text-align: center; font-size: 16px; font-weight: 700; letter-spacing: .04em; margin: 0 0 8px; }
-            .lease-company-line { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 12px; font-weight: 700; }
-            .lease-line { margin: 4px 0; }
+            @page { size: Letter; margin: 0; }
+            .lease-package { width: 8.5in; max-width: 8.5in; margin: 0 auto; color: #111827; font-family: 'Times New Roman', Times, serif; font-size: 12px; line-height: 1.42; background: #ffffff; }
+            .lease-page { width: 8.5in; min-height: 10.98in; padding: 0.58in 0.68in 0.52in; box-sizing: border-box; background: #fff; page-break-after: always; break-after: page; overflow: hidden; }
+            .lease-page:last-child { page-break-after: auto; break-after: auto; }
+            .lease-page p { margin: 0 0 9px; }
+            .lease-page ol, .lease-page ul { margin-top: 8px; margin-bottom: 12px; }
+            .lease-title { text-align: center; font-size: 18px; font-weight: 700; letter-spacing: .04em; margin: 4px 0 14px; }
+            .lease-company-line { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 16px; padding-bottom: 6px; border-bottom: 1px solid #111827; font-weight: 700; }
+            .lease-line { margin: 0 0 10px; line-height: 1.45; }
             .lease-section-title { font-weight: 700; text-transform: uppercase; margin-right: 6px; }
-            .lease-fill { font-weight: 700; text-decoration: underline; }
-            .lease-initial-row, .lease-signature-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 24px; text-align: center; font-size: 10px; }
-            .lease-signature-row { grid-template-columns: 1fr 1fr; margin-top: 34px; }
-            .lease-sign-line { border-top: 1px solid #111827; padding-top: 4px; min-height: 18px; }
-            .lease-rules-title { text-align: center; font-size: 15px; font-weight: 700; margin: 8px 0 12px; }
-            .lease-rules-list li { margin-bottom: 5px; }
-            .lease-addendum-title { text-align: center; font-size: 14px; font-weight: 700; margin: 8px 0 12px; text-transform: uppercase; }
+            .lease-fill { font-weight: 700; text-decoration: underline; text-underline-offset: 2px; }
+            .lease-occupants-line { display: block; min-height: 26px; margin: 10px 0 16px; padding: 3px 0; border-bottom: 1px solid #111827; font-weight: 700; }
+            .lease-initial-row, .lease-signature-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 18px; margin-top: 30px; text-align: center; font-size: 10px; break-inside: avoid; page-break-inside: avoid; }
+            .lease-signature-row { grid-template-columns: 1fr 1fr; margin-top: 40px; }
+            .lease-sign-line { border-top: 1px solid #111827; padding-top: 5px; min-height: 20px; }
+            .lease-rules-title { text-align: center; font-size: 16px; font-weight: 700; margin: 8px 0 16px; }
+            .lease-rules-list { padding-left: 20px; line-height: 1.38; }
+            .lease-rules-list li { margin-bottom: 7px; padding-left: 2px; }
+            .lease-addendum-title { text-align: center; font-size: 15px; font-weight: 700; margin: 10px 0 14px; text-transform: uppercase; }
             .lease-small-note { font-size: 10px; color: #374151; }
             @media print {
-              body { padding: 0; }
-              .print-shell { max-width: none; }
+              html, body { width: 8.5in; margin: 0 !important; padding: 0 !important; background: #fff !important; }
+              body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+              .print-shell { width: 8.5in !important; max-width: none !important; margin: 0 !important; padding: 0 !important; }
+              .lease-package { margin: 0 !important; width: 8.5in !important; max-width: 8.5in !important; }
+              .lease-page { margin: 0 !important; box-shadow: none !important; }
+              .lease-page:last-child { page-break-after: auto !important; break-after: auto !important; }
             }
           </style>
         </head>
@@ -4367,7 +4376,7 @@ This permanently removes the payment from the ledger.`
                   <p className="lease-line"><span className="lease-section-title">SECURITY DEPOSIT</span> Upon execution of this lease, Lessee agrees to deposit with Lessor, the sum of $ <span className="lease-fill">{leaseForm.depositAmount || '________'}</span>. This deposit shall be non-interest bearing and is to be held by Lessor as security for the full and faithful performance of the terms and conditions of this lease. This security deposit is not an advance rental and Lessee may not deduct portion of the deposit from rent due to Lessor.</p>
                   <p className="lease-line">The leased premises must be returned to the Lessor in as good condition as they were at the time the Lessee first occupied same, subject only to normal wear and tear. Lessee shall provide Lessor with a forwarding address, in writing.</p>
                   <p className="lease-line"><span className="lease-section-title">OCCUPANTS</span> The leased premises shall be occupied only by the persons listed below. Other occupants, including temporary visitors, are not allowed to remain at the premises for a period in excess of 10 days.</p>
-                  <p className="lease-fill">{leaseForm.occupants || '________________________________________________________________________'}</p>
+                  <p className="lease-occupants-line">{leaseForm.occupants || '________________________________________________________________________'}</p>
                   <div className="lease-initial-row"><div className="lease-sign-line">LESSEE'S INITIALS</div><div className="lease-sign-line">LESSEE'S INITIALS</div><div className="lease-sign-line">LESSOR'S INITIALS</div><div className="lease-sign-line">LESSOR'S INITIALS</div></div>
                 </section>
 
