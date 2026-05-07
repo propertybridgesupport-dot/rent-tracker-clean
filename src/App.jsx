@@ -2632,26 +2632,28 @@ This permanently removes the payment from the ledger.`
             table { width: 100%; border-collapse: collapse; margin-top: 16px; }
             th, td { border: 1px solid #d9cfc0; padding: 10px; text-align: left; vertical-align: top; }
             th { background: #fbf7f1; color: #9a6d2f; text-transform: uppercase; letter-spacing: .04em; font-size: 12px; }
-            .lease-package { max-width: 8.5in; margin: 0 auto; color: #111827; font-family: 'Times New Roman', Times, serif; font-size: 10px; line-height: 1.18; }
+            .lease-package { max-width: 8.5in; margin: 0 auto; color: #111827; font-family: 'Times New Roman', Times, serif; font-size: 10.5px; line-height: 1.22; }
             .lease-page { min-height: auto; padding: 0.42in 0.5in; box-sizing: border-box; page-break-after: always; break-after: page; background: #fff; }
             .lease-page:last-child { page-break-after: auto; }
             .lease-title { text-align: center; font-size: 16px; font-weight: 700; letter-spacing: .04em; margin: 0 0 10px; }
             .lease-company-line { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 10px; padding-bottom: 4px; border-bottom: 1px solid #111827; font-weight: 700; }
             .lease-line { margin: 0 0 6px; }
-            .lease-section-title { font-weight: 700; font-style: italic; text-transform: uppercase; margin-right: 6px; }
+            .lease-section-title { font-weight: 700; font-style: italic; text-transform: uppercase; text-decoration: underline; margin-right: 6px; }
             .lease-fill { font-weight: 700; text-decoration: underline; }
             .lease-initial-row, .lease-signature-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 22px; text-align: center; font-size: 9px; page-break-inside: avoid; break-inside: avoid; }
             .lease-signature-row { grid-template-columns: 1fr 1fr; margin-top: 34px; }
             .lease-sign-line { border-top: 1px solid #111827; padding-top: 4px; min-height: 18px; }
+            .lease-initial-row .lease-sign-line { width: 46px; margin: 0 auto; }
+            .lease-sign-line.blank { border-top-color: transparent; }
             .lease-rules-title { text-align: center; font-size: 15px; font-weight: 700; margin: 8px 0 12px; }
             .lease-rules-list li { margin-bottom: 4px; }
             .lease-addendum-title { text-align: center; font-size: 14px; font-weight: 700; margin: 8px 0 12px; text-transform: uppercase; }
             .lease-small-note { font-size: 10px; color: #374151; }
-            .lease-formal-page { font-size: 9.2px; line-height: 1.14; }
+            .lease-formal-page { font-size: 10.8px; line-height: 1.2; }
             .lease-addendum-page { font-size: 10px; line-height: 1.22; }
             .lease-page-meta { display: flex; justify-content: space-between; gap: 16px; border-bottom: 1px solid #111827; padding-bottom: 4px; margin-bottom: 8px; }
-            .lease-occupants-line { min-height: 28px; margin: 8px 0 10px; }
-            .lease-warning { text-align: center; font-weight: 700; margin-top: 10px; }
+            .lease-occupants-line { min-height: 28px; margin: 8px 0 10px 28px; }
+            .lease-warning { text-align: center; font-weight: 700; margin: 18px 0 20px; padding: 10px 0; line-height: 1.35; }
             .lease-initial-row.compact, .lease-signature-row.compact { margin-top: 14px; }
             .lease-rules-list { padding-left: 20px; margin-top: 8px; }
             .lease-page p { orphans: 2; widows: 2; }
@@ -4368,11 +4370,11 @@ This permanently removes the payment from the ledger.`
                   <div className="lease-company-line"><span>{selectedCompanyName}</span><span>Date: <span className="lease-fill">{formatDate(leaseForm.leaseDate)}</span></span></div>
                   <h1 className="lease-title">RESIDENTIAL LEASE</h1>
 
-                  <p className="lease-line"><span className="lease-section-title">1 PARTIES</span> <span className="lease-fill">{selectedCompanyName}</span> (hereinafter referred to as Lessor) hereby leases to <span className="lease-fill">{leaseForm.tenantNames || '________________'}</span> (hereinafter referred to as Lessee) the following described property:</p>
-                  <p className="lease-line"><span className="lease-section-title">PREMISES</span> Apt. # ______ in <span className="lease-fill">{leaseForm.propertyAddress || selectedLeaseProperty?.address || '________________'}</span>, <span className="lease-fill">{leaseForm.propertyState || 'LA'}</span> <span className="lease-fill">{leaseForm.propertyZip || '________'}</span>, for use by Lessee as a private residence only.</p>
+                  <p className="lease-line"><span className="lease-section-title">PARTIES</span> <span className="lease-fill">{selectedCompanyName}</span> (hereinafter referred to as Lessor) hereby leases to <span className="lease-fill">{leaseForm.tenantNames || '________________'}</span> (hereinafter referred to as Lessee) the following described property:</p>
+                  <p className="lease-line"><span className="lease-section-title">PREMISES</span> <span className="lease-fill">{leaseForm.propertyAddress || selectedLeaseProperty?.address || '________________'}</span>, <span className="lease-fill">{leaseForm.propertyState || 'LA'}</span> <span className="lease-fill">{leaseForm.propertyZip || '________'}</span>, for use by Lessee as a private residence only.</p>
                   <p className="lease-line"><span className="lease-section-title">TERM</span> This lease is for a term of <span className="lease-fill">{leaseForm.termMonths || '____'}</span> months commencing on the <span className="lease-fill">{getDayNumber(leaseForm.leaseStartDate)}</span> day of <span className="lease-fill">{getMonthYearLabel(leaseForm.leaseStartDate)}</span> and ending on the last calendar day of <span className="lease-fill">{getMonthLabelOnly(leaseForm.leaseEndDate)}</span>, <span className="lease-fill">{getYearLabelOnly(leaseForm.leaseEndDate)}</span>.</p>
                   <p className="lease-line"><span className="lease-section-title">MONTH TO MONTH RENEWAL</span> If Lessee, or Lessor, desires that this lease terminate at the expiration of its term he must give to the other party written notice at least 30 days prior to that date. Failure of either party to give this required notice automatically renews this lease and all of the terms thereof except that the lease will then be on a month-to-month basis.</p>
-                  <p className="lease-line"><span className="lease-section-title">RENT</span> This lease is made for and in consideration of a monthly rental of <span className="lease-fill">{formatLeaseMoney(leaseForm.grossRent)}</span> dollars payable in advance on or before the 1st day of each month at PROPERTY MANAGER OR BY BANK DEPOSIT. Lessee agrees to pay Lessor the sum of <span className="lease-fill">{formatLeaseMoney(leaseForm.proratedRent)}</span> dollars which is prorated rental for the period <span className="lease-fill">{formatDate(leaseForm.moveInDate)}</span> thru <span className="lease-fill">{formatDate(leaseForm.lastDayFirstMonth)}</span>. If rent is paid by the 5TH of the month, Lessee shall be entitled to a deduction of $50.00 dollars per month, or a net rental of <span className="lease-fill">{formatLeaseMoney(leaseForm.monthlyRent)}</span> dollars per month provided, however, that if the rent due is not received by the 5TH of the month Lessee shall be considered delinquent. If Lessee pays by check and said check is not honored on presentation for any reason whatsoever, Lessee agrees to pay an additional sum of $50.00 as a penalty. This penalty provision is not to be considered a waiver or relinquishment of any of the other rights or remedies of Lessor. At Lessor's discretion after receipt of NSF check; Lessor may require all future payments in the form of money orders or certified funds. Lessor shall give written notice to Lessee of this requirement.</p>
+                  <p className="lease-line"><span className="lease-section-title">RENT</span> This lease is made for and in consideration of a monthly rental of <span className="lease-fill">{formatLeaseMoney(leaseForm.grossRent)}</span> dollars payable in advance on or before the 1st day of each month at PROPERTY MANAGER OR BY BANK DEPOSIT. Lessee agrees to pay Lessor the sum of <span className="lease-fill">{formatLeaseMoney(leaseForm.proratedRent)}</span> dollars which is prorated rental for the period <span className="lease-fill">{formatDate(leaseForm.moveInDate)}</span> thru <span className="lease-fill">{formatDate(leaseForm.lastDayFirstMonth)}</span>. If rent is paid by the <span className="lease-fill">5TH</span> of the month, Lessee shall be entitled to a deduction of $50.00 dollars per month, or a net rental of <span className="lease-fill">{formatLeaseMoney(leaseForm.monthlyRent)}</span> dollars per month provided, however, that if the rent due is not received by the <span className="lease-fill">5TH</span> of the month Lessee shall be considered delinquent. If Lessee pays by check and said check is not honored on presentation for any reason whatsoever, Lessee agrees to pay an additional sum of $50.00 as a penalty. This penalty provision is not to be considered a waiver or relinquishment of any of the other rights or remedies of Lessor. At Lessor's discretion after receipt of NSF check; Lessor may require all future payments in the form of money orders or certified funds. Lessor shall give written notice to Lessee of this requirement.</p>
 
                   <p className="lease-line"><span className="lease-section-title">SECURITY DEPOSIT</span> Upon execution of this lease, Lessee agrees to deposit with Lessor, the sum of $ <span className="lease-fill">{leaseForm.depositAmount || '________'}</span>. This deposit shall be non-interest bearing and is to be held by Lessor as security for the full and faithful performance of the terms and conditions of this lease. This security deposit is not an advance rental, and Lessee may not deduct portion of the deposit from rent due to Lessor. This security deposit is not to be considered liquidated damages. In the event of forfeiture of the security deposit due to Lessee's failure to fully and faithfully perform all of the terms and conditions of this lease, Lessor retains all of his other rights and remedies. Lessee does not have the right to cancel this lease and avoid his obligations hereunder by forfeiting said security deposit.</p>
                   <p className="lease-line">Deductions will be made from the security deposit to reimburse Lessor for the cost of repairing any damage to the premises or equipment or the cost of replacing any of the articles or equipment that may be damaged beyond repair, lost or missing at the termination of this lease. Deductions will also be made to cover any unpaid amounts owed to Lessor for any damage, loss, or charges occurring prior to termination of this lease and for which Lessee is responsible. In the event that damages or other charges exceed the amount of the security deposit, Lessee agrees to pay all expenses and cost to Lessor. In the event there has been a forfeiture of the security deposit, excess charges shall be paid in addition to the amount of the said security deposit.</p>
@@ -4435,8 +4437,8 @@ This permanently removes the payment from the ledger.`
                   <div className="lease-signature-row compact"><div className="lease-sign-line">LESSEE'S INITIALS</div><div className="lease-sign-line">LESSEE'S INITIALS</div></div>
                   <p className="lease-line">Time is of the essence. This document and any indicated addendum contain this entire lease. If any part of this lease is or becomes contrary to law, the remainder of this lease shall be unaffected. Any changes must be agreed upon in writing, and signed by Lessor and Lessee.</p>
                   <p className="lease-line lease-warning">WE DO BUSINESS IN ACCORDANCE WITH FEDERAL FAIR HOUSING LAWS<br />FACSIMILE SIGNATURES ARE ACCEPTABLE AND BINDING AS ORIGINALS<br />THIS IS A BINDING LEGAL DOCUMENT. READ CAREFULLY BEFORE SIGNING.</p>
-                  <div className="lease-signature-row"><div className="lease-sign-line">Lessee Signature / Date</div><div className="lease-sign-line">Lessor Signature / Date</div></div>
-                  <div className="lease-signature-row"><div className="lease-sign-line">Lessee Signature / Date</div><div className="lease-sign-line">Lessor Signature / Date</div></div>
+                  <div className="lease-signature-row"><div className="lease-sign-line">Lessee Signature / Date</div><div className="lease-sign-line">Lessee Signature / Date</div></div>
+                  <div className="lease-signature-row"><div className="lease-sign-line">Lessor Signature / Date</div><div className="lease-sign-line blank">&nbsp;</div></div>
                   <p className="lease-line"><strong>FOR REPAIRS/MAINTENANCE CALL:</strong> <span className="lease-fill">{leaseForm.propertyManagerName}</span> <span className="lease-fill">{leaseForm.propertyManagerPhone}</span></p>
                 </section>
 
@@ -4497,7 +4499,7 @@ This permanently removes the payment from the ledger.`
                   <h2 className="lease-addendum-title">Mold Information and Prevention Addendum</h2>
                   <p>Lessee acknowledges the importance of minimizing mold growth by keeping the dwelling clean, removing visible moisture, using air conditioning/heating with proper ventilation, and promptly reporting water leaks, water infiltration, mold, or HVAC issues in writing. Failure to promptly address leaks and moisture may encourage mold growth.</p>
                   <p><strong>Please read all policies and lease addendums carefully before signing.</strong></p>
-                  <div className="lease-signature-row"><div className="lease-sign-line">Lessee Signature</div><div className="lease-sign-line">Agent for Lessor</div></div>
+                  <div className="lease-signature-row"><div className="lease-sign-line">Lessee Signature</div><div className="lease-sign-line">Lessee Signature</div></div>
                 </section>
 
                 {leaseForm.hasPets === 'yes' ? (
@@ -4511,7 +4513,7 @@ This permanently removes the payment from the ledger.`
                     <p><strong>READ BEFORE SIGNING</strong></p>
                     <p>This <span className="lease-fill">{formatDate(leaseForm.leaseDate)}</span></p>
                     <div className="lease-signature-row"><div className="lease-sign-line">Agent for Lessor</div><div className="lease-sign-line">Lessee</div></div>
-                    <div className="lease-signature-row"><div className="lease-sign-line">Lessee</div><div className="lease-sign-line">Additional Lessee</div></div>
+                    <div className="lease-signature-row"><div className="lease-sign-line blank">&nbsp;</div><div className="lease-sign-line">Lessee</div></div>
                   </section>
                 ) : null}
               </div>
