@@ -2633,13 +2633,15 @@ This permanently removes the payment from the ledger.`
             th, td { border: 1px solid #d9cfc0; padding: 10px; text-align: left; vertical-align: top; }
             th { background: #fbf7f1; color: #9a6d2f; text-transform: uppercase; letter-spacing: .04em; font-size: 12px; }
             .lease-package { max-width: 8.5in; margin: 0 auto; color: #111827; font-family: 'Times New Roman', Times, serif; font-size: 10.5px; line-height: 1.22; }
-            .lease-page { min-height: auto; padding: 0.42in 0.5in; box-sizing: border-box; page-break-after: always; break-after: page; background: #fff; }
+            .lease-page { height: 10.98in; min-height: 10.98in; padding: 0.42in 0.5in; box-sizing: border-box; page-break-after: always; break-after: page; background: #fff; display: flex; flex-direction: column; overflow: hidden; }
             .lease-page:last-child { page-break-after: auto; }
             .lease-title { text-align: center; font-size: 16px; font-weight: 700; letter-spacing: .04em; margin: 0 0 10px; }
             .lease-company-line { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 10px; padding-bottom: 4px; border-bottom: 1px solid #111827; font-weight: 700; }
             .lease-line { margin: 0 0 6px; }
             .lease-section-title { font-weight: 700; font-style: italic; text-transform: uppercase; text-decoration: underline; margin-right: 6px; }
             .lease-fill { font-weight: 700; text-decoration: underline; }
+            .lease-page-body { flex: 1 1 auto; min-height: 0; }
+            .lease-page-footer { margin-top: auto; padding-top: 8px; flex: 0 0 auto; }
             .lease-initial-row, .lease-signature-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 22px; text-align: center; font-size: 9px; page-break-inside: avoid; break-inside: avoid; }
             .lease-signature-row { grid-template-columns: 1fr 1fr; margin-top: 34px; }
             .lease-sign-line { border-top: 1px solid #111827; padding-top: 4px; min-height: 18px; }
@@ -2648,8 +2650,11 @@ This permanently removes the payment from the ledger.`
             .lease-rules-title { text-align: center; font-size: 15px; font-weight: 700; margin: 8px 0 12px; }
             .lease-rules-list li { margin-bottom: 4px; }
             .lease-addendum-title { text-align: center; font-size: 14px; font-weight: 700; margin: 8px 0 12px; text-transform: uppercase; }
+            .pet-provision-page .lease-addendum-title { margin: 0.42in 0 0.25in; font-size: 16px; letter-spacing: .03em; }
+            .pet-provision-page p { margin-bottom: 12px; }
             .lease-small-note { font-size: 10px; color: #374151; }
-            .lease-formal-page { font-size: 10.8px; line-height: 1.2; }
+            .lease-formal-page { font-size: 11.35px; line-height: 1.23; }
+            .lease-formal-page.lease-tight-page { font-size: 10.95px; line-height: 1.18; }
             .lease-addendum-page { font-size: 10px; line-height: 1.22; }
             .lease-page-meta { display: flex; justify-content: space-between; gap: 16px; border-bottom: 1px solid #111827; padding-bottom: 4px; margin-bottom: 8px; }
             .lease-occupants-line { min-height: 28px; margin: 8px 0 10px 28px; }
@@ -2657,6 +2662,7 @@ This permanently removes the payment from the ledger.`
             .lease-initial-row.compact, .lease-signature-row.compact { margin-top: 14px; }
             .lease-rules-list { padding-left: 20px; margin-top: 8px; }
             .lease-page p { orphans: 2; widows: 2; }
+            @page { size: letter; margin: 0; }
             @media print {
               body { padding: 0; }
               .print-shell { max-width: none; }
@@ -4367,6 +4373,7 @@ This permanently removes the payment from the ledger.`
             <div ref={leasePreviewRef}>
               <div className="lease-package">
                 <section className="lease-page lease-formal-page">
+                  <div className="lease-page-body">
                   <div className="lease-company-line"><span>{selectedCompanyName}</span><span>Date: <span className="lease-fill">{formatDate(leaseForm.leaseDate)}</span></span></div>
                   <h1 className="lease-title">RESIDENTIAL LEASE</h1>
 
@@ -4384,13 +4391,15 @@ This permanently removes the payment from the ledger.`
                   <p className="lease-line"><span className="lease-section-title">OCCUPANTS</span> The leased premises shall be occupied only by the persons listed below. Other occupants, including temporary visitors, are not allowed to remain at the premises for a period in excess of 10 days.</p>
                   <p className="lease-line lease-occupants-line"><span className="lease-fill">{leaseForm.occupants || '________________'}</span></p>
                   <p className="lease-line">A temporary visitor is one who inhabits the premises for no more than ten (10) days.</p>
-                  <div className="lease-initial-row"><div className="lease-sign-line">LESSEE'S INITIALS</div><div className="lease-sign-line">LESSEE'S INITIALS</div><div className="lease-sign-line">LESSOR'S INITIALS</div><div className="lease-sign-line">LESSOR'S INITIALS</div></div>
-                </section>
-
-                <section className="lease-page lease-formal-page">
-                  <p className="lease-line lease-page-meta"><strong>Property Address:</strong> <span className="lease-fill">{leaseForm.propertyAddress || selectedLeaseProperty?.address || '________________'}</span> <strong>Date:</strong> <span className="lease-fill">{formatDate(leaseForm.leaseDate)}</span></p>
                   <p className="lease-line"><span className="lease-section-title">PETS</span> {leaseForm.hasPets === 'yes' ? 'Pets are permitted only as specifically approved by written pet provision/addendum attached to this lease.' : 'No pets shall be allowed on the premises at any time. However, this provision shall not preclude Lessor modifying any lease to allow pets by mutual written agreement between Lessor and Lessee.'}</p>
                   <p className="lease-line"><span className="lease-section-title">SUB LEASE</span> Lessee is not permitted to sublet or grant use or possession of the leased premises without the written consent of Lessor and then only in accordance with the terms of this lease. Any expense associated with subleasing the premises shall be paid by NOT ALLOWED.</p>
+                  </div>
+                  <div className="lease-page-footer"><div className="lease-initial-row"><div className="lease-sign-line">LESSEE'S INITIALS</div><div className="lease-sign-line">LESSEE'S INITIALS</div><div className="lease-sign-line">LESSOR'S INITIALS</div><div className="lease-sign-line">LESSOR'S INITIALS</div></div></div>
+                </section>
+
+                <section className="lease-page lease-formal-page lease-tight-page">
+                  <div className="lease-page-body">
+                  <p className="lease-line lease-page-meta"><strong>Property Address:</strong> <span className="lease-fill">{leaseForm.propertyAddress || selectedLeaseProperty?.address || '________________'}</span> <strong>Date:</strong> <span className="lease-fill">{formatDate(leaseForm.leaseDate)}</span></p>
                   <p className="lease-line"><span className="lease-section-title">DEFAULT, ABANDONMENT OR EVICTION</span> Should the Lessee fail to pay the rent or any other charges arising under this lease promptly as stipulated or should premises be abandoned by Lessee (it being agreed that an absence of Lessee from the leased premises for five consecutive days after rentals have become delinquent shall create a conclusive presumption of abandonment) or should Lessee begin to remove furniture or any substantial portion of Lessee's personal property to the detriment of Lessors lien, or should voluntary or involuntary bankruptcy proceedings be commenced by or against Lessee, or should Lessee make an assignment for the benefit of creditors, then in any of said events, Lessee shall be in default and the rental of the whole of the unexpired term of this lease, together with any attorney's fees, and all other expenses shall immediately become due. Lessor may proceed one or more times for past due installments without prejudging his rights to proceed later for the rent for the remaining term of this lease. Similarly, in the event of any such default, Lessor retains the option to cancel this lease and obtain possession of the premises in accordance with the provisions of Article 4701, et. seq. of the Louisiana Code of Civil Procedure. In the event of such cancellation and eviction, Lessee is obligated to pay any and all rent and expenses due and owing through the day said premises are re-rented or this lease expires, whichever is sooner. Lessee is obligated to pay any collection and eviction costs and attorney's fees. In the event the premises are abandoned as defined above, Lessee grants to Lessor the right to dispose of belongings remaining in the premises in any manner Lessor chooses without any responsibility or liability to Lessee for any loss which Lessee may sustain from said disposition. Lessee shall be responsible for any cost incurred by removal of these belongings.</p>
                   <p className="lease-line"><span className="lease-section-title">OTHER VIOLATIONS, NUISANCE</span> Should the Lessee at any time violate any of the conditions of this lease, other than the conditions provided in the immediately preceding paragraphs under the heading "Default, Abandonment, or Eviction" or should the Lessee discontinue the use of the premises for the purposes for which they are rented or fail to maintain a standard behavior consistent with the consideration necessary to provide reasonable safety, peace and quiet to others, such as but not limited to, being boisterous or disorderly, creating undue noise, disturbance or nuisance of any nature or knowingly engaging in any unlawful or immoral activities, or failure to abide by any Rules and Regulations, and should such violation continue for a period of five days after written notice has been given Lessee (such notice may be posted on Lessee's door) or should such violation again occur after written notice to cease and desist from such activity or disturbance, then, Lessee shall be in default and Lessor shall have the right to demand the rent for the whole unexpired term of this lease which at once becomes due and payable or to immediately cancel this lease and obtain possession of the premises in accordance with the provisions of Article 4701, et. seq. of Louisiana Code of Civil Procedure, or to exercise any further rights granted by this lease or available by law.</p>
                   <p className="lease-line"><span className="lease-section-title">RULES & REGULATIONS</span> Lessee acknowledges receipt of a copy of and agrees to comply with the Rules and Regulations. Lessee agrees to comply with any additions and/or modifications to these Rules & Regulations or with other Rules & Regulations which may be established, adopted by the Lessor and which may be posted on the leased premises, and/or mailed, and/or delivered to Lessee.</p>
@@ -4401,10 +4410,12 @@ This permanently removes the payment from the ledger.`
                   <p className="lease-line"><span className="lease-section-title">SURRENDER OF PREMISES</span> At the expiration of this lease, or its termination for other causes, Lessee is obligated to immediately surrender possession, and should Lessee fail to do so, he consents to pay any and all damages, but in no case less than five times the rent per day, plus attorney's fees, and other related costs.</p>
                   <p className="lease-line"><span className="lease-section-title">LIABILITY</span> If any employee or representative of Lessor renders any services (such as parking, washing or delivering automobiles, handling of furniture or other articles, cleaning the rented premises, package delivery, or any other service) for or at the request of Lessee, his family, employees or guests, then, for the purpose of such service, such employees shall be deemed the servant of Lessee, regardless of whether or not payment is arranged for such service, and Lessee agrees to release Lessor and his agents and/or representatives and to hold them harmless of any and all liability arising therefrom.</p>
                   <p className="lease-line">Neither Lessor nor his agents and/or representatives shall be liable to Lessee, or to Lessee's employees, patrons and visitors, or to any other person for any damage to person or property caused by any act, omission or neglect of Lessee or any other tenant of said leased premises and Lessee agrees to defend, indemnify and hold Lessor, his agents and/or representatives harmless from all claims for any such damage, whether the injury occurs on or off leased premises.</p>
-                  <div className="lease-initial-row"><div className="lease-sign-line">LESSEE'S INITIALS</div><div className="lease-sign-line">LESSEE'S INITIALS</div><div className="lease-sign-line">LESSOR'S INITIALS</div><div className="lease-sign-line">LESSOR'S INITIALS</div></div>
+                  </div>
+                  <div className="lease-page-footer"><div className="lease-initial-row"><div className="lease-sign-line">LESSEE'S INITIALS</div><div className="lease-sign-line">LESSEE'S INITIALS</div><div className="lease-sign-line">LESSOR'S INITIALS</div><div className="lease-sign-line">LESSOR'S INITIALS</div></div></div>
                 </section>
 
-                <section className="lease-page lease-formal-page">
+                <section className="lease-page lease-formal-page lease-tight-page">
+                  <div className="lease-page-body">
                   <p className="lease-line lease-page-meta"><strong>Property Address:</strong> <span className="lease-fill">{leaseForm.propertyAddress || selectedLeaseProperty?.address || '________________'}</span> <strong>Date:</strong> <span className="lease-fill">{formatDate(leaseForm.leaseDate)}</span></p>
                   <p className="lease-line">Lessee hereby releases and holds Lessor, his agents and/or representatives harmless and agrees to defend and indemnify Lessor from any damage or injury to persons or property caused as a result of the use of the swimming pool by Lessee or any persons making use of said through the use, permission or consent of Lessee.</p>
                   <p className="lease-line">Lessee assumes responsibility for the condition of the premises. Lessor is not responsible for damage caused by leaks in the roof, bursting of pipes by freezing or otherwise, or any vices or defects of the leased property, or the consequences thereof, except in case of positive neglect or failure to take action toward the remedying of such defects within a reasonable amount of time after receiving written notice of such defects. Should lessee fail to promptly so notify Lessor in writing, of any such defects, Lessee will become responsible for any damage or claims resulting to Lessor or other parties.</p>
@@ -4421,7 +4432,8 @@ This permanently removes the payment from the ledger.`
                   <p className="lease-line"><span className="lease-section-title">UTILITIES</span> Lessee shall maintain all utility services, including water, gas, electricity, phone, garbage collection, and lawn and garden care, in Lessee's name and shall promptly pay all charges due thereon, during the term of this lease unless otherwise noted.</p>
                   <p className="lease-line"><span className="lease-section-title">WAIVER OF NOTICE</span> Upon termination of the right of occupancy for any reason, Lessee hereby expressly waives notice to vacate premises prior to institution of eviction proceedings in accordance with La. CCP Article 4701 and La. CC Article 2713.</p>
                   <p className="lease-line"><span className="lease-section-title">MISCELLANEOUS PROVISIONS</span> No cars to be parked on lawn or walkways. Cars to be parked only in designated areas. No holes shall be drilled in the walls, woodwork or floors are permitted. No painting or papering of walls is permitted without written consent of Lessor. Lessee shall not allow the cable/phone company to wire the premises for cable without Lessor's written permission. No waterbeds are allowed. No foil in windows is allowed. Garbage to be placed in designated receptacle. If no receptacle is provided, garbage is to be placed on curb as prescribed by law in a proper receptacle provided by Lessee. Lessee is to furnish Lessor with a list of deficiencies noted by Lessee at the time of occupancy. This is to be held by Lessor in case of dispute as to move-in condition of property.</p>
-                  <div className="lease-initial-row"><div className="lease-sign-line">LESSEE'S INITIALS</div><div className="lease-sign-line">LESSEE'S INITIALS</div><div className="lease-sign-line">LESSOR'S INITIALS</div><div className="lease-sign-line">LESSOR'S INITIALS</div></div>
+                  </div>
+                  <div className="lease-page-footer"><div className="lease-initial-row"><div className="lease-sign-line">LESSEE'S INITIALS</div><div className="lease-sign-line">LESSEE'S INITIALS</div><div className="lease-sign-line">LESSOR'S INITIALS</div><div className="lease-sign-line">LESSOR'S INITIALS</div></div></div>
                 </section>
 
                 <section className="lease-page lease-formal-page">
@@ -4503,7 +4515,8 @@ This permanently removes the payment from the ledger.`
                 </section>
 
                 {leaseForm.hasPets === 'yes' ? (
-                  <section className="lease-page lease-addendum-page">
+                  <section className="lease-page lease-addendum-page pet-provision-page">
+                    <div className="lease-page-body">
                     <div className="lease-company-line"><span>{selectedCompanyName}</span><span>Lease Date: {formatDate(leaseForm.leaseDate)}</span></div>
                     <h2 className="lease-addendum-title">Pet Provision</h2>
                     <p>Addendum to lease dated <span className="lease-fill">{formatDate(leaseForm.leaseDate)}</span>, between <span className="lease-fill">{selectedCompanyName}</span>, Lessor, and <span className="lease-fill">{leaseForm.tenantNames || '________________'}</span>, Lessee, for <span className="lease-fill">{leaseForm.propertyAddress || selectedLeaseProperty?.address || '________________'}</span>.</p>
@@ -4514,6 +4527,7 @@ This permanently removes the payment from the ledger.`
                     <p>This <span className="lease-fill">{formatDate(leaseForm.leaseDate)}</span></p>
                     <div className="lease-signature-row"><div className="lease-sign-line">Agent for Lessor</div><div className="lease-sign-line">Lessee</div></div>
                     <div className="lease-signature-row"><div className="lease-sign-line blank">&nbsp;</div><div className="lease-sign-line">Lessee</div></div>
+                    </div>
                   </section>
                 ) : null}
               </div>
