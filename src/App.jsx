@@ -2632,9 +2632,9 @@ This permanently removes the payment from the ledger.`
             table { width: 100%; border-collapse: collapse; margin-top: 16px; }
             th, td { border: 1px solid #d9cfc0; padding: 10px; text-align: left; vertical-align: top; }
             th { background: #fbf7f1; color: #9a6d2f; text-transform: uppercase; letter-spacing: .04em; font-size: 12px; }
-            .lease-package { max-width: 8.5in; margin: 0 auto; color: #111827; font-family: 'Times New Roman', Times, serif; font-size: 10.5px; line-height: 1.22; }
-            .lease-page { height: 10.98in; min-height: 10.98in; padding: 0.42in 0.5in; box-sizing: border-box; page-break-after: always; break-after: page; background: #fff; display: flex; flex-direction: column; overflow: hidden; }
-            .lease-page:last-child { page-break-after: auto; }
+            .lease-package { max-width: 8.5in; margin: 0 auto; color: #111827; font-family: 'Times New Roman', Times, serif; font-size: 11px; line-height: 1.22; }
+            .lease-page { width: 8.5in; height: 11in; min-height: 11in; padding: 0.42in 0.5in 0.88in; box-sizing: border-box; page-break-after: always; break-after: page; background: #fff; display: block; position: relative; overflow: hidden; }
+            .lease-page:last-child { page-break-after: auto; break-after: auto; }
             .lease-title { text-align: center; font-size: 16px; font-weight: 700; letter-spacing: .04em; margin: 0 0 10px; }
             .lease-company-line { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; margin-bottom: 10px; padding-bottom: 5px; border-bottom: 1px solid #111827; font-weight: 700; font-size: 11px; flex: 0 0 auto; }
             .lease-company-line span:first-child { font-size: 15.5px; letter-spacing: .01em; }
@@ -2642,13 +2642,14 @@ This permanently removes the payment from the ledger.`
             .lease-line { margin: 0 0 5px; }
             .lease-section-title { font-weight: 700; font-style: italic; text-transform: uppercase; text-decoration: underline; margin-right: 6px; }
             .lease-fill { font-weight: 700; text-decoration: underline; }
-            .lease-page-body { flex: 0 0 auto; min-height: 0; }
-            .lease-page-footer { margin-top: auto; padding-top: 8px; flex: 0 0 auto; }
+            .lease-page-body { min-height: 0; }
+            .lease-page-footer { position: absolute; left: 0.5in; right: 0.5in; bottom: 0.34in; padding-top: 0; }
             .lease-initial-row, .lease-signature-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 22px; text-align: center; font-size: 9px; page-break-inside: avoid; break-inside: avoid; }
-            .lease-page-footer .lease-initial-row { margin-top: 0; }
+            .lease-page-footer .lease-initial-row { margin-top: 0; font-size: 7.8px; line-height: 1.05; }
             .lease-signature-row { grid-template-columns: 1fr 1fr; margin-top: 34px; }
             .lease-sign-line { border-top: 1px solid #111827; padding-top: 4px; min-height: 18px; }
-            .lease-initial-row .lease-sign-line { width: 46px; margin: 0 auto; }
+            .lease-initial-row .lease-sign-line { width: 100%; margin: 0 auto; border-top: 0; padding-top: 8px; position: relative; white-space: nowrap; }
+            .lease-initial-row .lease-sign-line::before { content: ''; position: absolute; top: 0; left: 50%; width: 0.45in; transform: translateX(-50%); border-top: 1px solid #111827; }
             .lease-sign-line.blank { border-top-color: transparent; }
             .lease-rules-title { text-align: center; font-size: 15px; font-weight: 700; margin: 8px 0 12px; }
             .lease-rules-list li { margin-bottom: 4px; }
@@ -2656,8 +2657,8 @@ This permanently removes the payment from the ledger.`
             .pet-provision-page .lease-addendum-title { margin: 0.42in 0 0.25in; font-size: 16px; letter-spacing: .03em; }
             .pet-provision-page p { margin-bottom: 12px; }
             .lease-small-note { font-size: 10px; color: #374151; }
-            .lease-formal-page { font-size: 10.85px; line-height: 1.15; }
-            .lease-formal-page.lease-tight-page { font-size: 10.45px; line-height: 1.10; }
+            .lease-formal-page { font-size: 11.45px; line-height: 1.16; }
+            .lease-formal-page.lease-tight-page { font-size: 11.05px; line-height: 1.12; }
             .lease-addendum-page { font-size: 10px; line-height: 1.22; }
             .lease-page-meta { display: flex; justify-content: space-between; gap: 16px; border-bottom: 1px solid #111827; padding-bottom: 4px; margin-bottom: 8px; }
             .lease-occupants-line { min-height: 20px; margin: 6px 0 7px 28px; }
