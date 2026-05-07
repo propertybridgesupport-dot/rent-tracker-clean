@@ -2633,38 +2633,41 @@ This permanently removes the payment from the ledger.`
             th, td { border: 1px solid #d9cfc0; padding: 10px; text-align: left; vertical-align: top; }
             th { background: #fbf7f1; color: #9a6d2f; text-transform: uppercase; letter-spacing: .04em; font-size: 12px; }
             .lease-package { max-width: 8.5in; margin: 0 auto; color: #111827; font-family: 'Times New Roman', Times, serif; font-size: 11px; line-height: 1.22; }
-            .lease-page { width: 8.5in; height: 11in; min-height: 11in; padding: 0.42in 0.5in 0.88in; box-sizing: border-box; page-break-after: always; break-after: page; background: #fff; display: block; position: relative; overflow: hidden; }
+            .lease-page { width: 8.5in; height: 11in; min-height: 11in; padding: 0.28in 0.36in 0.34in; box-sizing: border-box; page-break-after: always; break-after: page; background: #fff; display: flex; flex-direction: column; position: relative; overflow: hidden; }
             .lease-page:last-child { page-break-after: auto; break-after: auto; }
-            .lease-title { text-align: center; font-size: 16px; font-weight: 700; letter-spacing: .04em; margin: 0 0 10px; }
-            .lease-company-line { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; margin-bottom: 10px; padding-bottom: 5px; border-bottom: 1px solid #111827; font-weight: 700; font-size: 11px; flex: 0 0 auto; }
-            .lease-company-line span:first-child { font-size: 15.5px; letter-spacing: .01em; }
+            .lease-title { text-align: center; font-size: 16.5px; font-weight: 700; letter-spacing: .04em; margin: 0 0 8px; }
+            .lease-company-line { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; margin-bottom: 8px; padding-bottom: 5px; border-bottom: 1px solid #111827; font-weight: 700; font-size: 11px; flex: 0 0 auto; }
+            .lease-company-line span:first-child { font-size: 16px; letter-spacing: .01em; }
             .lease-company-line span:last-child { font-size: 10px; }
-            .lease-line { margin: 0 0 5px; }
+            .lease-line { margin: 0 0 4px; }
             .lease-section-title { font-weight: 700; font-style: italic; text-transform: uppercase; text-decoration: underline; margin-right: 6px; }
             .lease-fill { font-weight: 700; text-decoration: underline; }
-            .lease-page-body { min-height: 0; }
-            .lease-page-footer { position: absolute; left: 0.5in; right: 0.5in; bottom: 0.34in; padding-top: 0; }
+            .lease-page-body { flex: 1 1 auto; min-height: 0; overflow: hidden; }
+            .lease-page-footer { flex: 0 0 auto; margin-top: auto; padding-top: 0.1in; }
+            .lease-page-number { position: absolute; right: 0.36in; bottom: 0.12in; font-size: 8px; color: #111827; }
             .lease-initial-row, .lease-signature-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 22px; text-align: center; font-size: 9px; page-break-inside: avoid; break-inside: avoid; }
-            .lease-page-footer .lease-initial-row { margin-top: 0; font-size: 7.8px; line-height: 1.05; }
+            .lease-page-footer .lease-initial-row { margin-top: 0; margin-bottom: 0.11in; font-size: 8px; line-height: 1.05; }
             .lease-signature-row { grid-template-columns: 1fr 1fr; margin-top: 34px; }
             .lease-sign-line { border-top: 1px solid #111827; padding-top: 4px; min-height: 18px; }
             .lease-initial-row .lease-sign-line { width: 100%; margin: 0 auto; border-top: 0; padding-top: 8px; position: relative; white-space: nowrap; }
             .lease-initial-row .lease-sign-line::before { content: ''; position: absolute; top: 0; left: 50%; width: 0.45in; transform: translateX(-50%); border-top: 1px solid #111827; }
             .lease-sign-line.blank { border-top-color: transparent; }
-            .lease-rules-title { text-align: center; font-size: 15px; font-weight: 700; margin: 8px 0 12px; }
+            .lease-rules-title { text-align: center; font-size: 17px; font-weight: 700; margin: 8px 0 12px; }
             .lease-rules-list li { margin-bottom: 4px; }
-            .lease-addendum-title { text-align: center; font-size: 14px; font-weight: 700; margin: 8px 0 12px; text-transform: uppercase; }
-            .pet-provision-page .lease-addendum-title { margin: 0.42in 0 0.25in; font-size: 16px; letter-spacing: .03em; }
-            .pet-provision-page p { margin-bottom: 12px; }
+            .lease-addendum-title { text-align: center; font-size: 16px; font-weight: 700; margin: 10px 0 14px; text-transform: uppercase; }
+            .pet-provision-page .lease-addendum-title { margin: 0.55in 0 0.35in; font-size: 19px; letter-spacing: .03em; }
+            .pet-provision-page p { margin-bottom: 16px; }
             .lease-small-note { font-size: 10px; color: #374151; }
-            .lease-formal-page { font-size: 11.45px; line-height: 1.16; }
-            .lease-formal-page.lease-tight-page { font-size: 11.05px; line-height: 1.12; }
-            .lease-addendum-page { font-size: 10px; line-height: 1.22; }
-            .lease-page-meta { display: flex; justify-content: space-between; gap: 16px; border-bottom: 1px solid #111827; padding-bottom: 4px; margin-bottom: 8px; }
-            .lease-occupants-line { min-height: 20px; margin: 6px 0 7px 28px; }
+            .lease-formal-page { font-size: 12.05px; line-height: 1.1; }
+            .lease-formal-page.lease-tight-page { font-size: 11.35px; line-height: 1.055; }
+            .lease-addendum-page { font-size: 11.6px; line-height: 1.18; }
+            .pet-provision-page { font-size: 14px; line-height: 1.34; }
+            .lease-page-meta { display: flex; justify-content: space-between; gap: 16px; border-bottom: 1px solid #111827; padding-bottom: 4px; margin-bottom: 7px; }
+            .lease-occupants-line { min-height: 20px; margin: 5px 0 7px 28px; }
             .lease-warning { text-align: center; font-weight: 700; margin: 18px 0 20px; padding: 10px 0; line-height: 1.35; }
             .lease-repair-call { margin-top: 0.72in !important; font-size: 13px; font-weight: 700; }
-            .lease-initial-row.compact, .lease-signature-row.compact { margin-top: 14px; }
+            .lease-initial-row.compact, .lease-signature-row.compact { margin-top: 22px; margin-bottom: 12px; font-size: 8px; }
+            .lease-signature-row.compact .lease-sign-line::before { width: 0.45in; }
             .lease-rules-list { padding-left: 20px; margin-top: 8px; }
             .lease-page p { orphans: 2; widows: 2; }
             @page { size: letter; margin: 0; }
@@ -4398,6 +4401,7 @@ This permanently removes the payment from the ledger.`
                   <p className="lease-line">A temporary visitor is one who inhabits the premises for no more than ten (10) days.</p>
                   </div>
                   <div className="lease-page-footer"><div className="lease-initial-row"><div className="lease-sign-line">LESSEE'S INITIALS</div><div className="lease-sign-line">LESSEE'S INITIALS</div><div className="lease-sign-line">LESSOR'S INITIALS</div><div className="lease-sign-line">LESSOR'S INITIALS</div></div></div>
+                  <div className="lease-page-number">Page 1 of 7</div>
                 </section>
 
                 <section className="lease-page lease-formal-page lease-tight-page">
@@ -4417,6 +4421,7 @@ This permanently removes the payment from the ledger.`
                   <p className="lease-line">Neither Lessor nor his agents and/or representatives shall be liable to Lessee, or to Lessee's employees, patrons and visitors, or to any other person for any damage to person or property caused by any act, omission or neglect of Lessee or any other tenant of said leased premises and Lessee agrees to defend, indemnify and hold Lessor, his agents and/or representatives harmless from all claims for any such damage, whether the injury occurs on or off leased premises.</p>
                   </div>
                   <div className="lease-page-footer"><div className="lease-initial-row"><div className="lease-sign-line">LESSEE'S INITIALS</div><div className="lease-sign-line">LESSEE'S INITIALS</div><div className="lease-sign-line">LESSOR'S INITIALS</div><div className="lease-sign-line">LESSOR'S INITIALS</div></div></div>
+                  <div className="lease-page-number">Page 2 of 7</div>
                 </section>
 
                 <section className="lease-page lease-formal-page lease-tight-page">
@@ -4439,6 +4444,7 @@ This permanently removes the payment from the ledger.`
                   <p className="lease-line"><span className="lease-section-title">MISCELLANEOUS PROVISIONS</span> No cars to be parked on lawn or walkways. Cars to be parked only in designated areas. No holes shall be drilled in the walls, woodwork or floors are permitted. No painting or papering of walls is permitted without written consent of Lessor. Lessee shall not allow the cable/phone company to wire the premises for cable without Lessor's written permission. No waterbeds are allowed. No foil in windows is allowed. Garbage to be placed in designated receptacle. If no receptacle is provided, garbage is to be placed on curb as prescribed by law in a proper receptacle provided by Lessee. Lessee is to furnish Lessor with a list of deficiencies noted by Lessee at the time of occupancy. This is to be held by Lessor in case of dispute as to move-in condition of property.</p>
                   </div>
                   <div className="lease-page-footer"><div className="lease-initial-row"><div className="lease-sign-line">LESSEE'S INITIALS</div><div className="lease-sign-line">LESSEE'S INITIALS</div><div className="lease-sign-line">LESSOR'S INITIALS</div><div className="lease-sign-line">LESSOR'S INITIALS</div></div></div>
+                  <div className="lease-page-number">Page 3 of 7</div>
                 </section>
 
                 <section className="lease-page lease-formal-page">
@@ -4457,6 +4463,7 @@ This permanently removes the payment from the ledger.`
                   <div className="lease-signature-row"><div className="lease-sign-line">Lessee Signature / Date</div><div className="lease-sign-line">Lessee Signature / Date</div></div>
                   <div className="lease-signature-row"><div className="lease-sign-line">Lessor Signature / Date</div><div className="lease-sign-line blank">&nbsp;</div></div>
                   <p className="lease-line lease-repair-call"><strong>FOR REPAIRS/MAINTENANCE CALL:</strong> <span className="lease-fill">{leaseForm.propertyManagerName}</span> <span className="lease-fill">{leaseForm.propertyManagerPhone}</span></p>
+                  <div className="lease-page-number">Page 4 of 7</div>
                 </section>
 
                 <section className="lease-page lease-addendum-page">
@@ -4499,7 +4506,8 @@ This permanently removes the payment from the ledger.`
                     <li>For purposes of this agreement, lessor shall be either owner or manager.</li>
                     <li>All communication regarding property/lease should be forwarded to the appropriate property manager of {selectedCompanyName}.</li>
                   </ol>
-                  <div className="lease-signature-row"><div className="lease-sign-line">Lessee Initials</div><div className="lease-sign-line">Lessee Initials</div></div>
+                  <div className="lease-signature-row compact"><div className="lease-sign-line">Lessee Initials</div><div className="lease-sign-line">Lessee Initials</div></div>
+                  <div className="lease-page-number">Page 5 of 7</div>
                 </section>
 
                 <section className="lease-page lease-addendum-page">
@@ -4516,7 +4524,8 @@ This permanently removes the payment from the ledger.`
                   <h2 className="lease-addendum-title">Mold Information and Prevention Addendum</h2>
                   <p>Lessee acknowledges the importance of minimizing mold growth by keeping the dwelling clean, removing visible moisture, using air conditioning/heating with proper ventilation, and promptly reporting water leaks, water infiltration, mold, or HVAC issues in writing. Failure to promptly address leaks and moisture may encourage mold growth.</p>
                   <p><strong>Please read all policies and lease addendums carefully before signing.</strong></p>
-                  <div className="lease-signature-row"><div className="lease-sign-line">Lessee Signature</div><div className="lease-sign-line">Lessee Signature</div></div>
+                  <div className="lease-signature-row compact"><div className="lease-sign-line">Lessee Signature</div><div className="lease-sign-line">Lessee Signature</div></div>
+                  <div className="lease-page-number">Page 6 of 7</div>
                 </section>
 
                 {leaseForm.hasPets === 'yes' ? (
@@ -4533,6 +4542,7 @@ This permanently removes the payment from the ledger.`
                     <div className="lease-signature-row"><div className="lease-sign-line">Agent for Lessor</div><div className="lease-sign-line">Lessee</div></div>
                     <div className="lease-signature-row"><div className="lease-sign-line blank">&nbsp;</div><div className="lease-sign-line">Lessee</div></div>
                     </div>
+                    <div className="lease-page-number">Page 7 of 7</div>
                   </section>
                 ) : null}
               </div>
