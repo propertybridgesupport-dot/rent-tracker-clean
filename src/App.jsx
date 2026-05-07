@@ -317,6 +317,71 @@ function buildSecurityDepositMap(profileRows = [], paymentRows = []) {
   return rowsByKey
 }
 
+function buildLeaseOnboardingForm(current = {}) {
+  return {
+    propertyId: current.propertyId || '',
+    tenantNames: current.tenantNames || '',
+    occupants: current.occupants || '',
+    leaseDate: current.leaseDate || getTodayDateInput(),
+    leaseStartDate: current.leaseStartDate || getTodayDateInput(),
+    leaseEndDate: current.leaseEndDate || '',
+    termMonths: current.termMonths || '12',
+    propertyAddress: current.propertyAddress || '',
+    propertyState: current.propertyState || 'LA',
+    propertyZip: current.propertyZip || '',
+    monthlyRent: current.monthlyRent || '',
+    grossRent: current.grossRent || '',
+    proratedRent: current.proratedRent || '0',
+    moveInDate: current.moveInDate || getTodayDateInput(),
+    lastDayFirstMonth: current.lastDayFirstMonth || endOfMonth(getCurrentMonthKey()),
+    depositAmount: current.depositAmount || '',
+    hasPets: current.hasPets || 'no',
+    numberOfPets: current.numberOfPets || '',
+    petNames: current.petNames || '',
+    petDepositAmount: current.petDepositAmount || '',
+    propertyManagerName: current.propertyManagerName || 'Madeline Tatum',
+    propertyManagerPhone: current.propertyManagerPhone || '(985) 335-4302',
+    includePetAddendum: current.includePetAddendum ?? true,
+  }
+}
+
+function formatLeaseMoney(value) {
+  if (value === '' || value === null || value === undefined) return '__________'
+  return currency(value)
+}
+
+function getDayNumber(dateValue) {
+  const normalized = normalizeDateInputValue(dateValue)
+  if (!normalized) return '____'
+  return String(Number(normalized.slice(8, 10)))
+}
+
+function getMonthYearLabel(dateValue) {
+  const normalized = normalizeDateInputValue(dateValue)
+  if (!normalized) return '________________'
+  const [year, month] = normalized.split('-').map(Number)
+  return new Date(year, month - 1, 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+}
+
+function getMonthLabelOnly(dateValue) {
+  const normalized = normalizeDateInputValue(dateValue)
+  if (!normalized) return '________________'
+  const [year, month] = normalized.split('-').map(Number)
+  return new Date(year, month - 1, 1).toLocaleDateString('en-US', { month: 'long' })
+}
+
+function getYearLabelOnly(dateValue) {
+  const normalized = normalizeDateInputValue(dateValue)
+  if (!normalized) return '____'
+  return normalized.slice(0, 4)
+}
+
+function getLeaseFileName(leaseForm) {
+  const tenant = String(leaseForm.tenantNames || 'Tenant').replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '')
+  const property = String(leaseForm.propertyAddress || 'Lease').replace(/[^a-z0-9]+/gi, '_').replace(/^_+|_+$/g, '').slice(0, 40)
+  return `${tenant || 'Tenant'}_${property || 'Lease'}_Lease`
+}
+
 export default function App() {
   const [session, setSession] = useState(null)
   const [loading, setLoading] = useState(true)
@@ -357,6 +422,8 @@ export default function App() {
     method: 'Cash',
     note: '',
   })
+
+  const [leaseForm, setLeaseForm] = useState(buildLeaseOnboardingForm())
 
   const [companyForm, setCompanyForm] = useState({
     companyName: '',
@@ -422,6 +489,7 @@ export default function App() {
   const managementInvoiceRef = useRef(null)
   const bankDepositReportRef = useRef(null)
   const propertyLedgerRef = useRef(null)
+  const leasePreviewRef = useRef(null)
   const speechRecognitionRef = useRef(null)
   const voiceTranscriptRef = useRef(null)
 
@@ -1713,6 +1781,29 @@ This permanently removes the payment from the ledger.`
     return companyProperties.filter((property) => property.is_active !== false)
   }, [companyProperties])
 
+
+  useEffect(() => {
+    if (activeCompanyProperties.length === 0) return
+
+    setLeaseForm((current) => {
+      const selectedStillExists = activeCompanyProperties.some((property) => property.id === current.propertyId)
+      if (selectedStillExists) return current
+
+      const property = activeCompanyProperties[0]
+      const rent = property?.monthly_rent ? String(property.monthly_rent) : ''
+      const grossRent = rent ? String(Number(rent) + 50) : ''
+      return {
+        ...current,
+        propertyId: property.id,
+        propertyAddress: property.address || '',
+        tenantNames: current.tenantNames || property.tenant || '',
+        monthlyRent: current.monthlyRent || rent,
+        grossRent: current.grossRent || grossRent,
+        depositAmount: current.depositAmount || rent,
+      }
+    })
+  }, [activeCompanyProperties])
+
   const visibleProperties = useMemo(() => {
     return showArchivedProperties ? companyProperties : activeCompanyProperties
   }, [companyProperties, activeCompanyProperties, showArchivedProperties])
@@ -1743,6 +1834,11 @@ This permanently removes the payment from the ledger.`
   const selectedDepositProperty = useMemo(() => {
     return companyProperties.find((property) => property.id === selectedDepositPropertyId) || null
   }, [companyProperties, selectedDepositPropertyId])
+
+
+  const selectedLeaseProperty = useMemo(() => {
+    return companyProperties.find((property) => property.id === leaseForm.propertyId) || null
+  }, [companyProperties, leaseForm.propertyId])
 
   const selectedDepositTenant = useMemo(() => {
     if (!selectedDepositProperty) return ''
@@ -2536,6 +2632,21 @@ This permanently removes the payment from the ledger.`
             table { width: 100%; border-collapse: collapse; margin-top: 16px; }
             th, td { border: 1px solid #d9cfc0; padding: 10px; text-align: left; vertical-align: top; }
             th { background: #fbf7f1; color: #9a6d2f; text-transform: uppercase; letter-spacing: .04em; font-size: 12px; }
+            .lease-package { max-width: 8.5in; margin: 0 auto; color: #111827; font-family: 'Times New Roman', Times, serif; font-size: 11px; line-height: 1.25; }
+            .lease-page { min-height: 10.4in; padding: 0.35in 0.45in; box-sizing: border-box; page-break-after: always; background: #fff; }
+            .lease-page:last-child { page-break-after: auto; }
+            .lease-title { text-align: center; font-size: 16px; font-weight: 700; letter-spacing: .04em; margin: 0 0 8px; }
+            .lease-company-line { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 12px; font-weight: 700; }
+            .lease-line { margin: 4px 0; }
+            .lease-section-title { font-weight: 700; text-transform: uppercase; margin-right: 6px; }
+            .lease-fill { font-weight: 700; text-decoration: underline; }
+            .lease-initial-row, .lease-signature-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 24px; text-align: center; font-size: 10px; }
+            .lease-signature-row { grid-template-columns: 1fr 1fr; margin-top: 34px; }
+            .lease-sign-line { border-top: 1px solid #111827; padding-top: 4px; min-height: 18px; }
+            .lease-rules-title { text-align: center; font-size: 15px; font-weight: 700; margin: 8px 0 12px; }
+            .lease-rules-list li { margin-bottom: 5px; }
+            .lease-addendum-title { text-align: center; font-size: 14px; font-weight: 700; margin: 8px 0 12px; text-transform: uppercase; }
+            .lease-small-note { font-size: 10px; color: #374151; }
             @media print {
               body { padding: 0; }
               .print-shell { max-width: none; }
@@ -2631,6 +2742,41 @@ This permanently removes the payment from the ledger.`
 
   function saveSectionAsPdf(sectionRef, title) {
     printSection(sectionRef, title, 'download')
+  }
+
+  function updateLeaseForm(patch) {
+    setLeaseForm((current) => ({
+      ...current,
+      ...patch,
+    }))
+  }
+
+  function handleLeasePropertyChange(propertyId) {
+    const property = companyProperties.find((item) => item.id === propertyId)
+    const rent = property?.monthly_rent ? String(property.monthly_rent) : ''
+    updateLeaseForm({
+      propertyId,
+      propertyAddress: property?.address || '',
+      tenantNames: property?.tenant || leaseForm.tenantNames,
+      monthlyRent: rent || leaseForm.monthlyRent,
+      grossRent: rent ? String(Number(rent) + 50) : leaseForm.grossRent,
+      depositAmount: rent || leaseForm.depositAmount,
+    })
+  }
+
+  function handleLeaseStartDateChange(value) {
+    const startDate = normalizeDateInputValue(value)
+    const monthKey = monthKeyFromDate(startDate) || getCurrentMonthKey()
+    updateLeaseForm({
+      leaseStartDate: startDate,
+      moveInDate: startDate,
+      lastDayFirstMonth: endOfMonth(monthKey),
+    })
+  }
+
+  function printLeasePackage() {
+    const title = `${getLeaseFileName(leaseForm)}.pdf`
+    printSection(leasePreviewRef, title, 'download')
   }
 
 
@@ -2937,6 +3083,7 @@ This permanently removes the payment from the ledger.`
         <button style={activeTab === 'ledger' ? styles.activeTabButton : styles.tabButton} onClick={() => setActiveTab('ledger')}>Ledger</button>
         <button style={activeTab === 'reports' ? styles.activeTabButton : styles.tabButton} onClick={() => setActiveTab('reports')}>Reports</button>
         <button style={activeTab === 'notesAlerts' ? styles.activeTabButton : styles.tabButton} onClick={() => setActiveTab('notesAlerts')}>Note & Security Deposit</button>
+        <button style={activeTab === 'onboarding' ? styles.activeTabButton : styles.tabButton} onClick={() => setActiveTab('onboarding')}>Tenant Onboarding</button>
       </div>
 
       {!isMobile ? <div className="mobile-card-grid" style={styles.cardGrid}>
@@ -4069,6 +4216,252 @@ This permanently removes the payment from the ledger.`
                 ))}
               </div>
             )}
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'onboarding' && (
+        <div className="responsive-section-grid" style={styles.sectionGrid}>
+          <div className="mobile-card" style={styles.card}>
+            <div style={styles.reportHeaderRow}>
+              <div>
+                <h2 style={styles.cardTitle}>Tenant Onboarding</h2>
+                <p style={styles.smallMuted}>Enter the new-tenant details once, preview the lease package, then print/save it as a PDF for Adobe signatures.</p>
+              </div>
+            </div>
+
+            <label style={styles.label}>Property</label>
+            <select style={styles.input} value={leaseForm.propertyId} onChange={(e) => handleLeasePropertyChange(e.target.value)}>
+              <option value="">Select property</option>
+              {activeCompanyProperties.map((property) => (
+                <option key={`lease-property-${property.id}`} value={property.id}>{property.address}</option>
+              ))}
+            </select>
+
+            <div style={styles.statementFilterGrid}>
+              <div>
+                <label style={styles.label}>Tenant Name(s)</label>
+                <input style={styles.input} value={leaseForm.tenantNames} onChange={(e) => updateLeaseForm({ tenantNames: e.target.value })} placeholder="Example: John Smith and Jane Smith" />
+              </div>
+              <div>
+                <label style={styles.label}>Occupants</label>
+                <input style={styles.input} value={leaseForm.occupants} onChange={(e) => updateLeaseForm({ occupants: e.target.value })} placeholder="All approved occupants" />
+              </div>
+              <div>
+                <label style={styles.label}>Lease Date</label>
+                <input style={styles.input} type="date" value={normalizeDateInputValue(leaseForm.leaseDate)} onChange={(e) => updateLeaseForm({ leaseDate: normalizeDateInputValue(e.target.value) })} />
+              </div>
+              <div>
+                <label style={styles.label}>Lease Start / Move-In Date</label>
+                <input style={styles.input} type="date" value={normalizeDateInputValue(leaseForm.leaseStartDate)} onChange={(e) => handleLeaseStartDateChange(e.target.value)} />
+              </div>
+              <div>
+                <label style={styles.label}>Lease End Date</label>
+                <input style={styles.input} type="date" value={normalizeDateInputValue(leaseForm.leaseEndDate)} onChange={(e) => updateLeaseForm({ leaseEndDate: normalizeDateInputValue(e.target.value) })} />
+              </div>
+              <div>
+                <label style={styles.label}>Term (months)</label>
+                <input style={styles.input} value={leaseForm.termMonths} onChange={(e) => updateLeaseForm({ termMonths: e.target.value })} />
+              </div>
+            </div>
+
+            <div style={styles.statementFilterGrid}>
+              <div>
+                <label style={styles.label}>Property Address</label>
+                <input style={styles.input} value={leaseForm.propertyAddress} onChange={(e) => updateLeaseForm({ propertyAddress: e.target.value })} />
+              </div>
+              <div>
+                <label style={styles.label}>State</label>
+                <input style={styles.input} value={leaseForm.propertyState} onChange={(e) => updateLeaseForm({ propertyState: e.target.value })} />
+              </div>
+              <div>
+                <label style={styles.label}>Zip</label>
+                <input style={styles.input} value={leaseForm.propertyZip} onChange={(e) => updateLeaseForm({ propertyZip: e.target.value })} />
+              </div>
+            </div>
+
+            <div style={styles.statementFilterGrid}>
+              <div>
+                <label style={styles.label}>Rent Amount (net/on-time rent)</label>
+                <input style={styles.input} type="number" step="0.01" value={leaseForm.monthlyRent} onChange={(e) => updateLeaseForm({ monthlyRent: e.target.value, grossRent: e.target.value ? String(Number(e.target.value || 0) + 50) : '' })} />
+              </div>
+              <div>
+                <label style={styles.label}>Gross Rent Amount</label>
+                <input style={styles.input} type="number" step="0.01" value={leaseForm.grossRent} onChange={(e) => updateLeaseForm({ grossRent: e.target.value })} />
+              </div>
+              <div>
+                <label style={styles.label}>Prorated Rent</label>
+                <input style={styles.input} type="number" step="0.01" value={leaseForm.proratedRent} onChange={(e) => updateLeaseForm({ proratedRent: e.target.value })} />
+              </div>
+              <div>
+                <label style={styles.label}>Last Day of First Month</label>
+                <input style={styles.input} type="date" value={normalizeDateInputValue(leaseForm.lastDayFirstMonth)} onChange={(e) => updateLeaseForm({ lastDayFirstMonth: normalizeDateInputValue(e.target.value) })} />
+              </div>
+              <div>
+                <label style={styles.label}>Security Deposit</label>
+                <input style={styles.input} type="number" step="0.01" value={leaseForm.depositAmount} onChange={(e) => updateLeaseForm({ depositAmount: e.target.value })} />
+              </div>
+            </div>
+
+            <div style={styles.statementFilterGrid}>
+              <div>
+                <label style={styles.label}>Pets?</label>
+                <select style={styles.input} value={leaseForm.hasPets} onChange={(e) => updateLeaseForm({ hasPets: e.target.value })}>
+                  <option value="no">No pets</option>
+                  <option value="yes">Approved pet(s)</option>
+                </select>
+              </div>
+              <div>
+                <label style={styles.label}>Number of Pets</label>
+                <input style={styles.input} value={leaseForm.numberOfPets} onChange={(e) => updateLeaseForm({ numberOfPets: e.target.value })} disabled={leaseForm.hasPets !== 'yes'} />
+              </div>
+              <div>
+                <label style={styles.label}>Pet Name(s)</label>
+                <input style={styles.input} value={leaseForm.petNames} onChange={(e) => updateLeaseForm({ petNames: e.target.value })} disabled={leaseForm.hasPets !== 'yes'} />
+              </div>
+              <div>
+                <label style={styles.label}>Pet Deposit</label>
+                <input style={styles.input} type="number" step="0.01" value={leaseForm.petDepositAmount} onChange={(e) => updateLeaseForm({ petDepositAmount: e.target.value })} disabled={leaseForm.hasPets !== 'yes'} />
+              </div>
+            </div>
+
+            <div style={styles.statementFilterGrid}>
+              <div>
+                <label style={styles.label}>Property Manager Name</label>
+                <input style={styles.input} value={leaseForm.propertyManagerName} onChange={(e) => updateLeaseForm({ propertyManagerName: e.target.value })} />
+              </div>
+              <div>
+                <label style={styles.label}>Property Manager Phone</label>
+                <input style={styles.input} value={leaseForm.propertyManagerPhone} onChange={(e) => updateLeaseForm({ propertyManagerPhone: e.target.value })} />
+              </div>
+            </div>
+
+            <div className="mobile-button-row" style={styles.buttonRow}>
+              <button style={styles.primaryButton} type="button" onClick={printLeasePackage}>Print / Save Lease PDF</button>
+              <button style={styles.secondaryButton} type="button" onClick={() => setLeaseForm(buildLeaseOnboardingForm())}>Clear Form</button>
+            </div>
+
+            <div style={styles.notesBox}>
+              <strong>Phase 1 note:</strong> This generates a PDF-ready lease preview for Adobe upload. Saving the final signed lease back to the tenant/property will be Phase 2.
+            </div>
+          </div>
+
+          <div className="mobile-card" style={styles.card}>
+            <div style={styles.reportHeaderRow}>
+              <div>
+                <h2 style={styles.cardTitle}>Lease Preview</h2>
+                <p style={styles.smallMuted}>Review before printing. Your browser print dialog can save this as a PDF.</p>
+              </div>
+            </div>
+
+            <div ref={leasePreviewRef}>
+              <div className="lease-package">
+                <section className="lease-page">
+                  <div className="lease-company-line"><span>{selectedCompanyName}</span><span>Date: <span className="lease-fill">{formatDate(leaseForm.leaseDate)}</span></span></div>
+                  <h1 className="lease-title">RESIDENTIAL LEASE</h1>
+                  <p className="lease-line"><span className="lease-section-title">1 PARTIES</span> <span className="lease-fill">{selectedCompanyName}</span> (hereinafter referred to as Lessor) hereby leases to <span className="lease-fill">{leaseForm.tenantNames || '________________'}</span> (hereinafter referred to as Lessee) the following described property:</p>
+                  <p className="lease-line"><span className="lease-section-title">PREMISES</span> Apt. # ______ in <span className="lease-fill">{leaseForm.propertyAddress || selectedLeaseProperty?.address || '________________'}</span>, <span className="lease-fill">{leaseForm.propertyState || 'LA'}</span> <span className="lease-fill">{leaseForm.propertyZip || '________'}</span>, for use by Lessee as a private residence only.</p>
+                  <p className="lease-line"><span className="lease-section-title">TERM</span> This lease is for a term of <span className="lease-fill">{leaseForm.termMonths || '____'}</span> months commencing on the <span className="lease-fill">{getDayNumber(leaseForm.leaseStartDate)}</span> day of <span className="lease-fill">{getMonthYearLabel(leaseForm.leaseStartDate)}</span> and ending on the last calendar day of <span className="lease-fill">{getMonthLabelOnly(leaseForm.leaseEndDate)}</span>, <span className="lease-fill">{getYearLabelOnly(leaseForm.leaseEndDate)}</span>.</p>
+                  <p className="lease-line"><span className="lease-section-title">MONTH TO MONTH RENEWAL</span> If Lessee, or Lessor, desires that this lease terminate at the expiration of its term he must give to the other party written notice at least 30 days prior to that date. Failure of either party to give this required notice automatically renews this lease and all of the terms thereof except that the lease will then be on a month-to-month basis.</p>
+                  <p className="lease-line"><span className="lease-section-title">RENT</span> This lease is made for and in consideration of a monthly rental of <span className="lease-fill">{formatLeaseMoney(leaseForm.grossRent)}</span> dollars payable in advance on or before the 1st day of each month at PROPERTY MANAGER OR BY BANK DEPOSIT. Lessee agrees to pay Lessor the sum of <span className="lease-fill">{formatLeaseMoney(leaseForm.proratedRent)}</span> dollars which is prorated rental for the period <span className="lease-fill">{formatDate(leaseForm.moveInDate)}</span> thru <span className="lease-fill">{formatDate(leaseForm.lastDayFirstMonth)}</span>. If rent is paid by the 5TH of the month, Lessee shall be entitled to a deduction of $50.00 dollars per month, or a net rental of <span className="lease-fill">{formatLeaseMoney(leaseForm.monthlyRent)}</span> dollars per month provided, however, that if the rent due is not received by the 5TH of the month Lessee shall be considered delinquent. If Lessee pays by check and said check is not honored on presentation for any reason whatsoever, Lessee agrees to pay an additional sum of $50.00 as a penalty.</p>
+                  <p className="lease-line"><span className="lease-section-title">SECURITY DEPOSIT</span> Upon execution of this lease, Lessee agrees to deposit with Lessor, the sum of $ <span className="lease-fill">{leaseForm.depositAmount || '________'}</span>. This deposit shall be non-interest bearing and is to be held by Lessor as security for the full and faithful performance of the terms and conditions of this lease. This security deposit is not an advance rental and Lessee may not deduct portion of the deposit from rent due to Lessor.</p>
+                  <p className="lease-line">The leased premises must be returned to the Lessor in as good condition as they were at the time the Lessee first occupied same, subject only to normal wear and tear. Lessee shall provide Lessor with a forwarding address, in writing.</p>
+                  <p className="lease-line"><span className="lease-section-title">OCCUPANTS</span> The leased premises shall be occupied only by the persons listed below. Other occupants, including temporary visitors, are not allowed to remain at the premises for a period in excess of 10 days.</p>
+                  <p className="lease-fill">{leaseForm.occupants || '________________________________________________________________________'}</p>
+                  <div className="lease-initial-row"><div className="lease-sign-line">LESSEE'S INITIALS</div><div className="lease-sign-line">LESSEE'S INITIALS</div><div className="lease-sign-line">LESSOR'S INITIALS</div><div className="lease-sign-line">LESSOR'S INITIALS</div></div>
+                </section>
+
+                <section className="lease-page">
+                  <p className="lease-line"><strong>Property Address:</strong> <span className="lease-fill">{leaseForm.propertyAddress || selectedLeaseProperty?.address || '________________'}</span> <strong>Date:</strong> <span className="lease-fill">{formatDate(leaseForm.leaseDate)}</span></p>
+                  <p className="lease-line"><span className="lease-section-title">PETS</span> {leaseForm.hasPets === 'yes' ? 'Pets are permitted only as specifically approved by written pet provision/addendum attached to this lease.' : 'No pets shall be allowed on the premises at any time. However, this provision shall not preclude Lessor modifying any lease to allow pets by mutual written agreement between Lessor and Lessee.'}</p>
+                  <p className="lease-line"><span className="lease-section-title">SUB LEASE</span> Lessee is not permitted to sublet or grant use or possession of the leased premises without the written consent of Lessor. Any expense associated with subleasing the premises shall be paid by NOT ALLOWED.</p>
+                  <p className="lease-line"><span className="lease-section-title">DEFAULT, ABANDONMENT OR EVICTION</span> Should the Lessee fail to pay rent or any other charges arising under this lease promptly as stipulated, abandon the premises, begin removing substantial personal property to the detriment of Lessor's lien, or otherwise default, Lessee shall be responsible for rent, attorney's fees, collection and eviction costs, and all other expenses allowed by the lease and law.</p>
+                  <p className="lease-line"><span className="lease-section-title">OTHER VIOLATIONS, NUISANCE</span> Lessee shall maintain conduct consistent with reasonable safety, peace and quiet, and shall not create undue noise, disturbance, nuisance, unlawful activity, or other violation of this lease. Continued or repeated violations may constitute default.</p>
+                  <p className="lease-line"><span className="lease-section-title">RULES & REGULATIONS</span> Lessee acknowledges receipt of a copy of and agrees to comply with the Rules and Regulations and any additions or modifications established by Lessor.</p>
+                  <p className="lease-line"><span className="lease-section-title">CONDITION, REPAIRS, ADDITIONS AND ALTERATIONS OF PREMISES</span> Lessor warrants that the leased premises are in good condition. Lessee accepts the premises in its current condition and agrees to keep it in the same or better condition during the term of this lease, normal wear and tear excepted. Lessee shall not make additions or alterations without written permission of Lessor.</p>
+                  <p className="lease-line"><span className="lease-section-title">OCCUPANCY</span> Should Lessor be unable to provide occupancy on the date of the beginning of this lease due to causes beyond control of Lessor, rent shall begin only when Lessee can obtain possession.</p>
+                  <p className="lease-line"><span className="lease-section-title">SURRENDER OF PREMISES</span> At expiration or termination of this lease, Lessee is obligated to immediately surrender possession and may be responsible for damages, attorney's fees, and related costs for failure to do so.</p>
+                  <p className="lease-line"><span className="lease-section-title">LIABILITY</span> Lessee agrees to release, defend, indemnify and hold Lessor and Lessor's agents harmless from claims for damage or injury caused by acts, omissions, or neglect of Lessee, Lessee's family, employees, guests, invitees, or other persons on the leased premises through Lessee.</p>
+                  <div className="lease-initial-row"><div className="lease-sign-line">LESSEE'S INITIALS</div><div className="lease-sign-line">LESSEE'S INITIALS</div><div className="lease-sign-line">LESSOR'S INITIALS</div><div className="lease-sign-line">LESSOR'S INITIALS</div></div>
+                </section>
+
+                <section className="lease-page">
+                  <p className="lease-line"><strong>Property Address:</strong> <span className="lease-fill">{leaseForm.propertyAddress || selectedLeaseProperty?.address || '________________'}</span> <strong>Date:</strong> <span className="lease-fill">{formatDate(leaseForm.leaseDate)}</span></p>
+                  <p className="lease-line"><span className="lease-section-title">SIGNS & ACCESS</span> Lessor reserves the right to post For Sale signs at any time and For Rent signs as needed. Lessee shall permit access for inspection, sale, or leasing at reasonable intervals between 8:00 am and 8:00 pm.</p>
+                  <p className="lease-line"><span className="lease-section-title">ATTORNEYS FEES</span> Lessee agrees that if an Attorney is employed to protect the rights of Lessor, Lessee will pay the fee of such attorney, court costs, sheriff's charges, and related expenses.</p>
+                  <p className="lease-line"><span className="lease-section-title">NOTICES</span> Notices required under this lease shall be in writing and may be mailed by certified mail to Lessee at the leased premises or to Lessor at the address appearing in this lease. Notices may also be given by hand delivery or by attaching to the door of the premises.</p>
+                  <p className="lease-line"><span className="lease-section-title">UTILITIES</span> Lessee shall maintain utility services, including water, gas, electricity, phone, garbage collection, and lawn/garden care in Lessee's name and promptly pay all charges during the term unless otherwise noted.</p>
+                  <p className="lease-line"><span className="lease-section-title">WAIVER OF NOTICE</span> Upon termination of the right of occupancy for any reason, Lessee expressly waives notice to vacate prior to institution of eviction proceedings in accordance with La. CCP Article 4701 and La. CC Article 2713.</p>
+                  <p className="lease-line"><span className="lease-section-title">MISCELLANEOUS PROVISIONS</span> No cars are to be parked on lawns or walkways. No holes shall be drilled in walls, woodwork, or floors. No painting, papering, cable/phone wiring, waterbeds, foil in windows, or other modifications are permitted without written consent of Lessor.</p>
+                  <p className="lease-line"><span className="lease-section-title">SPECIAL CONDITIONS</span> SEE RULES AND REGULATIONS.</p>
+                  <p className="lease-line"><span className="lease-section-title">LEAD-BASED PAINT, ASBESTOS, RADON</span> Lessee acknowledges that the premises may contain lead based paint, asbestos, or other toxins and agrees to maintain the premises in a reasonably safe condition and report conditions that may lead to damage or injury.</p>
+                  <p className="lease-line"><span className="lease-section-title">MOLD RELATED HAZARDS NOTICE</span> Lessee acknowledges that information regarding common mold related hazards has been made available.</p>
+                  <p className="lease-line"><span className="lease-section-title">SEX OFFENDER AND CHILD PREDATOR REGISTRY NOTICE</span> Lessee acknowledges the Louisiana registry notice and availability of public access database information.</p>
+                  <p className="lease-line"><strong>THIS IS A BINDING LEGAL DOCUMENT. READ CAREFULLY BEFORE SIGNING.</strong></p>
+                  <div className="lease-signature-row"><div className="lease-sign-line">Lessee Signature / Date</div><div className="lease-sign-line">Lessor Signature / Date</div></div>
+                  <div className="lease-signature-row"><div className="lease-sign-line">Lessee Signature / Date</div><div className="lease-sign-line">Lessor Signature / Date</div></div>
+                  <p className="lease-line"><strong>FOR REPAIRS/MAINTENANCE CALL:</strong> <span className="lease-fill">{leaseForm.propertyManagerName}</span> <span className="lease-fill">{leaseForm.propertyManagerPhone}</span></p>
+                </section>
+
+                <section className="lease-page">
+                  <div className="lease-company-line"><span>{selectedCompanyName}</span><span>Lease Date: {formatDate(leaseForm.leaseDate)}</span></div>
+                  <h2 className="lease-rules-title">RULES & REGULATIONS</h2>
+                  <p><strong>Property Address:</strong> {leaseForm.propertyAddress || selectedLeaseProperty?.address || '________________'} {leaseForm.propertyState} {leaseForm.propertyZip}</p>
+                  <ol className="lease-rules-list">
+                    <li>Landlord/Property Manager may inspect the home at any time. Semi-annual inspection is required.</li>
+                    <li>Air filter must be changed monthly. Dryer vents/hoses must be cleaned after each use. Repairs needed due to these items will be at lessee's expense.</li>
+                    <li>Do not place items in drains, toilets, or disposals that will cause clogs, including flushable wipes, paper towels, and personal products.</li>
+                    <li>No modifications/alterations may be made without written consent of lessor, including painting/papering of walls.</li>
+                    <li>Lessor is responsible for lawn maintenance. Yard must be kept neat and clean and personal items must not interfere with mowing.</li>
+                    <li>Lessee is responsible for pest control. Service providers must be lessor approved.</li>
+                    <li>Vehicle repairs are prohibited in driveways/carports. Inoperable vehicles may not be kept on property for more than 14 days.</li>
+                    <li>No smoking of any kind inside the premises, including garages/sunrooms.</li>
+                    <li>All utilities must be transferred into Lessee's name within 5 business days of occupancy.</li>
+                    <li>Lessee may not use property in a way inconsistent with quiet neighborhood standards or for business purposes without written consent.</li>
+                    <li>Trash and garbage collection rules shall be followed according to local ordinances.</li>
+                    <li>Leaks, damage, and necessary repairs must be reported to {leaseForm.propertyManagerName} at {leaseForm.propertyManagerPhone}. If not reported within 24 hours of occurrence, repairs may be at lessee's expense.</li>
+                    <li>Lessee should secure renter's insurance. Neither property management company nor lessor is responsible for loss/damage to personal property.</li>
+                    <li>Lessee is responsible for replacement of light bulbs/fluorescent tubes.</li>
+                    <li>Parking must take place on paved areas only. Grass may not be used for parking. Boats, RVs, campers, etc. may not be kept on property.</li>
+                    <li>Guests may not occupy the home for more than 7 days without written consent of lessor. Lessee may not sublet any portion of the property.</li>
+                    <li>In hazardous weather, lessee is responsible for following local, state, and federal advisories and taking reasonable precautions.</li>
+                    <li>Any violation, neglect, or failure to comply with these regulations may result in financial responsibility to lessee or termination of lease.</li>
+                    <li>All communication regarding property/lease should be forwarded to the appropriate property manager of {selectedCompanyName}.</li>
+                  </ol>
+                  <div className="lease-signature-row"><div className="lease-sign-line">Lessee Initials</div><div className="lease-sign-line">Lessee Initials</div></div>
+                </section>
+
+                <section className="lease-page">
+                  <h2 className="lease-addendum-title">Disclaimer of Liability - Residents' Personal Property</h2>
+                  <p>This Disclaimer hereby notifies that the Owners and Management of this property are not liable for loss or damage to personal property belonging to Residents. It is the Resident's responsibility to safeguard and insure all personal property against loss or damage, including theft, burglary, water damage, fire damage, electrical surges, and acts of nature.</p>
+                  <h2 className="lease-addendum-title">Fire Safety Guidelines</h2>
+                  <p><strong>In case of fire call 911 immediately.</strong> Report all fires no matter how small. Plan and practice an escape route. Know where your fire extinguisher is located and how to use it. Check your smoke detector regularly. Never risk your safety; call 911 immediately. After you are safe, call the property manager.</p>
+                  <h2 className="lease-addendum-title">Safety Addendum</h2>
+                  <p>Lessee acknowledges that no representation has been made that Lessee, Lessee's property, the property, or the community are protected under all circumstances against criminal acts. Lessee has the option to inspect the property and agrees to notify management immediately in writing if repairs to safety devices are needed. Lessee assumes responsibility for Lessee's own safety and property.</p>
+                  <h2 className="lease-addendum-title">Crime Free Lease Addendum</h2>
+                  <p>Lessee, members of Lessee's household, occupants, guests, invitees, or any person given access by Lessee shall not engage in criminal activity, facilitate criminal activity, permit the property to be used for criminal activity, or engage in drug-related criminal activity. Violation may be considered a material and irreparable violation of the lease and good cause for termination of tenancy.</p>
+                  <h2 className="lease-addendum-title">Mold Information and Prevention Addendum</h2>
+                  <p>Lessee acknowledges the importance of minimizing mold growth by keeping the dwelling clean, removing visible moisture, using air conditioning/heating with proper ventilation, and promptly reporting water leaks, water infiltration, mold, or HVAC issues in writing. Failure to promptly address leaks and moisture may encourage mold growth.</p>
+                  <p><strong>Please read all policies and lease addendums carefully before signing.</strong></p>
+                  <div className="lease-signature-row"><div className="lease-sign-line">Lessee Signature</div><div className="lease-sign-line">Agent for Lessor</div></div>
+                </section>
+
+                {leaseForm.hasPets === 'yes' ? (
+                  <section className="lease-page">
+                    <div className="lease-company-line"><span>{selectedCompanyName}</span><span>Lease Date: {formatDate(leaseForm.leaseDate)}</span></div>
+                    <h2 className="lease-addendum-title">Pet Provision</h2>
+                    <p>Addendum to lease dated <span className="lease-fill">{formatDate(leaseForm.leaseDate)}</span>, between <span className="lease-fill">{selectedCompanyName}</span>, Lessor, and <span className="lease-fill">{leaseForm.tenantNames || '________________'}</span>, Lessee, for <span className="lease-fill">{leaseForm.propertyAddress || selectedLeaseProperty?.address || '________________'}</span>.</p>
+                    <p>For and in consideration of an additional security deposit of $<span className="lease-fill">{leaseForm.petDepositAmount || '________'}</span> and additional monthly rental of $0.00, Lessee may have <span className="lease-fill">{leaseForm.numberOfPets || '____'}</span> pet(s), namely <span className="lease-fill">{leaseForm.petNames || '________________'}</span>, during the term of this lease.</p>
+                    <p>It is specifically understood that this provision may be cancelled by Lessor giving five (5) days written notice to Lessee should Lessor determine that the pet is destructive to the premises or grounds, unduly noisy, disturbing, or menacing. Such cancellation shall not affect the main lease between the parties.</p>
+                    <p>A minimum of $50 of security deposit will automatically be forfeited upon move-out for sanitizing. In the event the lease agreement is broken for any reason, no portion of the pet deposit will be returned.</p>
+                    <p><strong>READ BEFORE SIGNING</strong></p>
+                    <p>This <span className="lease-fill">{formatDate(leaseForm.leaseDate)}</span></p>
+                    <div className="lease-signature-row"><div className="lease-sign-line">Agent for Lessor</div><div className="lease-sign-line">Lessee</div></div>
+                    <div className="lease-signature-row"><div className="lease-sign-line">Lessee</div><div className="lease-sign-line">Additional Lessee</div></div>
+                  </section>
+                ) : null}
+              </div>
+            </div>
           </div>
         </div>
       )}
