@@ -260,7 +260,9 @@ function buildSecurityDepositRecord(current = {}) {
     propertyId: current.propertyId || current.property_id || '',
     tenant: current.tenant || '',
     requiredAmount: current.requiredAmount ?? current.required_amount ?? '',
+    petRequiredAmount: current.petRequiredAmount ?? current.pet_required_amount ?? '',
     dueDate: current.dueDate || current.due_date || '',
+    petDueDate: current.petDueDate || current.pet_due_date || current.dueDate || current.due_date || '',
     payments: Array.isArray(current.payments) ? current.payments : [],
     refundDate: current.refundDate || current.refund_date || '',
     refundAmount: current.refundAmount ?? current.refund_amount ?? '',
@@ -283,7 +285,9 @@ function buildSecurityDepositMap(profileRows = [], paymentRows = []) {
       propertyId: row.property_id,
       tenant: row.tenant || '',
       requiredAmount: row.required_amount,
+      petRequiredAmount: row.pet_required_amount,
       dueDate: row.due_date,
+      petDueDate: row.pet_due_date || row.due_date,
       refundDate: row.refund_date,
       refundAmount: row.refund_amount,
       deductionAmount: row.deduction_amount,
@@ -306,6 +310,7 @@ function buildSecurityDepositMap(profileRows = [], paymentRows = []) {
       paymentDate: row.payment_date || '',
       amount: Number(row.amount || 0),
       method: row.method || 'Cash',
+      paymentType: row.payment_type || row.deposit_type || 'security',
       note: row.note || '',
     })
   })
@@ -428,6 +433,7 @@ export default function App() {
     paymentDate: getTodayDateInput(),
     amount: '',
     method: 'Cash',
+    paymentType: 'security',
     note: '',
   })
 
@@ -1403,7 +1409,9 @@ This keeps the record for reporting but removes it from your active list.`
       property_id: selectedDepositPropertyId,
       tenant: currentTenant || null,
       required_amount: depositDraft.requiredAmount === '' ? null : Number(depositDraft.requiredAmount || 0),
+      pet_required_amount: depositDraft.petRequiredAmount === '' ? null : Number(depositDraft.petRequiredAmount || 0),
       due_date: normalizeDateInputValue(depositDraft.dueDate) || null,
+      pet_due_date: normalizeDateInputValue(depositDraft.petDueDate) || normalizeDateInputValue(depositDraft.dueDate) || null,
       refund_date: normalizeDateInputValue(depositDraft.refundDate) || null,
       refund_amount: depositDraft.refundAmount === '' ? null : Number(depositDraft.refundAmount || 0),
       deduction_amount: depositDraft.deductionAmount === '' ? null : Number(depositDraft.deductionAmount || 0),
@@ -1448,6 +1456,7 @@ This keeps the record for reporting but removes it from your active list.`
         payment_date: normalizeDateInputValue(depositPaymentForm.paymentDate),
         amount: Number(depositPaymentForm.amount || 0),
         method: depositPaymentForm.method,
+        payment_type: depositPaymentForm.paymentType || 'security',
         note: depositPaymentForm.note || null,
       })
 
@@ -1457,8 +1466,13 @@ This keeps the record for reporting but removes it from your active list.`
     }
 
     const amountNumber = Number(depositPaymentForm.amount || 0)
-    const paidAfter = Number(selectedDepositSummary.totalPaid || 0) + amountNumber
-    const requiredAmount = Number(depositDraft.requiredAmount || selectedDepositSummary.requiredAmount || 0)
+    const paymentType = depositPaymentForm.paymentType || 'security'
+    const paidAfter = paymentType === 'pet'
+      ? Number(selectedDepositSummary.petPaid || 0) + amountNumber
+      : Number(selectedDepositSummary.securityPaid || 0) + amountNumber
+    const requiredAmount = paymentType === 'pet'
+      ? Number(depositDraft.petRequiredAmount || selectedDepositSummary.petRequiredAmount || 0)
+      : Number(depositDraft.requiredAmount || selectedDepositSummary.requiredAmount || 0)
     const balanceAfter = Math.max(requiredAmount - paidAfter, 0)
     const tenantRecord = getTenantRecordForProperty(selectedDepositPropertyId, tenant)
     const contactOptions = getReceiptContactOptions(selectedDepositPropertyId)
@@ -1468,14 +1482,17 @@ This keeps the record for reporting but removes it from your active list.`
       paymentDate: normalizeDateInputValue(depositPaymentForm.paymentDate),
       amount: amountNumber,
       method: depositPaymentForm.method,
+      depositType: paymentType,
       requiredAmount,
       paidAfter,
       balanceAfter,
-      dueDate: depositDraft.dueDate || selectedDepositRecord.dueDate,
+      dueDate: paymentType === 'pet'
+        ? (depositDraft.petDueDate || selectedDepositRecord.petDueDate || depositDraft.dueDate || selectedDepositRecord.dueDate)
+        : (depositDraft.dueDate || selectedDepositRecord.dueDate),
       note: depositPaymentForm.note || '',
     })
     setLastReceipt({
-      type: 'security_deposit',
+      type: depositPaymentForm.paymentType === 'pet' ? 'pet_deposit' : 'security_deposit',
       phone: tenantRecord?.phone || contactOptions[0]?.phone || '',
       contactOptions,
       tenantName: tenant,
@@ -1487,10 +1504,11 @@ This keeps the record for reporting but removes it from your active list.`
       paymentDate: getTodayDateInput(),
       amount: '',
       method: depositPaymentForm.method || 'Cash',
+      paymentType: depositPaymentForm.paymentType || 'security',
       note: '',
     })
     await loadData()
-    setMessage('Security deposit payment saved. Receipt is ready to text.')
+    setMessage(`${paymentType === 'pet' ? 'Pet deposit' : 'Security deposit'} payment saved. Receipt is ready to text.`)
   }
 
   async function deleteSecurityDepositPayment(paymentId) {
@@ -1925,14 +1943,30 @@ This permanently removes the payment from the ledger.`
 
   const selectedDepositSummary = useMemo(() => {
     const paymentsList = selectedDepositRecord.payments || []
-    const totalPaid = paymentsList.reduce((sum, item) => sum + Number(item.amount || 0), 0)
+    const securityPaid = paymentsList
+      .filter((item) => (item.paymentType || 'security') !== 'pet')
+      .reduce((sum, item) => sum + Number(item.amount || 0), 0)
+    const petPaid = paymentsList
+      .filter((item) => (item.paymentType || 'security') === 'pet')
+      .reduce((sum, item) => sum + Number(item.amount || 0), 0)
+    const totalPaid = securityPaid + petPaid
     const requiredAmount = Number(selectedDepositRecord.requiredAmount || 0)
-    const balanceOwed = Math.max(requiredAmount - totalPaid, 0)
+    const petRequiredAmount = Number(selectedDepositRecord.petRequiredAmount || 0)
+    const totalRequired = requiredAmount + petRequiredAmount
+    const securityBalanceOwed = Math.max(requiredAmount - securityPaid, 0)
+    const petBalanceOwed = Math.max(petRequiredAmount - petPaid, 0)
+    const balanceOwed = securityBalanceOwed + petBalanceOwed
     const refundAmount = Number(selectedDepositRecord.refundAmount || 0)
     const deductionAmount = Number(selectedDepositRecord.deductionAmount || 0)
     return {
       totalPaid,
+      securityPaid,
+      petPaid,
       requiredAmount,
+      petRequiredAmount,
+      totalRequired,
+      securityBalanceOwed,
+      petBalanceOwed,
       balanceOwed,
       refundAmount,
       deductionAmount,
@@ -1952,12 +1986,24 @@ This permanently removes the payment from the ledger.`
 
   const selectedLedgerDepositSummary = useMemo(() => {
     const paymentsList = selectedLedgerDepositRecord.payments || []
-    const totalPaid = paymentsList.reduce((sum, item) => sum + Number(item.amount || 0), 0)
+    const securityPaid = paymentsList
+      .filter((item) => (item.paymentType || 'security') !== 'pet')
+      .reduce((sum, item) => sum + Number(item.amount || 0), 0)
+    const petPaid = paymentsList
+      .filter((item) => (item.paymentType || 'security') === 'pet')
+      .reduce((sum, item) => sum + Number(item.amount || 0), 0)
+    const totalPaid = securityPaid + petPaid
     const requiredAmount = Number(selectedLedgerDepositRecord.requiredAmount || 0)
-    const balanceOwed = Math.max(requiredAmount - totalPaid, 0)
+    const petRequiredAmount = Number(selectedLedgerDepositRecord.petRequiredAmount || 0)
+    const totalRequired = requiredAmount + petRequiredAmount
+    const balanceOwed = Math.max(requiredAmount - securityPaid, 0) + Math.max(petRequiredAmount - petPaid, 0)
     return {
       totalPaid,
+      securityPaid,
+      petPaid,
       requiredAmount,
+      petRequiredAmount,
+      totalRequired,
       balanceOwed,
       refundAmount: Number(selectedLedgerDepositRecord.refundAmount || 0),
       deductionAmount: Number(selectedLedgerDepositRecord.deductionAmount || 0),
@@ -3001,10 +3047,13 @@ This permanently removes the payment from the ledger.`
     return `${receiptTitle}\n\nTenant: ${tenantName || 'Tenant'}\nProperty: ${property?.address || 'Property'}\nDate received: ${formatDate(paymentDate)}\nAmount received: ${currency(amountNumber)}\nPayment method: ${method || 'Payment'}\n${balanceLine}${noteLine}\n\nThank you,\n${selectedCompanyName}`
   }
 
-  function buildDepositReceiptMessage({ property, tenantName, paymentDate, amount, method, requiredAmount, paidAfter, balanceAfter, dueDate, note }) {
-    const dueLine = dueDate ? `\nDeposit due date: ${formatDate(dueDate)}` : ''
+  function buildDepositReceiptMessage({ property, tenantName, paymentDate, amount, method, depositType = 'security', requiredAmount, paidAfter, balanceAfter, dueDate, note }) {
+    const isPetDeposit = depositType === 'pet'
+    const receiptTitle = isPetDeposit ? 'Pet Deposit Receipt' : 'Security Deposit Receipt'
+    const label = isPetDeposit ? 'Pet deposit' : 'Security deposit'
+    const dueLine = dueDate ? `\n${label} due date: ${formatDate(dueDate)}` : ''
     const noteLine = note ? `\nNote: ${note}` : ''
-    return `Security Deposit Receipt\n\nTenant: ${tenantName || 'Tenant'}\nProperty: ${property?.address || 'Property'}\nDate received: ${formatDate(paymentDate)}\nAmount received: ${currency(amount)}\nPayment method: ${method || 'Payment'}\n\nSecurity deposit required: ${currency(requiredAmount)}\nTotal deposit paid: ${currency(paidAfter)}\nDeposit balance remaining: ${currency(Math.max(balanceAfter, 0))}${dueLine}${noteLine}\n\nThank you,\n${selectedCompanyName}`
+    return `${receiptTitle}\n\nTenant: ${tenantName || 'Tenant'}\nProperty: ${property?.address || 'Property'}\nDate received: ${formatDate(paymentDate)}\nAmount received: ${currency(amount)}\nPayment method: ${method || 'Payment'}\n\n${label} required: ${currency(requiredAmount)}\nTotal ${label.toLowerCase()} paid: ${currency(paidAfter)}\n${label} balance remaining: ${currency(Math.max(balanceAfter, 0))}${dueLine}${noteLine}\n\nThank you,\n${selectedCompanyName}`
   }
 
   async function saveTenantProfileFromLease(leaseRecord = null) {
@@ -3090,6 +3139,59 @@ This permanently removes the payment from the ledger.`
     return Math.abs(existingRent - info.proratedRent) < 0.01 && notes.includes('lease onboarding prorated rent')
   }
 
+  function getOnboardingDepositInfo(leaseRecord = null) {
+    const propertyId = leaseRecord?.property_id || leaseForm.propertyId || ''
+    const tenantNames = leaseRecord?.tenant_names || getLeaseTenantNamesForAgreement() || leaseForm.tenantNames || ''
+    const securityDeposit = Number(leaseRecord?.deposit_amount ?? leaseForm.depositAmount ?? 0)
+    const petDeposit = Number(leaseRecord?.pet_deposit_amount ?? leaseForm.petDepositAmount ?? 0)
+    const dueDate = normalizeDateInputValue(leaseRecord?.lease_start_date || leaseForm.leaseStartDate || leaseForm.moveInDate) || getTodayDateInput()
+
+    return {
+      propertyId,
+      tenantNames,
+      securityDeposit: Number.isFinite(securityDeposit) ? securityDeposit : 0,
+      petDeposit: Number.isFinite(petDeposit) ? petDeposit : 0,
+      dueDate,
+    }
+  }
+
+  async function postOnboardingDepositRequirements(leaseRecord = null) {
+    const info = getOnboardingDepositInfo(leaseRecord)
+
+    if (!info.propertyId || !info.tenantNames) {
+      return { posted: false, reason: 'missing_property_or_tenant' }
+    }
+
+    if ((!info.securityDeposit || info.securityDeposit <= 0) && (!info.petDeposit || info.petDeposit <= 0)) {
+      return { posted: false, reason: 'no_deposit_required' }
+    }
+
+    const existingRecord = securityDeposits[securityDepositKey(info.propertyId, info.tenantNames)] || null
+
+    const payload = {
+      property_id: info.propertyId,
+      tenant: info.tenantNames,
+      required_amount: info.securityDeposit > 0 ? info.securityDeposit : (existingRecord?.requiredAmount ?? existingRecord?.required_amount ?? null),
+      pet_required_amount: info.petDeposit > 0 ? info.petDeposit : (existingRecord?.petRequiredAmount ?? existingRecord?.pet_required_amount ?? null),
+      due_date: info.dueDate || existingRecord?.dueDate || existingRecord?.due_date || null,
+      pet_due_date: info.petDeposit > 0 ? (info.dueDate || existingRecord?.petDueDate || existingRecord?.pet_due_date || null) : (existingRecord?.petDueDate ?? existingRecord?.pet_due_date ?? null),
+      refund_date: existingRecord?.refundDate || existingRecord?.refund_date || null,
+      refund_amount: existingRecord?.refundAmount === '' ? null : (existingRecord?.refundAmount ?? existingRecord?.refund_amount ?? null),
+      deduction_amount: existingRecord?.deductionAmount === '' ? null : (existingRecord?.deductionAmount ?? existingRecord?.deduction_amount ?? null),
+      deduction_note: existingRecord?.deductionNote || existingRecord?.deduction_note || null,
+    }
+
+    const { error } = await supabase
+      .from('security_deposits')
+      .upsert(payload, { onConflict: 'property_id,tenant' })
+
+    if (error) {
+      return { posted: false, reason: 'error', error }
+    }
+
+    return { posted: true, securityDeposit: info.securityDeposit, petDeposit: info.petDeposit }
+  }
+
   async function postOnboardingCharges(leaseRecord = null, { showMessage = true } = {}) {
     const info = getOnboardingChargeInfo(leaseRecord)
 
@@ -3103,9 +3205,24 @@ This permanently removes the payment from the ledger.`
       return { posted: false, reason: 'missing_date' }
     }
 
-    if (!info.proratedRent || info.proratedRent <= 0) {
-      if (showMessage) setMessage('No prorated rent amount is entered, so no onboarding charge was posted.')
-      return { posted: false, reason: 'no_prorated_rent' }
+    const shouldPostProratedRent = Boolean(info.proratedRent && info.proratedRent > 0)
+    let rentPosted = false
+    let depositPosted = false
+
+    if (!shouldPostProratedRent) {
+      const depositResult = await postOnboardingDepositRequirements(leaseRecord)
+      depositPosted = Boolean(depositResult.posted)
+      if (depositResult.error) {
+        if (showMessage) setMessage(depositResult.error.message)
+        return { posted: false, reason: 'deposit_error', error: depositResult.error }
+      }
+      if (showMessage) {
+        setMessage(depositPosted
+          ? 'Deposit requirement posted to the security deposit tracker. No prorated rent amount was entered.'
+          : 'No prorated rent or deposit amount is entered, so no onboarding charges were posted.')
+      }
+      await loadData()
+      return { posted: depositPosted, rentPosted: false, depositPosted }
     }
 
     const existing = monthlyOverrides.find((item) => item.property_id === info.propertyId && item.month_key === info.monthKey)
@@ -3113,8 +3230,18 @@ This permanently removes the payment from the ledger.`
     const alreadyPosted = hasPostedOnboardingCharge(leaseRecord)
 
     if (alreadyPosted) {
-      if (showMessage) setMessage(`Onboarding prorated rent is already posted for ${monthLabel(info.monthKey)}.`)
-      return { posted: false, reason: 'already_posted' }
+      const depositResult = await postOnboardingDepositRequirements(leaseRecord)
+      if (depositResult.error) {
+        if (showMessage) setMessage(depositResult.error.message)
+        return { posted: false, reason: 'deposit_error', error: depositResult.error }
+      }
+      if (showMessage) {
+        setMessage(depositResult.posted
+          ? `Onboarding prorated rent was already posted for ${monthLabel(info.monthKey)}. Deposit requirement was also saved.`
+          : `Onboarding prorated rent is already posted for ${monthLabel(info.monthKey)}.`)
+      }
+      await loadData()
+      return { posted: Boolean(depositResult.posted), rentPosted: false, depositPosted: Boolean(depositResult.posted), reason: 'already_posted' }
     }
 
     const noteParts = [
@@ -3157,10 +3284,18 @@ This permanently removes the payment from the ledger.`
     }
 
     if (data) {
+      rentPosted = true
       setMonthlyOverrides((current) => {
         const withoutExisting = current.filter((item) => item.id !== data.id && !(item.property_id === data.property_id && item.month_key === data.month_key))
         return [...withoutExisting, data].sort((a, b) => String(a.month_key).localeCompare(String(b.month_key)))
       })
+    }
+
+    const depositResult = await postOnboardingDepositRequirements(leaseRecord)
+    depositPosted = Boolean(depositResult.posted)
+    if (depositResult.error) {
+      if (showMessage) setMessage(depositResult.error.message)
+      return { posted: rentPosted, rentPosted, depositPosted: false, reason: 'deposit_error', error: depositResult.error }
     }
 
     const property = companyProperties.find((item) => item.id === info.propertyId)
@@ -3177,10 +3312,11 @@ This permanently removes the payment from the ledger.`
     await loadData()
 
     if (showMessage) {
-      setMessage(`Prorated onboarding charge posted: ${currency(info.proratedRent)} for ${monthLabel(info.monthKey)}. Full monthly rent will begin with the next rent cycle.`)
+      const depositText = depositPosted ? ' Deposit requirement was also saved.' : ''
+      setMessage(`Prorated onboarding charge posted: ${currency(info.proratedRent)} for ${monthLabel(info.monthKey)}. Full monthly rent will begin with the next rent cycle.${depositText}`)
     }
 
-    return { posted: true, data }
+    return { posted: rentPosted || depositPosted, rentPosted, depositPosted, data }
   }
 
   async function saveLeaseRecord({ openPrint = false } = {}) {
@@ -3220,9 +3356,10 @@ This permanently removes the payment from the ledger.`
       onboardingChargeResult = await postOnboardingCharges(data, { showMessage: false })
     }
 
-    const chargeMessage = onboardingChargeResult.posted
-      ? ' Prorated onboarding charge was also posted to the ledger.'
-      : ''
+    const chargeParts = []
+    if (onboardingChargeResult.rentPosted) chargeParts.push('prorated rent was posted to the ledger')
+    if (onboardingChargeResult.depositPosted) chargeParts.push('deposit requirement was saved')
+    const chargeMessage = chargeParts.length > 0 ? ` ${chargeParts.join(' and ')}.` : ''
 
     setMessage(openPrint
       ? `Lease record saved.${chargeMessage} Your print dialog will open so you can save the PDF for Adobe signatures.`
@@ -4639,14 +4776,17 @@ This permanently removes the payment from the ledger.`
                   <div style={styles.ledgerMiniCard}>
                     <div style={styles.kpiLabel}>Required Deposit</div>
                     <div style={styles.kpiValueSmall}>{currency(selectedDepositSummary.requiredAmount)}</div>
+                    <div style={styles.smallMuted}>Pet: {currency(selectedDepositSummary.petRequiredAmount)}</div>
                   </div>
                   <div style={styles.ledgerMiniCard}>
                     <div style={styles.kpiLabel}>Paid So Far</div>
                     <div style={styles.kpiValueSmall}>{currency(selectedDepositSummary.totalPaid)}</div>
+                    <div style={styles.smallMuted}>Security {currency(selectedDepositSummary.securityPaid)} • Pet {currency(selectedDepositSummary.petPaid)}</div>
                   </div>
                   <div style={styles.ledgerMiniCard}>
                     <div style={styles.kpiLabel}>Balance Owed</div>
                     <div style={styles.kpiValueSmall}>{currency(selectedDepositSummary.balanceOwed)}</div>
+                    <div style={styles.smallMuted}>Security {currency(selectedDepositSummary.securityBalanceOwed)} • Pet {currency(selectedDepositSummary.petBalanceOwed)}</div>
                   </div>
                 </div>
 
@@ -4671,6 +4811,26 @@ This permanently removes the payment from the ledger.`
                       onChange={(e) => updateDepositRecord({ dueDate: normalizeDateInputValue(e.target.value) })}
                     />
                   </div>
+                  <div>
+                    <label style={styles.label}>Pet Deposit Required</label>
+                    <input
+                      style={styles.input}
+                      type="number"
+                      step="0.01"
+                      value={depositDraft.petRequiredAmount}
+                      onChange={(e) => updateDepositRecord({ petRequiredAmount: e.target.value })}
+                      placeholder="If applicable"
+                    />
+                  </div>
+                  <div>
+                    <label style={styles.label}>Pet Deposit Due Date</label>
+                    <input
+                      style={styles.input}
+                      type="date"
+                      value={normalizeDateInputValue(depositDraft.petDueDate)}
+                      onChange={(e) => updateDepositRecord({ petDueDate: normalizeDateInputValue(e.target.value) })}
+                    />
+                  </div>
                 </div>
 
                 <div style={styles.notesBox}>
@@ -4683,6 +4843,13 @@ This permanently removes the payment from the ledger.`
                     <div>
                       <label style={styles.label}>Amount</label>
                       <input style={styles.input} type="number" step="0.01" value={depositPaymentForm.amount} onChange={(e) => setDepositPaymentForm({ ...depositPaymentForm, amount: e.target.value })} />
+                    </div>
+                    <div>
+                      <label style={styles.label}>Payment For</label>
+                      <select style={styles.input} value={depositPaymentForm.paymentType} onChange={(e) => setDepositPaymentForm({ ...depositPaymentForm, paymentType: e.target.value })}>
+                        <option value="security">Security Deposit</option>
+                        <option value="pet">Pet Deposit</option>
+                      </select>
                     </div>
                     <div>
                       <label style={styles.label}>Method</label>
@@ -4702,9 +4869,9 @@ This permanently removes the payment from the ledger.`
                   <div className="mobile-button-row" style={styles.buttonRow}>
                     <button style={styles.primaryButton} type="button" onClick={addSecurityDepositPayment}>Save Deposit Payment</button>
                   </div>
-                  {lastReceipt?.type === 'security_deposit' && lastReceipt?.message ? (
+                  {(lastReceipt?.type === 'security_deposit' || lastReceipt?.type === 'pet_deposit') && lastReceipt?.message ? (
                     <div style={styles.receiptBox}>
-                      <strong>Security deposit receipt ready</strong>
+                      <strong>{lastReceipt.type === 'pet_deposit' ? 'Pet deposit receipt ready' : 'Security deposit receipt ready'}</strong>
                       <pre style={styles.receiptPreview}>{lastReceipt.message}</pre>
                       <div className="mobile-button-row" style={styles.buttonRow}>
                         <button style={styles.primaryButton} type="button" onClick={() => openTextReceipt(lastReceipt)}>Text Receipt</button>
@@ -4720,6 +4887,7 @@ This permanently removes the payment from the ledger.`
                     <thead>
                       <tr>
                         <th style={styles.th}>Date</th>
+                        <th style={styles.th}>Type</th>
                         <th style={styles.th}>Method</th>
                         <th style={styles.th}>Amount</th>
                         <th style={styles.th}>Note</th>
@@ -4728,11 +4896,12 @@ This permanently removes the payment from the ledger.`
                     </thead>
                     <tbody>
                       {selectedDepositRecord.payments.length === 0 ? (
-                        <tr><td style={styles.td} colSpan="5">No deposit payments saved yet.</td></tr>
+                        <tr><td style={styles.td} colSpan="6">No deposit payments saved yet.</td></tr>
                       ) : (
                         selectedDepositRecord.payments.map((payment) => (
                           <tr key={payment.id}>
                             <td style={styles.td}>{formatDate(payment.paymentDate)}</td>
+                            <td style={styles.td}>{payment.paymentType === 'pet' ? 'Pet Deposit' : 'Security Deposit'}</td>
                             <td style={styles.td}>{payment.method}</td>
                             <td style={styles.td}>{currency(payment.amount)}</td>
                             <td style={styles.td}>{payment.note || '—'}</td>
@@ -5537,7 +5706,7 @@ This permanently removes the payment from the ledger.`
                 </div>
                 {(selectedLedgerDepositSummary.requiredAmount || selectedLedgerDepositSummary.totalPaid || selectedLedgerDepositRecord.refundAmount || selectedLedgerDepositRecord.deductionAmount) ? (
                   <div style={styles.notesBox}>
-                    <strong>Security Deposit:</strong> Required {currency(selectedLedgerDepositSummary.requiredAmount)} • Paid {currency(selectedLedgerDepositSummary.totalPaid)} • Balance Owed {currency(selectedLedgerDepositSummary.balanceOwed)}
+                    <strong>Deposits:</strong> Security Required {currency(selectedLedgerDepositSummary.requiredAmount)} • Pet Required {currency(selectedLedgerDepositSummary.petRequiredAmount)} • Paid {currency(selectedLedgerDepositSummary.totalPaid)} • Balance Owed {currency(selectedLedgerDepositSummary.balanceOwed)}
                     {selectedLedgerDepositTenant ? (
                       <div style={styles.smallMuted}>Tenant: {selectedLedgerDepositTenant}</div>
                     ) : null}
