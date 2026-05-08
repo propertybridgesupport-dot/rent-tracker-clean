@@ -1933,9 +1933,19 @@ This permanently removes the payment from the ledger.`
 
   const selectedDepositTenant = useMemo(() => {
     if (!selectedDepositProperty) return ''
+
     const propertyOverrides = monthlyOverrides.filter((item) => item.property_id === selectedDepositProperty.id)
-    return getTenantForDate(selectedDepositProperty, propertyOverrides, getTodayDateInput()) || ''
-  }, [selectedDepositProperty, monthlyOverrides])
+    const timelineTenant = getTenantForDate(selectedDepositProperty, propertyOverrides, getTodayDateInput())
+    if (timelineTenant) return timelineTenant
+
+    const latestLeaseForProperty = companyLeaseRecords.find((lease) => lease.property_id === selectedDepositProperty.id)
+    if (latestLeaseForProperty?.tenant_names) return latestLeaseForProperty.tenant_names
+
+    const depositRecordForProperty = Object.values(securityDeposits).find((record) => record.propertyId === selectedDepositProperty.id && record.tenant)
+    if (depositRecordForProperty?.tenant) return depositRecordForProperty.tenant
+
+    return selectedDepositProperty.tenant || ''
+  }, [selectedDepositProperty, monthlyOverrides, companyLeaseRecords, securityDeposits])
 
   const selectedDepositRecord = useMemo(() => {
     return buildSecurityDepositRecord(securityDeposits[securityDepositKey(selectedDepositPropertyId, selectedDepositTenant)])
@@ -3215,6 +3225,27 @@ This permanently removes the payment from the ledger.`
 
     if (error) {
       return { posted: false, reason: 'error', error }
+    }
+
+    if (info.propertyId) {
+      setSelectedDepositPropertyId(info.propertyId)
+      setDepositDraft((current) => ({
+        ...buildSecurityDepositRecord(current),
+        propertyId: info.propertyId,
+        tenant: info.tenantNames,
+        requiredAmount: info.securityDeposit > 0 ? String(info.securityDeposit) : (existingRecord?.requiredAmount ?? existingRecord?.required_amount ?? ''),
+        petRequiredAmount: info.petDeposit > 0 ? String(info.petDeposit) : (existingRecord?.petRequiredAmount ?? existingRecord?.pet_required_amount ?? ''),
+        dueDate: info.dueDate || existingRecord?.dueDate || existingRecord?.due_date || '',
+        petDueDate: info.petDeposit > 0 ? (info.dueDate || existingRecord?.petDueDate || existingRecord?.pet_due_date || '') : (existingRecord?.petDueDate ?? existingRecord?.pet_due_date ?? ''),
+      }))
+    }
+
+    const propertyForDeposit = companyProperties.find((item) => item.id === info.propertyId)
+    if (propertyForDeposit && info.tenantNames && !propertyForDeposit.tenant) {
+      await supabase
+        .from('properties')
+        .update({ tenant: info.tenantNames })
+        .eq('id', info.propertyId)
     }
 
     return { posted: true, securityDeposit: info.securityDeposit, petDeposit: info.petDeposit }
