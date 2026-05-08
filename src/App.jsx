@@ -395,6 +395,7 @@ export default function App() {
   const [companies, setCompanies] = useState([])
   const [properties, setProperties] = useState([])
   const [payments, setPayments] = useState([])
+  const [leases, setLeases] = useState([])
   const [monthlyOverrides, setMonthlyOverrides] = useState([])
 
   const [selectedCompanyId, setSelectedCompanyId] = useState('')
@@ -424,6 +425,7 @@ export default function App() {
   })
 
   const [leaseForm, setLeaseForm] = useState(buildLeaseOnboardingForm())
+  const [uploadingLeaseId, setUploadingLeaseId] = useState('')
 
   const [companyForm, setCompanyForm] = useState({
     companyName: '',
@@ -928,6 +930,7 @@ export default function App() {
       { data: companyData, error: companyError },
       { data: propertyData, error: propertyError },
       { data: paymentData, error: paymentError },
+      { data: leaseData, error: leaseError },
       { data: overrideData, error: overrideError },
       { data: depositProfileData, error: depositProfileError },
       { data: depositPaymentData, error: depositPaymentError },
@@ -935,6 +938,7 @@ export default function App() {
       supabase.from('companies').select('*').order('created_at', { ascending: true }),
       supabase.from('properties').select('*').order('created_at', { ascending: true }),
       supabase.from('payments').select('*').order('payment_date', { ascending: false }),
+      supabase.from('leases').select('*').order('created_at', { ascending: false }),
       supabase.from('monthly_overrides').select('*').order('month_key', { ascending: true }),
       supabase.from('security_deposits').select('*').order('created_at', { ascending: true }),
       supabase.from('security_deposit_payments').select('*').order('payment_date', { ascending: true }),
@@ -943,6 +947,7 @@ export default function App() {
     if (companyError) setMessage(companyError.message)
     if (propertyError) setMessage(propertyError.message)
     if (paymentError) setMessage(paymentError.message)
+    if (leaseError) console.error('Lease record load failed.', leaseError)
     if (overrideError) setMessage(overrideError.message)
     if (depositProfileError) console.error('Security deposit profile load failed.', depositProfileError)
     if (depositPaymentError) console.error('Security deposit payment load failed.', depositPaymentError)
@@ -950,6 +955,7 @@ export default function App() {
     const safeCompanies = companyData || []
     const safeProperties = propertyData || []
     const safePayments = paymentData || []
+    const safeLeases = leaseData || []
     const safeOverrides = overrideData || []
     const safeDepositProfiles = depositProfileData || []
     const safeDepositPayments = depositPaymentData || []
@@ -957,6 +963,7 @@ export default function App() {
     setCompanies(safeCompanies)
     setProperties(safeProperties)
     setPayments(safePayments)
+    setLeases(safeLeases)
     setMonthlyOverrides(safeOverrides)
     setSecurityDeposits(buildSecurityDepositMap(safeDepositProfiles, safeDepositPayments))
 
@@ -1839,6 +1846,11 @@ This permanently removes the payment from the ledger.`
   const selectedLeaseProperty = useMemo(() => {
     return companyProperties.find((property) => property.id === leaseForm.propertyId) || null
   }, [companyProperties, leaseForm.propertyId])
+
+  const companyLeaseRecords = useMemo(() => {
+    const propertyIds = new Set(companyProperties.map((property) => property.id))
+    return leases.filter((lease) => propertyIds.has(lease.property_id))
+  }, [leases, companyProperties])
 
   const selectedDepositTenant = useMemo(() => {
     if (!selectedDepositProperty) return ''
@@ -2802,6 +2814,197 @@ This permanently removes the payment from the ledger.`
   function printLeasePackage() {
     const title = `${getLeaseFileName(leaseForm)}.pdf`
     printSection(leasePreviewRef, title, 'download')
+  }
+
+  function buildLeasePayload(status = 'draft') {
+    const rent = leaseForm.monthlyRent === '' ? null : Number(leaseForm.monthlyRent || 0)
+    const grossRent = leaseForm.grossRent === '' ? null : Number(leaseForm.grossRent || 0)
+    const proratedRent = leaseForm.proratedRent === '' ? null : Number(leaseForm.proratedRent || 0)
+    const depositAmount = leaseForm.depositAmount === '' ? null : Number(leaseForm.depositAmount || 0)
+    const petDepositAmount = leaseForm.petDepositAmount === '' ? null : Number(leaseForm.petDepositAmount || 0)
+
+    return {
+      company_id: selectedCompanyId,
+      property_id: leaseForm.propertyId || null,
+      tenant_names: leaseForm.tenantNames || null,
+      occupants: leaseForm.occupants || null,
+      lease_date: normalizeDateInputValue(leaseForm.leaseDate) || null,
+      lease_start_date: normalizeDateInputValue(leaseForm.leaseStartDate) || null,
+      lease_end_date: normalizeDateInputValue(leaseForm.leaseEndDate) || null,
+      term_months: leaseForm.termMonths === '' ? null : Number(leaseForm.termMonths || 0),
+      property_address: leaseForm.propertyAddress || selectedLeaseProperty?.address || null,
+      property_state: leaseForm.propertyState || null,
+      property_zip: leaseForm.propertyZip || null,
+      monthly_rent: rent,
+      gross_rent: grossRent,
+      prorated_rent: proratedRent,
+      last_day_first_month: normalizeDateInputValue(leaseForm.lastDayFirstMonth) || null,
+      deposit_amount: depositAmount,
+      has_pets: leaseForm.hasPets === 'yes',
+      number_of_pets: leaseForm.numberOfPets || null,
+      pet_names: leaseForm.petNames || null,
+      pet_deposit_amount: petDepositAmount,
+      property_manager_name: leaseForm.propertyManagerName || null,
+      property_manager_phone: leaseForm.propertyManagerPhone || null,
+      generated_pdf_file_name: `${getLeaseFileName(leaseForm)}.pdf`,
+      status,
+    }
+  }
+
+  async function saveLeaseRecord({ openPrint = false } = {}) {
+    setMessage('')
+
+    if (!selectedCompanyId) {
+      setMessage('Please select a company first.')
+      return
+    }
+
+    if (!leaseForm.propertyId) {
+      setMessage('Please select a property before saving the lease record.')
+      return
+    }
+
+    if (!leaseForm.tenantNames.trim()) {
+      setMessage('Please enter the tenant name(s) before saving the lease record.')
+      return
+    }
+
+    const { data, error } = await supabase
+      .from('leases')
+      .insert(buildLeasePayload('draft'))
+      .select('*')
+      .single()
+
+    if (error) {
+      setMessage(error.message)
+      return
+    }
+
+    if (data) {
+      setLeases((current) => [data, ...current.filter((item) => item.id !== data.id)])
+    }
+
+    setMessage(openPrint
+      ? 'Lease record saved. Your print dialog will open so you can save the PDF for Adobe signatures.'
+      : 'Lease record saved. You can now print/save the PDF and upload the signed copy when it comes back from Adobe.')
+
+    if (openPrint) {
+      setTimeout(() => printLeasePackage(), 150)
+    }
+  }
+
+  async function markLeaseStatus(leaseId, status) {
+    setMessage('')
+    const { data, error } = await supabase
+      .from('leases')
+      .update({ status })
+      .eq('id', leaseId)
+      .select('*')
+      .single()
+
+    if (error) {
+      setMessage(error.message)
+      return
+    }
+
+    if (data) {
+      setLeases((current) => current.map((item) => (item.id === leaseId ? data : item)))
+      setMessage(`Lease marked as ${status}.`)
+    }
+  }
+
+  async function uploadSignedLease(leaseRecord, file) {
+    if (!file || !leaseRecord?.id) return
+
+    setMessage('')
+    setUploadingLeaseId(leaseRecord.id)
+
+    const userId = session?.user?.id
+    if (!userId) {
+      setMessage('No logged-in user found.')
+      setUploadingLeaseId('')
+      return
+    }
+
+    const cleanFileName = file.name.replace(/[^a-z0-9._-]+/gi, '_')
+    const filePath = `${userId}/${leaseRecord.id}/${Date.now()}_${cleanFileName}`
+
+    const { error: uploadError } = await supabase.storage
+      .from('lease-documents')
+      .upload(filePath, file, {
+        cacheControl: '3600',
+        upsert: true,
+        contentType: file.type || 'application/pdf',
+      })
+
+    if (uploadError) {
+      setMessage(uploadError.message)
+      setUploadingLeaseId('')
+      return
+    }
+
+    const { data, error } = await supabase
+      .from('leases')
+      .update({
+        signed_file_path: filePath,
+        signed_file_name: file.name,
+        signed_at: new Date().toISOString(),
+        status: 'signed',
+      })
+      .eq('id', leaseRecord.id)
+      .select('*')
+      .single()
+
+    if (error) {
+      setMessage(error.message)
+      setUploadingLeaseId('')
+      return
+    }
+
+    if (data) {
+      setLeases((current) => current.map((item) => (item.id === leaseRecord.id ? data : item)))
+    }
+
+    setUploadingLeaseId('')
+    setMessage('Signed lease uploaded and attached to the lease record.')
+  }
+
+  async function openSignedLease(leaseRecord) {
+    if (!leaseRecord?.signed_file_path) {
+      setMessage('No signed lease file has been uploaded for this record yet.')
+      return
+    }
+
+    const { data, error } = await supabase.storage
+      .from('lease-documents')
+      .createSignedUrl(leaseRecord.signed_file_path, 60 * 60)
+
+    if (error) {
+      setMessage(error.message)
+      return
+    }
+
+    if (data?.signedUrl) {
+      window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
+    }
+  }
+
+  async function deleteLeaseRecord(leaseRecord) {
+    const confirmed = confirmDeleteWithPrompt(
+      `Delete lease record for ${leaseRecord.tenant_names || 'this tenant'}?\n\nThis removes the lease record. Uploaded signed PDF files may remain in storage unless manually removed.`
+    )
+    if (!confirmed) return
+
+    setMessage('')
+    const { error } = await supabase.from('leases').delete().eq('id', leaseRecord.id)
+
+    if (error) {
+      setMessage(error.message)
+      return
+    }
+
+    setLeases((current) => current.filter((item) => item.id !== leaseRecord.id))
+    setMessage('Lease record deleted.')
   }
 
 
@@ -4362,13 +4565,65 @@ This permanently removes the payment from the ledger.`
             </div>
 
             <div className="mobile-button-row" style={styles.buttonRow}>
-              <button style={styles.primaryButton} type="button" onClick={printLeasePackage}>Print / Save Lease PDF</button>
+              <button style={styles.primaryButton} type="button" onClick={() => saveLeaseRecord({ openPrint: true })}>Save Record & Print PDF</button>
+              <button style={styles.secondaryButton} type="button" onClick={printLeasePackage}>Print Only</button>
+              <button style={styles.secondaryButton} type="button" onClick={() => saveLeaseRecord({ openPrint: false })}>Save Record Only</button>
               <button style={styles.secondaryButton} type="button" onClick={() => setLeaseForm(buildLeaseOnboardingForm())}>Clear Form</button>
             </div>
 
             <div style={styles.notesBox}>
-              <strong>Phase 1 note:</strong> This generates a PDF-ready lease preview for Adobe upload. Saving the final signed lease back to the tenant/property will be Phase 2.
+              <strong>Phase 2 note:</strong> Save the lease record before or when printing. After Adobe signatures are complete, upload the signed PDF below to attach it to the property and tenant record.
             </div>
+          </div>
+
+          <div className="mobile-card" style={styles.card}>
+            <div style={styles.reportHeaderRow}>
+              <div>
+                <h2 style={styles.cardTitle}>Saved Lease Records</h2>
+                <p style={styles.smallMuted}>Upload the Adobe-signed PDF here after it comes back signed. Records are tied to the selected company/property.</p>
+              </div>
+            </div>
+
+            {companyLeaseRecords.length === 0 ? (
+              <p style={styles.mutedText}>No lease records saved yet.</p>
+            ) : (
+              <div style={{ display: 'grid', gap: '12px' }}>
+                {companyLeaseRecords.map((leaseRecord) => {
+                  const property = companyProperties.find((item) => item.id === leaseRecord.property_id)
+                  return (
+                    <div key={leaseRecord.id} style={styles.notesBox}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
+                        <div>
+                          <strong>{leaseRecord.tenant_names || 'Tenant not listed'}</strong>
+                          <div style={styles.smallMuted}>{property?.address || leaseRecord.property_address || 'Property not listed'}</div>
+                          <div style={styles.smallMuted}>
+                            {formatDate(leaseRecord.lease_start_date)} - {formatDate(leaseRecord.lease_end_date)} · {currency(leaseRecord.monthly_rent)} rent · Status: {leaseRecord.status || 'draft'}
+                          </div>
+                          {leaseRecord.signed_file_name ? (
+                            <div style={styles.smallMuted}>Signed file: {leaseRecord.signed_file_name}</div>
+                          ) : null}
+                        </div>
+                        <div className="mobile-button-row" style={styles.buttonRow}>
+                          <label style={styles.secondaryButton}>
+                            {uploadingLeaseId === leaseRecord.id ? 'Uploading...' : 'Upload Signed PDF'}
+                            <input
+                              type="file"
+                              accept="application/pdf,.pdf"
+                              style={{ display: 'none' }}
+                              disabled={uploadingLeaseId === leaseRecord.id}
+                              onChange={(e) => uploadSignedLease(leaseRecord, e.target.files?.[0])}
+                            />
+                          </label>
+                          <button style={styles.secondaryButton} type="button" onClick={() => openSignedLease(leaseRecord)} disabled={!leaseRecord.signed_file_path}>Open Signed PDF</button>
+                          <button style={styles.secondaryButton} type="button" onClick={() => markLeaseStatus(leaseRecord.id, 'sent')}>Mark Sent</button>
+                          <button style={styles.dangerButton} type="button" onClick={() => deleteLeaseRecord(leaseRecord)}>Delete</button>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
           </div>
 
           <div className="mobile-card" style={styles.card}>
@@ -5224,6 +5479,7 @@ const styles = {
   input: { width: '100%', boxSizing: 'border-box', padding: '11px 12px', borderRadius: '12px', border: '1px solid #cbd5e1', background: '#fff', fontSize: '14px' },
   tableInput: { width: '100%', boxSizing: 'border-box', padding: '8px 10px', borderRadius: '10px', border: '1px solid #cbd5e1', background: '#fff', fontSize: '14px' },
   primaryButton: { marginTop: '16px', background: '#0f172a', color: '#fff', border: 'none', borderRadius: '12px', padding: '11px 16px', cursor: 'pointer', fontWeight: 600 },
+  dangerButton: { background: '#fee2e2', color: '#991b1b', border: '1px solid #fecaca', borderRadius: '12px', padding: '10px 16px', cursor: 'pointer', fontWeight: 600 },
   secondaryButton: { background: '#e2e8f0', color: '#0f172a', border: 'none', borderRadius: '12px', padding: '11px 16px', cursor: 'pointer', fontWeight: 600 },
   smallPrimaryButton: { background: '#0f172a', color: '#fff', border: 'none', borderRadius: '10px', padding: '8px 12px', cursor: 'pointer', fontWeight: 600, fontSize: '13px' },
   smallSecondaryButton: { background: '#e2e8f0', color: '#0f172a', border: 'none', borderRadius: '10px', padding: '8px 12px', cursor: 'pointer', fontWeight: 600, fontSize: '13px' },
@@ -5318,6 +5574,7 @@ Object.assign(styles, {
   tableInput: { ...styles.tableInput, border: '1px solid #d9c2cf', borderRadius: '12px', color: '#261525' },
   textarea: { ...styles.textarea, border: '1px solid #d9c2cf', borderRadius: '14px', color: '#261525' },
   primaryButton: { ...styles.primaryButton, background: '#7b0f73', borderRadius: '14px', boxShadow: '0 8px 18px rgba(123, 15, 115, 0.22)', fontWeight: 700 },
+  dangerButton: { background: '#fee2e2', color: '#991b1b', border: '1px solid #fecaca', borderRadius: '12px', padding: '10px 16px', cursor: 'pointer', fontWeight: 600 },
   secondaryButton: { ...styles.secondaryButton, background: '#f3e7d7', color: '#5b3b18', border: '1px solid #e2c59c', borderRadius: '14px', fontWeight: 700 },
   smallPrimaryButton: { ...styles.smallPrimaryButton, background: '#7b0f73' },
   smallSecondaryButton: { ...styles.smallSecondaryButton, background: '#f3e7d7', color: '#5b3b18', border: '1px solid #e2c59c' },
