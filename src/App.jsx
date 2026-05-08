@@ -321,6 +321,8 @@ function buildLeaseOnboardingForm(current = {}) {
   return {
     propertyId: current.propertyId || '',
     tenantNames: current.tenantNames || '',
+    tenantPhone: current.tenantPhone || current.tenant_phone || '',
+    tenantEmail: current.tenantEmail || current.tenant_email || '',
     occupants: current.occupants || '',
     leaseDate: current.leaseDate || getTodayDateInput(),
     leaseStartDate: current.leaseStartDate || getTodayDateInput(),
@@ -396,6 +398,7 @@ export default function App() {
   const [properties, setProperties] = useState([])
   const [payments, setPayments] = useState([])
   const [leases, setLeases] = useState([])
+  const [tenants, setTenants] = useState([])
   const [monthlyOverrides, setMonthlyOverrides] = useState([])
 
   const [selectedCompanyId, setSelectedCompanyId] = useState('')
@@ -426,6 +429,7 @@ export default function App() {
 
   const [leaseForm, setLeaseForm] = useState(buildLeaseOnboardingForm())
   const [uploadingLeaseId, setUploadingLeaseId] = useState('')
+  const [lastReceipt, setLastReceipt] = useState(null)
 
   const [companyForm, setCompanyForm] = useState({
     companyName: '',
@@ -931,6 +935,7 @@ export default function App() {
       { data: propertyData, error: propertyError },
       { data: paymentData, error: paymentError },
       { data: leaseData, error: leaseError },
+      { data: tenantData, error: tenantError },
       { data: overrideData, error: overrideError },
       { data: depositProfileData, error: depositProfileError },
       { data: depositPaymentData, error: depositPaymentError },
@@ -939,6 +944,7 @@ export default function App() {
       supabase.from('properties').select('*').order('created_at', { ascending: true }),
       supabase.from('payments').select('*').order('payment_date', { ascending: false }),
       supabase.from('leases').select('*').order('created_at', { ascending: false }),
+      supabase.from('tenants').select('*').order('created_at', { ascending: false }),
       supabase.from('monthly_overrides').select('*').order('month_key', { ascending: true }),
       supabase.from('security_deposits').select('*').order('created_at', { ascending: true }),
       supabase.from('security_deposit_payments').select('*').order('payment_date', { ascending: true }),
@@ -948,6 +954,7 @@ export default function App() {
     if (propertyError) setMessage(propertyError.message)
     if (paymentError) setMessage(paymentError.message)
     if (leaseError) console.error('Lease record load failed.', leaseError)
+    if (tenantError) console.error('Tenant profile load failed.', tenantError)
     if (overrideError) setMessage(overrideError.message)
     if (depositProfileError) console.error('Security deposit profile load failed.', depositProfileError)
     if (depositPaymentError) console.error('Security deposit payment load failed.', depositPaymentError)
@@ -956,6 +963,7 @@ export default function App() {
     const safeProperties = propertyData || []
     const safePayments = paymentData || []
     const safeLeases = leaseData || []
+    const safeTenants = tenantData || []
     const safeOverrides = overrideData || []
     const safeDepositProfiles = depositProfileData || []
     const safeDepositPayments = depositPaymentData || []
@@ -964,6 +972,7 @@ export default function App() {
     setProperties(safeProperties)
     setPayments(safePayments)
     setLeases(safeLeases)
+    setTenants(safeTenants)
     setMonthlyOverrides(safeOverrides)
     setSecurityDeposits(buildSecurityDepositMap(safeDepositProfiles, safeDepositPayments))
 
@@ -1181,6 +1190,25 @@ export default function App() {
 
     if (insertedPayment) {
       setPayments((current) => [insertedPayment, ...current.filter((item) => item.id !== insertedPayment.id)])
+
+      const tenantName = property ? getTenantForDate(property, companyOverrides.filter((item) => item.property_id === property.id), paymentForm.paymentDate) || property.tenant || '' : ''
+      const tenantRecord = property ? getTenantRecordForProperty(property.id, tenantName) : null
+      const receiptMessage = buildRentReceiptMessage({
+        property,
+        tenantName,
+        paymentDate: paymentForm.paymentDate,
+        amount: amountToUse,
+        method: entryType === 'late_fee' ? 'Late Fee' : paymentForm.method,
+        entryType,
+        note: paymentForm.note || '',
+      })
+      setLastReceipt({
+        type: entryType === 'late_fee' ? 'late_fee' : 'rent_payment',
+        phone: tenantRecord?.phone || '',
+        tenantName,
+        propertyId: property?.id || '',
+        message: receiptMessage,
+      })
     }
 
     if (postedMonth) {
@@ -1422,6 +1450,31 @@ This keeps the record for reporting but removes it from your active list.`
       return
     }
 
+    const amountNumber = Number(depositPaymentForm.amount || 0)
+    const paidAfter = Number(selectedDepositSummary.totalPaid || 0) + amountNumber
+    const requiredAmount = Number(depositDraft.requiredAmount || selectedDepositSummary.requiredAmount || 0)
+    const balanceAfter = Math.max(requiredAmount - paidAfter, 0)
+    const tenantRecord = getTenantRecordForProperty(selectedDepositPropertyId, tenant)
+    const receiptMessage = buildDepositReceiptMessage({
+      property: selectedDepositProperty,
+      tenantName: tenant,
+      paymentDate: normalizeDateInputValue(depositPaymentForm.paymentDate),
+      amount: amountNumber,
+      method: depositPaymentForm.method,
+      requiredAmount,
+      paidAfter,
+      balanceAfter,
+      dueDate: depositDraft.dueDate || selectedDepositRecord.dueDate,
+      note: depositPaymentForm.note || '',
+    })
+    setLastReceipt({
+      type: 'security_deposit',
+      phone: tenantRecord?.phone || '',
+      tenantName: tenant,
+      propertyId: selectedDepositPropertyId,
+      message: receiptMessage,
+    })
+
     setDepositPaymentForm({
       paymentDate: getTodayDateInput(),
       amount: '',
@@ -1429,7 +1482,7 @@ This keeps the record for reporting but removes it from your active list.`
       note: '',
     })
     await loadData()
-    setMessage('Security deposit payment saved.')
+    setMessage('Security deposit payment saved. Receipt is ready to text.')
   }
 
   async function deleteSecurityDepositPayment(paymentId) {
@@ -2827,6 +2880,8 @@ This permanently removes the payment from the ledger.`
       company_id: selectedCompanyId,
       property_id: leaseForm.propertyId || null,
       tenant_names: leaseForm.tenantNames || null,
+      tenant_phone: leaseForm.tenantPhone || null,
+      tenant_email: leaseForm.tenantEmail || null,
       occupants: leaseForm.occupants || null,
       lease_date: normalizeDateInputValue(leaseForm.leaseDate) || null,
       lease_start_date: normalizeDateInputValue(leaseForm.leaseStartDate) || null,
@@ -2849,6 +2904,105 @@ This permanently removes the payment from the ledger.`
       generated_pdf_file_name: `${getLeaseFileName(leaseForm)}.pdf`,
       status,
     }
+  }
+
+  function getTenantRecordForProperty(propertyId, tenantName = '') {
+    const normalizedTenant = normalizeSearchText(tenantName)
+    const propertyTenants = tenants.filter((tenant) => tenant.property_id === propertyId && tenant.status !== 'archived')
+    if (normalizedTenant) {
+      const exact = propertyTenants.find((tenant) => normalizeSearchText(tenant.full_name) === normalizedTenant)
+      if (exact) return exact
+      const partial = propertyTenants.find((tenant) => normalizeSearchText(tenant.full_name).includes(normalizedTenant) || normalizedTenant.includes(normalizeSearchText(tenant.full_name)))
+      if (partial) return partial
+    }
+    return propertyTenants[0] || null
+  }
+
+  function normalizePhoneForSms(phone) {
+    return String(phone || '').replace(/[^0-9+]/g, '')
+  }
+
+  function openTextReceipt(receipt = lastReceipt) {
+    if (!receipt?.message) {
+      setMessage('No receipt message is ready yet.')
+      return
+    }
+
+    const smsPhone = normalizePhoneForSms(receipt.phone || '')
+    const body = encodeURIComponent(receipt.message)
+
+    if (smsPhone) {
+      window.location.href = `sms:${smsPhone}?&body=${body}`
+      return
+    }
+
+    if (navigator.share) {
+      navigator.share({ text: receipt.message }).catch(() => {})
+      return
+    }
+
+    navigator.clipboard?.writeText(receipt.message)
+    setMessage('Receipt copied. No tenant phone number is saved yet, so you can paste it into a text manually.')
+  }
+
+  function copyReceipt(receipt = lastReceipt) {
+    if (!receipt?.message) return
+    navigator.clipboard?.writeText(receipt.message)
+    setMessage('Receipt copied to clipboard.')
+  }
+
+  function buildRentReceiptMessage({ property, tenantName, paymentDate, amount, method, entryType, note }) {
+    const postedMonth = monthKeyFromDate(paymentDate)
+    const ledger = propertyLedgerMap[property?.id]
+    const currentMonthSummary = ledger?.monthlySummaries?.find((item) => item.month === postedMonth)
+    const currentBalance = Number(currentMonthSummary?.endingBalance || 0)
+    const amountNumber = Number(amount || 0)
+    const balanceAfter = entryType === 'late_fee' ? currentBalance + amountNumber : currentBalance - amountNumber
+    const balanceLine = balanceAfter > 0
+      ? `Remaining balance: ${currency(balanceAfter)}`
+      : `Balance: ${currency(Math.max(balanceAfter, 0))}`
+    const noteLine = note ? `\nNote: ${note}` : ''
+
+    return `Receipt for payment received\n\nTenant: ${tenantName || 'Tenant'}\nProperty: ${property?.address || 'Property'}\nDate received: ${formatDate(paymentDate)}\nAmount received: ${currency(amountNumber)}\nPayment method: ${method || 'Payment'}\n${balanceLine}${noteLine}\n\nThank you,\n${selectedCompanyName}`
+  }
+
+  function buildDepositReceiptMessage({ property, tenantName, paymentDate, amount, method, requiredAmount, paidAfter, balanceAfter, dueDate, note }) {
+    const dueLine = dueDate ? `\nDeposit due date: ${formatDate(dueDate)}` : ''
+    const noteLine = note ? `\nNote: ${note}` : ''
+    return `Security deposit payment receipt\n\nTenant: ${tenantName || 'Tenant'}\nProperty: ${property?.address || 'Property'}\nDate received: ${formatDate(paymentDate)}\nAmount received: ${currency(amount)}\nPayment method: ${method || 'Payment'}\n\nSecurity deposit required: ${currency(requiredAmount)}\nTotal deposit paid: ${currency(paidAfter)}\nDeposit balance remaining: ${currency(Math.max(balanceAfter, 0))}${dueLine}${noteLine}\n\nThank you,\n${selectedCompanyName}`
+  }
+
+  async function saveTenantProfileFromLease(leaseRecord = null) {
+    if (!selectedCompanyId || !leaseForm.propertyId || !leaseForm.tenantNames.trim()) return null
+
+    const payload = {
+      company_id: selectedCompanyId,
+      property_id: leaseForm.propertyId,
+      lease_id: leaseRecord?.id || null,
+      full_name: leaseForm.tenantNames.trim(),
+      phone: leaseForm.tenantPhone || null,
+      email: leaseForm.tenantEmail || null,
+      move_in_date: normalizeDateInputValue(leaseForm.leaseStartDate) || null,
+      move_out_date: null,
+      status: 'active',
+      notes: null,
+    }
+
+    const { data, error } = await supabase
+      .from('tenants')
+      .upsert(payload, { onConflict: 'property_id,full_name' })
+      .select('*')
+      .single()
+
+    if (error) {
+      console.error('Tenant profile save failed.', error)
+      return null
+    }
+
+    if (data) {
+      setTenants((current) => [data, ...current.filter((item) => item.id !== data.id)])
+    }
+    return data
   }
 
   async function saveLeaseRecord({ openPrint = false } = {}) {
@@ -2882,6 +3036,7 @@ This permanently removes the payment from the ledger.`
 
     if (data) {
       setLeases((current) => [data, ...current.filter((item) => item.id !== data.id)])
+      await saveTenantProfileFromLease(data)
     }
 
     setMessage(openPrint
@@ -2989,82 +3144,13 @@ This permanently removes the payment from the ledger.`
     }
   }
 
-  async function deleteSignedLeaseFile(leaseRecord, { confirmFirst = true } = {}) {
-    if (!leaseRecord?.id || !leaseRecord?.signed_file_path) {
-      setMessage('No signed lease PDF has been uploaded for this record yet.')
-      return false
-    }
-
-    if (confirmFirst) {
-      const confirmed = confirmDeleteWithPrompt(
-        `Delete signed PDF for ${leaseRecord.tenant_names || 'this tenant'}?\n\nThis removes the uploaded signed file from Supabase Storage, but keeps the lease record.`
-      )
-      if (!confirmed) return false
-    }
-
-    setMessage('')
-    const { error: storageError } = await supabase.storage
-      .from('lease-documents')
-      .remove([leaseRecord.signed_file_path])
-
-    if (storageError) {
-      setMessage(storageError.message)
-      return false
-    }
-
-    const { data, error } = await supabase
-      .from('leases')
-      .update({
-        signed_file_path: null,
-        signed_file_name: null,
-        signed_at: null,
-        status: leaseRecord.status === 'signed' ? 'draft' : leaseRecord.status || 'draft',
-      })
-      .eq('id', leaseRecord.id)
-      .select('*')
-      .single()
-
-    if (error) {
-      setMessage(error.message)
-      return false
-    }
-
-    if (data) {
-      setLeases((current) => current.map((item) => (item.id === leaseRecord.id ? data : item)))
-    }
-
-    setMessage('Signed lease PDF deleted from storage.')
-    return true
-  }
-
-  async function archiveLeaseRecord(leaseRecord) {
-    const confirmed = window.confirm(
-      `Archive lease record for ${leaseRecord.tenant_names || 'this tenant'}?\n\nThis keeps the record and any uploaded PDF, but marks it Archived so it is not treated as active.`
-    )
-    if (!confirmed) return
-
-    await markLeaseStatus(leaseRecord.id, 'archived')
-  }
-
   async function deleteLeaseRecord(leaseRecord) {
     const confirmed = confirmDeleteWithPrompt(
-      `Delete lease record for ${leaseRecord.tenant_names || 'this tenant'}?\n\nThis permanently removes the lease record${leaseRecord.signed_file_path ? ' and its uploaded signed PDF' : ''}.`
+      `Delete lease record for ${leaseRecord.tenant_names || 'this tenant'}?\n\nThis removes the lease record. Uploaded signed PDF files may remain in storage unless manually removed.`
     )
     if (!confirmed) return
 
     setMessage('')
-
-    if (leaseRecord.signed_file_path) {
-      const { error: storageError } = await supabase.storage
-        .from('lease-documents')
-        .remove([leaseRecord.signed_file_path])
-
-      if (storageError) {
-        setMessage(`Signed PDF could not be deleted: ${storageError.message}`)
-        return
-      }
-    }
-
     const { error } = await supabase.from('leases').delete().eq('id', leaseRecord.id)
 
     if (error) {
@@ -3073,7 +3159,7 @@ This permanently removes the payment from the ledger.`
     }
 
     setLeases((current) => current.filter((item) => item.id !== leaseRecord.id))
-    setMessage(leaseRecord.signed_file_path ? 'Lease record and signed PDF deleted.' : 'Lease record deleted.')
+    setMessage('Lease record deleted.')
   }
 
 
@@ -3880,6 +3966,18 @@ This permanently removes the payment from the ledger.`
               <div style={styles.successBanner}>{paymentSuccessMessage}</div>
             ) : null}
 
+            {lastReceipt?.message ? (
+              <div style={styles.receiptBox}>
+                <strong>Receipt ready</strong>
+                <pre style={styles.receiptPreview}>{lastReceipt.message}</pre>
+                <div className="mobile-button-row" style={styles.buttonRow}>
+                  <button style={styles.primaryButton} type="button" onClick={() => openTextReceipt(lastReceipt)}>Text Receipt</button>
+                  <button style={styles.secondaryButton} type="button" onClick={() => copyReceipt(lastReceipt)}>Copy Receipt</button>
+                </div>
+                {!lastReceipt.phone ? <div style={styles.smallMuted}>No tenant phone is saved yet, so Copy Receipt may be easiest for this one.</div> : null}
+              </div>
+            ) : null}
+
             <form onSubmit={addPayment}>
               <label style={styles.label}>Property</label>
               <select
@@ -4410,6 +4508,17 @@ This permanently removes the payment from the ledger.`
                   <div className="mobile-button-row" style={styles.buttonRow}>
                     <button style={styles.primaryButton} type="button" onClick={addSecurityDepositPayment}>Save Deposit Payment</button>
                   </div>
+                  {lastReceipt?.type === 'security_deposit' && lastReceipt?.message ? (
+                    <div style={styles.receiptBox}>
+                      <strong>Security deposit receipt ready</strong>
+                      <pre style={styles.receiptPreview}>{lastReceipt.message}</pre>
+                      <div className="mobile-button-row" style={styles.buttonRow}>
+                        <button style={styles.primaryButton} type="button" onClick={() => openTextReceipt(lastReceipt)}>Text Receipt</button>
+                        <button style={styles.secondaryButton} type="button" onClick={() => copyReceipt(lastReceipt)}>Copy Receipt</button>
+                      </div>
+                      {!lastReceipt.phone ? <div style={styles.smallMuted}>No tenant phone is saved yet, so Copy Receipt may be easiest for this one.</div> : null}
+                    </div>
+                  ) : null}
                 </div>
 
                 <div style={styles.tableWrap}>
@@ -4541,6 +4650,14 @@ This permanently removes the payment from the ledger.`
                 <input style={styles.input} value={leaseForm.tenantNames} onChange={(e) => updateLeaseForm({ tenantNames: e.target.value })} placeholder="Example: John Smith and Jane Smith" />
               </div>
               <div>
+                <label style={styles.label}>Tenant Phone</label>
+                <input style={styles.input} value={leaseForm.tenantPhone} onChange={(e) => updateLeaseForm({ tenantPhone: e.target.value })} placeholder="Cell phone for text receipts" />
+              </div>
+              <div>
+                <label style={styles.label}>Tenant Email</label>
+                <input style={styles.input} type="email" value={leaseForm.tenantEmail} onChange={(e) => updateLeaseForm({ tenantEmail: e.target.value })} placeholder="Email address" />
+              </div>
+              <div>
                 <label style={styles.label}>Occupants</label>
                 <input style={styles.input} value={leaseForm.occupants} onChange={(e) => updateLeaseForm({ occupants: e.target.value })} placeholder="All approved occupants" />
               </div>
@@ -4649,7 +4766,7 @@ This permanently removes the payment from the ledger.`
             <div style={styles.reportHeaderRow}>
               <div>
                 <h2 style={styles.cardTitle}>Saved Lease Records</h2>
-                <p style={styles.smallMuted}>Upload the Adobe-signed PDF here after it comes back signed. You can archive/delete test records and remove uploaded signed PDFs during testing.</p>
+                <p style={styles.smallMuted}>Upload the Adobe-signed PDF here after it comes back signed. Records are tied to the selected company/property.</p>
               </div>
             </div>
 
@@ -4685,9 +4802,7 @@ This permanently removes the payment from the ledger.`
                           </label>
                           <button style={styles.secondaryButton} type="button" onClick={() => openSignedLease(leaseRecord)} disabled={!leaseRecord.signed_file_path}>Open Signed PDF</button>
                           <button style={styles.secondaryButton} type="button" onClick={() => markLeaseStatus(leaseRecord.id, 'sent')}>Mark Sent</button>
-                          <button style={styles.secondaryButton} type="button" onClick={() => archiveLeaseRecord(leaseRecord)}>Archive</button>
-                          <button style={styles.dangerButton} type="button" onClick={() => deleteSignedLeaseFile(leaseRecord)} disabled={!leaseRecord.signed_file_path}>Delete Signed PDF</button>
-                          <button style={styles.dangerButton} type="button" onClick={() => deleteLeaseRecord(leaseRecord)}>Delete Record</button>
+                          <button style={styles.dangerButton} type="button" onClick={() => deleteLeaseRecord(leaseRecord)}>Delete</button>
                         </div>
                       </div>
                     </div>
@@ -5667,6 +5782,8 @@ Object.assign(styles, {
   mobileHeroEyebrow: { color: '#c79b62', textTransform: 'uppercase', letterSpacing: '.09em', fontWeight: 700, fontSize: '12px', marginBottom: '8px' },
   mobileHeroTitle: { margin: '0 0 8px 0', color: '#7b0f73', fontSize: '28px', lineHeight: 1.1 },
   mobileHeroText: { margin: 0, color: '#5b4a3b', fontSize: '15px', lineHeight: 1.5 },
+  receiptBox: { background: '#fffaf6', border: '1px solid #eadfce', borderRadius: '16px', padding: '12px', margin: '14px 0' },
+  receiptPreview: { whiteSpace: 'pre-wrap', fontFamily: 'Arial, sans-serif', fontSize: '13px', lineHeight: 1.45, background: '#ffffff', border: '1px solid #eadfce', borderRadius: '12px', padding: '10px', margin: '10px 0' },
   brandHeader: { ...styles.header, background: 'linear-gradient(135deg, #220821 0%, #4a1546 58%, #5a1a54 100%)', border: '1px solid #5b2a58', borderTop: '4px solid #d89a2b', borderRadius: '22px', padding: '22px 24px', boxShadow: '0 14px 34px rgba(34, 8, 33, 0.28)', display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) auto', gap: '22px', alignItems: 'stretch' },
   brandHeaderLeft: { display: 'flex', alignItems: 'center', gap: '14px', flexWrap: 'wrap' },
   logoWrap: { background: '#f5ebdf', border: '1px solid rgba(231, 212, 187, 0.45)', borderRadius: '18px', padding: '8px 16px', boxSizing: 'border-box', width: '100%', height: '108px', display: 'flex', alignItems: 'center', justifyContent: 'center' },
