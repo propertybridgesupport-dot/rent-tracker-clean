@@ -2997,13 +2997,14 @@ This permanently removes the payment from the ledger.`
       : `Balance: ${currency(Math.max(balanceAfter, 0))}`
     const noteLine = note ? `\nNote: ${note}` : ''
 
-    return `Receipt for payment received\n\nTenant: ${tenantName || 'Tenant'}\nProperty: ${property?.address || 'Property'}\nDate received: ${formatDate(paymentDate)}\nAmount received: ${currency(amountNumber)}\nPayment method: ${method || 'Payment'}\n${balanceLine}${noteLine}\n\nThank you,\n${selectedCompanyName}`
+    const receiptTitle = entryType === 'late_fee' ? 'Late Fee Receipt' : 'Rent Payment Receipt'
+    return `${receiptTitle}\n\nTenant: ${tenantName || 'Tenant'}\nProperty: ${property?.address || 'Property'}\nDate received: ${formatDate(paymentDate)}\nAmount received: ${currency(amountNumber)}\nPayment method: ${method || 'Payment'}\n${balanceLine}${noteLine}\n\nThank you,\n${selectedCompanyName}`
   }
 
   function buildDepositReceiptMessage({ property, tenantName, paymentDate, amount, method, requiredAmount, paidAfter, balanceAfter, dueDate, note }) {
     const dueLine = dueDate ? `\nDeposit due date: ${formatDate(dueDate)}` : ''
     const noteLine = note ? `\nNote: ${note}` : ''
-    return `Security deposit payment receipt\n\nTenant: ${tenantName || 'Tenant'}\nProperty: ${property?.address || 'Property'}\nDate received: ${formatDate(paymentDate)}\nAmount received: ${currency(amount)}\nPayment method: ${method || 'Payment'}\n\nSecurity deposit required: ${currency(requiredAmount)}\nTotal deposit paid: ${currency(paidAfter)}\nDeposit balance remaining: ${currency(Math.max(balanceAfter, 0))}${dueLine}${noteLine}\n\nThank you,\n${selectedCompanyName}`
+    return `Security Deposit Receipt\n\nTenant: ${tenantName || 'Tenant'}\nProperty: ${property?.address || 'Property'}\nDate received: ${formatDate(paymentDate)}\nAmount received: ${currency(amount)}\nPayment method: ${method || 'Payment'}\n\nSecurity deposit required: ${currency(requiredAmount)}\nTotal deposit paid: ${currency(paidAfter)}\nDeposit balance remaining: ${currency(Math.max(balanceAfter, 0))}${dueLine}${noteLine}\n\nThank you,\n${selectedCompanyName}`
   }
 
   async function saveTenantProfileFromLease(leaseRecord = null) {
@@ -3056,6 +3057,132 @@ This permanently removes the payment from the ledger.`
     return savedTenants[0] || null
   }
 
+
+  function getOnboardingChargeInfo(leaseRecord = null) {
+    const source = leaseRecord || {}
+    const propertyId = source.property_id || leaseForm.propertyId || ''
+    const tenantNames = source.tenant_names || getLeaseTenantNamesForAgreement() || leaseForm.tenantNames || ''
+    const leaseStartDate = normalizeDateInputValue(source.lease_start_date || leaseForm.leaseStartDate || leaseForm.moveInDate)
+    const monthKey = monthKeyFromDate(leaseStartDate)
+    const proratedRentRaw = source.prorated_rent ?? leaseForm.proratedRent
+    const proratedRent = Number(proratedRentRaw || 0)
+    const paidThroughDate = normalizeDateInputValue(source.last_day_first_month || leaseForm.lastDayFirstMonth)
+
+    return {
+      propertyId,
+      tenantNames,
+      leaseStartDate,
+      monthKey,
+      proratedRent,
+      paidThroughDate,
+    }
+  }
+
+  function hasPostedOnboardingCharge(leaseRecord = null) {
+    const info = getOnboardingChargeInfo(leaseRecord)
+    if (!info.propertyId || !info.monthKey || !info.proratedRent || info.proratedRent <= 0) return false
+
+    const existing = monthlyOverrides.find((item) => item.property_id === info.propertyId && item.month_key === info.monthKey)
+    if (!existing) return false
+
+    const existingRent = Number(existing.override_rent || 0)
+    const notes = String(existing.notes || '').toLowerCase()
+    return Math.abs(existingRent - info.proratedRent) < 0.01 && notes.includes('lease onboarding prorated rent')
+  }
+
+  async function postOnboardingCharges(leaseRecord = null, { showMessage = true } = {}) {
+    const info = getOnboardingChargeInfo(leaseRecord)
+
+    if (!info.propertyId) {
+      if (showMessage) setMessage('Please select a property before posting onboarding charges.')
+      return { posted: false, reason: 'missing_property' }
+    }
+
+    if (!info.leaseStartDate || !info.monthKey) {
+      if (showMessage) setMessage('Please enter a lease start / move-in date before posting onboarding charges.')
+      return { posted: false, reason: 'missing_date' }
+    }
+
+    if (!info.proratedRent || info.proratedRent <= 0) {
+      if (showMessage) setMessage('No prorated rent amount is entered, so no onboarding charge was posted.')
+      return { posted: false, reason: 'no_prorated_rent' }
+    }
+
+    const existing = monthlyOverrides.find((item) => item.property_id === info.propertyId && item.month_key === info.monthKey)
+    const existingNotes = String(existing?.notes || '')
+    const alreadyPosted = hasPostedOnboardingCharge(leaseRecord)
+
+    if (alreadyPosted) {
+      if (showMessage) setMessage(`Onboarding prorated rent is already posted for ${monthLabel(info.monthKey)}.`)
+      return { posted: false, reason: 'already_posted' }
+    }
+
+    const noteParts = [
+      existingNotes && !existingNotes.toLowerCase().includes('lease onboarding prorated rent') ? existingNotes : '',
+      `Lease onboarding prorated rent through ${formatDate(info.paidThroughDate || endOfMonth(info.monthKey))}`,
+    ].filter(Boolean)
+
+    const payload = {
+      property_id: info.propertyId,
+      month_key: info.monthKey,
+      override_rent: info.proratedRent,
+      tenant_override: info.tenantNames || null,
+      move_in_date: info.leaseStartDate,
+      move_out_date: existing?.move_out_date || null,
+      starting_balance: Number(existing?.starting_balance || 0),
+      notes: noteParts.join(' | '),
+    }
+
+    let error
+    let data
+
+    if (existing?.id) {
+      ;({ data, error } = await supabase
+        .from('monthly_overrides')
+        .update(payload)
+        .eq('id', existing.id)
+        .select('*')
+        .single())
+    } else {
+      ;({ data, error } = await supabase
+        .from('monthly_overrides')
+        .insert(payload)
+        .select('*')
+        .single())
+    }
+
+    if (error) {
+      if (showMessage) setMessage(error.message)
+      return { posted: false, reason: 'error', error }
+    }
+
+    if (data) {
+      setMonthlyOverrides((current) => {
+        const withoutExisting = current.filter((item) => item.id !== data.id && !(item.property_id === data.property_id && item.month_key === data.month_key))
+        return [...withoutExisting, data].sort((a, b) => String(a.month_key).localeCompare(String(b.month_key)))
+      })
+    }
+
+    const property = companyProperties.find((item) => item.id === info.propertyId)
+    if (property) {
+      await supabase
+        .from('properties')
+        .update({
+          tenant: info.tenantNames || property.tenant || null,
+          monthly_rent: leaseRecord?.monthly_rent ?? (leaseForm.monthlyRent === '' ? property.monthly_rent : Number(leaseForm.monthlyRent || property.monthly_rent || 0)),
+        })
+        .eq('id', info.propertyId)
+    }
+
+    await loadData()
+
+    if (showMessage) {
+      setMessage(`Prorated onboarding charge posted: ${currency(info.proratedRent)} for ${monthLabel(info.monthKey)}. Full monthly rent will begin with the next rent cycle.`)
+    }
+
+    return { posted: true, data }
+  }
+
   async function saveLeaseRecord({ openPrint = false } = {}) {
     setMessage('')
 
@@ -3085,14 +3212,21 @@ This permanently removes the payment from the ledger.`
       return
     }
 
+    let onboardingChargeResult = { posted: false }
+
     if (data) {
       setLeases((current) => [data, ...current.filter((item) => item.id !== data.id)])
       await saveTenantProfileFromLease(data)
+      onboardingChargeResult = await postOnboardingCharges(data, { showMessage: false })
     }
 
+    const chargeMessage = onboardingChargeResult.posted
+      ? ' Prorated onboarding charge was also posted to the ledger.'
+      : ''
+
     setMessage(openPrint
-      ? 'Lease record saved. Your print dialog will open so you can save the PDF for Adobe signatures.'
-      : 'Lease record saved. You can now print/save the PDF and upload the signed copy when it comes back from Adobe.')
+      ? `Lease record saved.${chargeMessage} Your print dialog will open so you can save the PDF for Adobe signatures.`
+      : `Lease record saved.${chargeMessage} You can now print/save the PDF and upload the signed copy when it comes back from Adobe.`)
 
     if (openPrint) {
       setTimeout(() => printLeasePackage(), 150)
@@ -4864,6 +4998,9 @@ This permanently removes the payment from the ledger.`
                           <div style={styles.smallMuted}>
                             {formatDate(leaseRecord.lease_start_date)} - {formatDate(leaseRecord.lease_end_date)} · {currency(leaseRecord.monthly_rent)} rent · Status: {leaseRecord.status || 'draft'}
                           </div>
+                          {Number(leaseRecord.prorated_rent || 0) > 0 ? (
+                            <div style={styles.smallMuted}>Prorated move-in charge: {currency(leaseRecord.prorated_rent)} through {formatDate(leaseRecord.last_day_first_month)} {hasPostedOnboardingCharge(leaseRecord) ? '· Posted' : '· Not posted'}</div>
+                          ) : null}
                           {leaseRecord.signed_file_name ? (
                             <div style={styles.smallMuted}>Signed file: {leaseRecord.signed_file_name}</div>
                           ) : null}
@@ -4881,6 +5018,7 @@ This permanently removes the payment from the ledger.`
                           </label>
                           <button style={styles.secondaryButton} type="button" onClick={() => openSignedLease(leaseRecord)} disabled={!leaseRecord.signed_file_path}>Open Signed PDF</button>
                           <button style={styles.secondaryButton} type="button" onClick={() => markLeaseStatus(leaseRecord.id, 'sent')}>Mark Sent</button>
+                          <button style={styles.secondaryButton} type="button" onClick={() => postOnboardingCharges(leaseRecord)}>Post Onboarding Charges</button>
                           <button style={styles.dangerButton} type="button" onClick={() => deleteLeaseRecord(leaseRecord)}>Delete</button>
                         </div>
                       </div>
