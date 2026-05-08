@@ -3139,12 +3139,40 @@ This permanently removes the payment from the ledger.`
     return Math.abs(existingRent - info.proratedRent) < 0.01 && notes.includes('lease onboarding prorated rent')
   }
 
-  function getOnboardingDepositInfo(leaseRecord = null) {
+  function getOnboardingDepositInfo(leaseRecord = null, overrides = {}) {
     const propertyId = leaseRecord?.property_id || leaseForm.propertyId || ''
     const tenantNames = leaseRecord?.tenant_names || getLeaseTenantNamesForAgreement() || leaseForm.tenantNames || ''
-    const securityDeposit = Number(leaseRecord?.deposit_amount ?? leaseForm.depositAmount ?? 0)
-    const petDeposit = Number(leaseRecord?.pet_deposit_amount ?? leaseForm.petDepositAmount ?? 0)
-    const dueDate = normalizeDateInputValue(leaseRecord?.lease_start_date || leaseForm.leaseStartDate || leaseForm.moveInDate) || getTodayDateInput()
+    const existingRecord = securityDeposits[securityDepositKey(propertyId, tenantNames)] || null
+
+    const leaseSecurityValue = leaseRecord?.deposit_amount
+    const leasePetValue = leaseRecord?.pet_deposit_amount
+    const formSecurityValue = leaseForm.depositAmount
+    const formPetValue = leaseForm.petDepositAmount
+    const existingSecurityValue = existingRecord?.requiredAmount ?? existingRecord?.required_amount
+    const existingPetValue = existingRecord?.petRequiredAmount ?? existingRecord?.pet_required_amount
+
+    const securityDeposit = Number(
+      overrides.securityDeposit ??
+      (leaseSecurityValue !== null && leaseSecurityValue !== undefined && leaseSecurityValue !== '' ? leaseSecurityValue : undefined) ??
+      (formSecurityValue !== null && formSecurityValue !== undefined && formSecurityValue !== '' ? formSecurityValue : undefined) ??
+      existingSecurityValue ??
+      0
+    )
+    const petDeposit = Number(
+      overrides.petDeposit ??
+      (leasePetValue !== null && leasePetValue !== undefined && leasePetValue !== '' ? leasePetValue : undefined) ??
+      (formPetValue !== null && formPetValue !== undefined && formPetValue !== '' ? formPetValue : undefined) ??
+      existingPetValue ??
+      0
+    )
+    const dueDate = normalizeDateInputValue(
+      overrides.dueDate ||
+      leaseRecord?.lease_start_date ||
+      leaseForm.leaseStartDate ||
+      leaseForm.moveInDate ||
+      existingRecord?.dueDate ||
+      existingRecord?.due_date
+    ) || getTodayDateInput()
 
     return {
       propertyId,
@@ -3155,8 +3183,8 @@ This permanently removes the payment from the ledger.`
     }
   }
 
-  async function postOnboardingDepositRequirements(leaseRecord = null) {
-    const info = getOnboardingDepositInfo(leaseRecord)
+  async function postOnboardingDepositRequirements(leaseRecord = null, overrides = {}) {
+    const info = getOnboardingDepositInfo(leaseRecord, overrides)
 
     if (!info.propertyId || !info.tenantNames) {
       return { posted: false, reason: 'missing_property_or_tenant' }
@@ -3192,6 +3220,65 @@ This permanently removes the payment from the ledger.`
     return { posted: true, securityDeposit: info.securityDeposit, petDeposit: info.petDeposit }
   }
 
+  function promptForDepositRequirements(leaseRecord = null) {
+    const info = getOnboardingDepositInfo(leaseRecord)
+    const securityInput = window.prompt(
+      'Security deposit required:',
+      info.securityDeposit > 0 ? String(info.securityDeposit) : ''
+    )
+    if (securityInput === null) return null
+
+    const petInput = window.prompt(
+      'Pet deposit required, if any:',
+      info.petDeposit > 0 ? String(info.petDeposit) : ''
+    )
+    if (petInput === null) return null
+
+    const dueDateInput = window.prompt(
+      'Deposit due date (YYYY-MM-DD):',
+      info.dueDate || getTodayDateInput()
+    )
+    if (dueDateInput === null) return null
+
+    const securityDeposit = Number(securityInput || 0)
+    const petDeposit = Number(petInput || 0)
+    const dueDate = normalizeDateInputValue(dueDateInput)
+
+    if (Number.isNaN(securityDeposit) || securityDeposit < 0 || Number.isNaN(petDeposit) || petDeposit < 0) {
+      setMessage('Please enter valid deposit amounts. Use 0 if there is no pet deposit.')
+      return null
+    }
+
+    if (!dueDate) {
+      setMessage('Please enter a valid deposit due date.')
+      return null
+    }
+
+    return { securityDeposit, petDeposit, dueDate }
+  }
+
+  async function postRequiredDeposits(leaseRecord = null) {
+    setMessage('')
+    const overrides = promptForDepositRequirements(leaseRecord)
+    if (!overrides) return
+
+    const result = await postOnboardingDepositRequirements(leaseRecord, overrides)
+    if (result.error) {
+      setMessage(result.error.message)
+      return
+    }
+
+    await loadData()
+    if (result.posted) {
+      const parts = []
+      if (Number(result.securityDeposit || 0) > 0) parts.push(`Security deposit: ${currency(result.securityDeposit)}`)
+      if (Number(result.petDeposit || 0) > 0) parts.push(`Pet deposit: ${currency(result.petDeposit)}`)
+      setMessage(`Required deposit amounts saved. ${parts.join(' · ')}`)
+    } else {
+      setMessage('No deposit amount was entered, so no required deposit was posted.')
+    }
+  }
+
   async function postOnboardingCharges(leaseRecord = null, { showMessage = true } = {}) {
     const info = getOnboardingChargeInfo(leaseRecord)
 
@@ -3219,7 +3306,7 @@ This permanently removes the payment from the ledger.`
       if (showMessage) {
         setMessage(depositPosted
           ? 'Deposit requirement posted to the security deposit tracker. No prorated rent amount was entered.'
-          : 'No prorated rent or deposit amount is entered, so no onboarding charges were posted.')
+          : 'No prorated rent or saved deposit amount is entered, so no onboarding charges were posted. Use Post Required Deposits if this older lease record needs a deposit amount added.')
       }
       await loadData()
       return { posted: depositPosted, rentPosted: false, depositPosted }
@@ -5170,6 +5257,11 @@ This permanently removes the payment from the ledger.`
                           {Number(leaseRecord.prorated_rent || 0) > 0 ? (
                             <div style={styles.smallMuted}>Prorated move-in charge: {currency(leaseRecord.prorated_rent)} through {formatDate(leaseRecord.last_day_first_month)} {hasPostedOnboardingCharge(leaseRecord) ? '· Posted' : '· Not posted'}</div>
                           ) : null}
+                          {Number(leaseRecord.deposit_amount || 0) > 0 || Number(leaseRecord.pet_deposit_amount || 0) > 0 ? (
+                            <div style={styles.smallMuted}>Required deposits: {Number(leaseRecord.deposit_amount || 0) > 0 ? `Security ${currency(leaseRecord.deposit_amount)}` : ''}{Number(leaseRecord.deposit_amount || 0) > 0 && Number(leaseRecord.pet_deposit_amount || 0) > 0 ? ' · ' : ''}{Number(leaseRecord.pet_deposit_amount || 0) > 0 ? `Pet ${currency(leaseRecord.pet_deposit_amount)}` : ''}</div>
+                          ) : (
+                            <div style={styles.smallMuted}>No deposit amount saved on this lease record. Use Post Required Deposits if needed.</div>
+                          )}
                           {leaseRecord.signed_file_name ? (
                             <div style={styles.smallMuted}>Signed file: {leaseRecord.signed_file_name}</div>
                           ) : null}
@@ -5188,6 +5280,7 @@ This permanently removes the payment from the ledger.`
                           <button style={styles.secondaryButton} type="button" onClick={() => openSignedLease(leaseRecord)} disabled={!leaseRecord.signed_file_path}>Open Signed PDF</button>
                           <button style={styles.secondaryButton} type="button" onClick={() => markLeaseStatus(leaseRecord.id, 'sent')}>Mark Sent</button>
                           <button style={styles.secondaryButton} type="button" onClick={() => postOnboardingCharges(leaseRecord)}>Post Onboarding Charges</button>
+                          <button style={styles.secondaryButton} type="button" onClick={() => postRequiredDeposits(leaseRecord)}>Post Required Deposits</button>
                           <button style={styles.dangerButton} type="button" onClick={() => deleteLeaseRecord(leaseRecord)}>Delete</button>
                         </div>
                       </div>
