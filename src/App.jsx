@@ -4704,7 +4704,7 @@ This permanently removes the payment from the ledger.`
               ))}
             </select>
 
-            <div style={styles.statementFilterGrid}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 223px)', gap: '12px', justifyContent: 'start', alignItems: 'end', overflowX: 'auto', paddingBottom: '4px' }}>
               <div>
                 <label style={styles.label}>Tenant 1 Name</label>
                 <input style={styles.input} value={leaseForm.tenantNames} onChange={(e) => updateLeaseForm({ tenantNames: e.target.value })} placeholder="Example: John Smith" />
@@ -4717,7 +4717,8 @@ This permanently removes the payment from the ledger.`
                 <label style={styles.label}>Tenant 1 Email</label>
                 <input style={styles.input} type="email" value={leaseForm.tenantEmail} onChange={(e) => updateLeaseForm({ tenantEmail: e.target.value })} placeholder="Email address" />
               </div>
-              <div>
+
+              <div style={{ gridColumn: '1 / span 1' }}>
                 <label style={styles.label}>Tenant 2 Name</label>
                 <input style={styles.input} value={leaseForm.tenant2Name} onChange={(e) => updateLeaseForm({ tenant2Name: e.target.value })} placeholder="Example: Jane Smith" />
               </div>
@@ -4729,15 +4730,17 @@ This permanently removes the payment from the ledger.`
                 <label style={styles.label}>Tenant 2 Email</label>
                 <input style={styles.input} type="email" value={leaseForm.tenant2Email} onChange={(e) => updateLeaseForm({ tenant2Email: e.target.value })} placeholder="Optional second email" />
               </div>
-              <div>
+
+              <div style={{ gridColumn: '1 / span 1' }}>
                 <label style={styles.label}>Occupants</label>
                 <input style={styles.input} value={leaseForm.occupants} onChange={(e) => updateLeaseForm({ occupants: e.target.value })} placeholder="All approved occupants" />
               </div>
-              <div>
+              <div style={{ gridColumn: '2 / span 3' }}>
                 <label style={styles.label}>Contact / Tenant Notes</label>
                 <input style={styles.input} value={leaseForm.tenantContactNotes} onChange={(e) => updateLeaseForm({ tenantContactNotes: e.target.value })} placeholder="Extra contact info, alternate numbers, best time to text, etc." />
               </div>
-              <div>
+
+              <div style={{ gridColumn: '1 / span 1' }}>
                 <label style={styles.label}>Lease Date</label>
                 <input style={styles.input} type="date" value={normalizeDateInputValue(leaseForm.leaseDate)} onChange={(e) => updateLeaseForm({ leaseDate: normalizeDateInputValue(e.target.value) })} />
               </div>
