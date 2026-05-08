@@ -4468,9 +4468,8 @@ This permanently removes the payment from the ledger.`
                 </section>
 
                 <section className="lease-page lease-addendum-page">
-                  <div className="lease-company-line"><span>{selectedCompanyName}</span><span>Lease Date: {formatDate(leaseForm.leaseDate)}</span></div>
+                  <p className="lease-line lease-page-meta"><strong>Property Address:</strong> <span className="lease-fill">{leaseForm.propertyAddress || selectedLeaseProperty?.address || '________________'} {leaseForm.propertyState} {leaseForm.propertyZip}</span> <strong>Lease Date:</strong> <span className="lease-fill">{formatDate(leaseForm.leaseDate)}</span></p>
                   <h2 className="lease-rules-title">RULES & REGULATIONS</h2>
-                  <p><strong>Property Address:</strong> {leaseForm.propertyAddress || selectedLeaseProperty?.address || '________________'} {leaseForm.propertyState} {leaseForm.propertyZip}</p>
                   <ol className="lease-rules-list">
                     <li>Landlord/Property Manager may inspect the home at any time. Semi-annual inspection is required.</li>
                     <li>Air filter must be changed monthly. Dryer vents/hoses must be cleaned after each use. Repairs needed due to these items will be at lessee's expense.</li>
@@ -4507,7 +4506,7 @@ This permanently removes the payment from the ledger.`
                     <li>For purposes of this agreement, lessor shall be either owner or manager.</li>
                     <li>All communication regarding property/lease should be forwarded to the appropriate property manager of {selectedCompanyName}.</li>
                   </ol>
-                  <div className="lease-initial-row compact"><div className="lease-sign-line">Lessee Initials</div><div className="lease-sign-line">Lessee Initials</div><div className="lease-sign-line blank">&nbsp;</div><div className="lease-sign-line blank">&nbsp;</div></div>
+                  <div className="lease-page-footer"><div className="lease-initial-row"><div className="lease-sign-line">LESSEE'S INITIALS</div><div className="lease-sign-line">LESSEE'S INITIALS</div><div className="lease-sign-line blank">&nbsp;</div><div className="lease-sign-line blank">&nbsp;</div></div></div>
                   <div className="lease-page-number">Page 5 of 7</div>
                 </section>
 
