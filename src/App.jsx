@@ -2989,13 +2989,82 @@ This permanently removes the payment from the ledger.`
     }
   }
 
+  async function deleteSignedLeaseFile(leaseRecord, { confirmFirst = true } = {}) {
+    if (!leaseRecord?.id || !leaseRecord?.signed_file_path) {
+      setMessage('No signed lease PDF has been uploaded for this record yet.')
+      return false
+    }
+
+    if (confirmFirst) {
+      const confirmed = confirmDeleteWithPrompt(
+        `Delete signed PDF for ${leaseRecord.tenant_names || 'this tenant'}?\n\nThis removes the uploaded signed file from Supabase Storage, but keeps the lease record.`
+      )
+      if (!confirmed) return false
+    }
+
+    setMessage('')
+    const { error: storageError } = await supabase.storage
+      .from('lease-documents')
+      .remove([leaseRecord.signed_file_path])
+
+    if (storageError) {
+      setMessage(storageError.message)
+      return false
+    }
+
+    const { data, error } = await supabase
+      .from('leases')
+      .update({
+        signed_file_path: null,
+        signed_file_name: null,
+        signed_at: null,
+        status: leaseRecord.status === 'signed' ? 'draft' : leaseRecord.status || 'draft',
+      })
+      .eq('id', leaseRecord.id)
+      .select('*')
+      .single()
+
+    if (error) {
+      setMessage(error.message)
+      return false
+    }
+
+    if (data) {
+      setLeases((current) => current.map((item) => (item.id === leaseRecord.id ? data : item)))
+    }
+
+    setMessage('Signed lease PDF deleted from storage.')
+    return true
+  }
+
+  async function archiveLeaseRecord(leaseRecord) {
+    const confirmed = window.confirm(
+      `Archive lease record for ${leaseRecord.tenant_names || 'this tenant'}?\n\nThis keeps the record and any uploaded PDF, but marks it Archived so it is not treated as active.`
+    )
+    if (!confirmed) return
+
+    await markLeaseStatus(leaseRecord.id, 'archived')
+  }
+
   async function deleteLeaseRecord(leaseRecord) {
     const confirmed = confirmDeleteWithPrompt(
-      `Delete lease record for ${leaseRecord.tenant_names || 'this tenant'}?\n\nThis removes the lease record. Uploaded signed PDF files may remain in storage unless manually removed.`
+      `Delete lease record for ${leaseRecord.tenant_names || 'this tenant'}?\n\nThis permanently removes the lease record${leaseRecord.signed_file_path ? ' and its uploaded signed PDF' : ''}.`
     )
     if (!confirmed) return
 
     setMessage('')
+
+    if (leaseRecord.signed_file_path) {
+      const { error: storageError } = await supabase.storage
+        .from('lease-documents')
+        .remove([leaseRecord.signed_file_path])
+
+      if (storageError) {
+        setMessage(`Signed PDF could not be deleted: ${storageError.message}`)
+        return
+      }
+    }
+
     const { error } = await supabase.from('leases').delete().eq('id', leaseRecord.id)
 
     if (error) {
@@ -3004,7 +3073,7 @@ This permanently removes the payment from the ledger.`
     }
 
     setLeases((current) => current.filter((item) => item.id !== leaseRecord.id))
-    setMessage('Lease record deleted.')
+    setMessage(leaseRecord.signed_file_path ? 'Lease record and signed PDF deleted.' : 'Lease record deleted.')
   }
 
 
@@ -4580,7 +4649,7 @@ This permanently removes the payment from the ledger.`
             <div style={styles.reportHeaderRow}>
               <div>
                 <h2 style={styles.cardTitle}>Saved Lease Records</h2>
-                <p style={styles.smallMuted}>Upload the Adobe-signed PDF here after it comes back signed. Records are tied to the selected company/property.</p>
+                <p style={styles.smallMuted}>Upload the Adobe-signed PDF here after it comes back signed. You can archive/delete test records and remove uploaded signed PDFs during testing.</p>
               </div>
             </div>
 
@@ -4616,7 +4685,9 @@ This permanently removes the payment from the ledger.`
                           </label>
                           <button style={styles.secondaryButton} type="button" onClick={() => openSignedLease(leaseRecord)} disabled={!leaseRecord.signed_file_path}>Open Signed PDF</button>
                           <button style={styles.secondaryButton} type="button" onClick={() => markLeaseStatus(leaseRecord.id, 'sent')}>Mark Sent</button>
-                          <button style={styles.dangerButton} type="button" onClick={() => deleteLeaseRecord(leaseRecord)}>Delete</button>
+                          <button style={styles.secondaryButton} type="button" onClick={() => archiveLeaseRecord(leaseRecord)}>Archive</button>
+                          <button style={styles.dangerButton} type="button" onClick={() => deleteSignedLeaseFile(leaseRecord)} disabled={!leaseRecord.signed_file_path}>Delete Signed PDF</button>
+                          <button style={styles.dangerButton} type="button" onClick={() => deleteLeaseRecord(leaseRecord)}>Delete Record</button>
                         </div>
                       </div>
                     </div>
