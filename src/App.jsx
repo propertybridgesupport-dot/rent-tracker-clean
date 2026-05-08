@@ -2633,24 +2633,25 @@ This permanently removes the payment from the ledger.`
             th, td { border: 1px solid #d9cfc0; padding: 10px; text-align: left; vertical-align: top; }
             th { background: #fbf7f1; color: #9a6d2f; text-transform: uppercase; letter-spacing: .04em; font-size: 12px; }
             .lease-package { max-width: 8.5in; margin: 0 auto; color: #111827; font-family: 'Times New Roman', Times, serif; font-size: 11px; line-height: 1.22; }
-            .lease-page { width: 8.5in; height: 11in; min-height: 11in; padding: 0.28in 0.36in 0.34in; box-sizing: border-box; page-break-after: always; break-after: page; background: #fff; display: flex; flex-direction: column; position: relative; overflow: hidden; }
+            .lease-page { width: 8.5in; height: 11in; min-height: 11in; padding: 0.26in 0.48in 0.34in; box-sizing: border-box; page-break-after: always; break-after: page; background: #fff; display: flex; flex-direction: column; position: relative; overflow: hidden; }
             .lease-page:last-child { page-break-after: auto; break-after: auto; }
-            .lease-title { text-align: center; font-size: 16.5px; font-weight: 700; letter-spacing: .04em; margin: 0 0 8px; }
+            .lease-title { text-align: center; font-size: 17px; font-weight: 700; letter-spacing: .04em; margin: 0 0 8px; }
             .lease-company-line { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; margin-bottom: 8px; padding-bottom: 5px; border-bottom: 1px solid #111827; font-weight: 700; font-size: 11px; flex: 0 0 auto; }
-            .lease-company-line span:first-child { font-size: 16px; letter-spacing: .01em; }
+            .lease-company-line span:first-child { font-size: 16.5px; letter-spacing: .01em; }
             .lease-company-line span:last-child { font-size: 10px; }
             .lease-line { margin: 0 0 4px; }
             .lease-section-title { font-weight: 700; font-style: italic; text-transform: uppercase; text-decoration: underline; margin-right: 6px; }
             .lease-fill { font-weight: 700; text-decoration: underline; }
             .lease-page-body { flex: 1 1 auto; min-height: 0; overflow: hidden; }
             .lease-page-footer { flex: 0 0 auto; margin-top: auto; padding-top: 0.1in; }
-            .lease-page-number { position: absolute; right: 0.36in; bottom: 0.12in; font-size: 8px; color: #111827; }
+            .lease-page-number { position: absolute; right: 0.48in; bottom: 0.12in; font-size: 8px; color: #111827; }
             .lease-initial-row, .lease-signature-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 22px; text-align: center; font-size: 9px; page-break-inside: avoid; break-inside: avoid; }
             .lease-page-footer .lease-initial-row { margin-top: 0; margin-bottom: 0.11in; font-size: 8px; line-height: 1.05; }
             .lease-signature-row { grid-template-columns: 1fr 1fr; margin-top: 34px; }
             .lease-sign-line { border-top: 1px solid #111827; padding-top: 4px; min-height: 18px; }
             .lease-initial-row .lease-sign-line { width: 100%; margin: 0 auto; border-top: 0; padding-top: 8px; position: relative; white-space: nowrap; }
             .lease-initial-row .lease-sign-line::before { content: ''; position: absolute; top: 0; left: 50%; width: 0.45in; transform: translateX(-50%); border-top: 1px solid #111827; }
+            .lease-initial-row .lease-sign-line.blank::before { border-top-color: transparent; }
             .lease-sign-line.blank { border-top-color: transparent; }
             .lease-rules-title { text-align: center; font-size: 17px; font-weight: 700; margin: 8px 0 12px; }
             .lease-rules-list li { margin-bottom: 4px; }
@@ -2658,15 +2659,15 @@ This permanently removes the payment from the ledger.`
             .pet-provision-page .lease-addendum-title { margin: 0.55in 0 0.35in; font-size: 19px; letter-spacing: .03em; }
             .pet-provision-page p { margin-bottom: 16px; }
             .lease-small-note { font-size: 10px; color: #374151; }
-            .lease-formal-page { font-size: 12.05px; line-height: 1.1; }
-            .lease-formal-page.lease-tight-page { font-size: 11.35px; line-height: 1.055; }
-            .lease-addendum-page { font-size: 11.6px; line-height: 1.18; }
-            .pet-provision-page { font-size: 14px; line-height: 1.34; }
+            .lease-formal-page { font-size: 12.55px; line-height: 1.11; }
+            .lease-formal-page.lease-tight-page { font-size: 11.9px; line-height: 1.065; }
+            .lease-addendum-page { font-size: 12.15px; line-height: 1.21; }
+            .pet-provision-page { font-size: 15px; line-height: 1.4; }
             .lease-page-meta { display: flex; justify-content: space-between; gap: 16px; border-bottom: 1px solid #111827; padding-bottom: 4px; margin-bottom: 7px; }
             .lease-occupants-line { min-height: 20px; margin: 5px 0 7px 28px; }
             .lease-warning { text-align: center; font-weight: 700; margin: 18px 0 20px; padding: 10px 0; line-height: 1.35; }
             .lease-repair-call { margin-top: 0.72in !important; font-size: 13px; font-weight: 700; }
-            .lease-initial-row.compact, .lease-signature-row.compact { margin-top: 22px; margin-bottom: 12px; font-size: 8px; }
+            .lease-initial-row.compact, .lease-signature-row.compact { margin-top: 24px; margin-bottom: 14px; font-size: 8px; }
             .lease-signature-row.compact .lease-sign-line::before { width: 0.45in; }
             .lease-rules-list { padding-left: 20px; margin-top: 8px; }
             .lease-page p { orphans: 2; widows: 2; }
@@ -4453,11 +4454,11 @@ This permanently removes the payment from the ledger.`
                   <p className="lease-line"><span className="lease-section-title">LEAD-BASED PAINT, ASBESTOS, RADON</span> Lessee is aware that the premises may contain lead based paint, asbestos, or other toxins which may cause serious injury or death if consumed or ingested into the human body, and lessee acknowledges that the "Protect Your Family From Lead in Your Home" pamphlet has been called to their attention with respect to notice and information of lead base paint. Having knowledge of these facts, Lessee agrees to maintain the premises in a reasonably safe condition, to report to Lessor any condition which may lead to damage or injury because of lead, asbestos or other toxins, and Lessee further agrees to assume the use and occupancy of the herein leased premises at his own risk and hereby releases Lessor, his agents and/or representatives from any claims relating to or sustained as a consequence thereof, and further agrees to hold harmless, defend and indemnify Lessor, his agents and/or representatives from any claims made by Lessee, residents of his household or others using the premises with the consent and permission of Lessee.</p>
                   <p className="lease-line"><strong>LESSOR:</strong> Were there any structures built on this property prior to 1978?  ☐ Yes   ☐ No   ☐ Unknown</p>
                   <p className="lease-line">If Yes or Unknown is checked, this Residential Lease is submitted with Lessor's Disclosure of Information on Lead-Based Paint and Lead-Based Paint Hazards Form dated __________.</p>
-                  <div className="lease-initial-row compact"><div className="lease-sign-line">LESSEE'S INITIALS</div><div className="lease-sign-line">LESSEE'S INITIALS</div><div className="lease-sign-line">LESSOR'S INITIALS</div><div className="lease-sign-line">LESSOR'S INITIALS</div></div>
+                  <div className="lease-initial-row compact"><div className="lease-sign-line">LESSEE'S INITIALS</div><div className="lease-sign-line">LESSEE'S INITIALS</div><div className="lease-sign-line blank">&nbsp;</div><div className="lease-sign-line">LESSOR'S INITIALS</div></div>
                   <p className="lease-line"><span className="lease-section-title">MOLD RELATED HAZARDS NOTICE</span> An informational pamphlet regarding common mold related hazards that can affect real property is available at the EPA website http:www.epa.gov/iaq/molds/index.html. By initialing this section, Lessee acknowledges that the real estate agent has provided Lessee with the EPA website enabling Lessee to obtain information regarding common mold related hazards.</p>
-                  <div className="lease-signature-row compact"><div className="lease-sign-line">LESSEE'S INITIALS</div><div className="lease-sign-line">LESSEE'S INITIALS</div></div>
+                  <div className="lease-initial-row compact"><div className="lease-sign-line">LESSEE'S INITIALS</div><div className="lease-sign-line">LESSEE'S INITIALS</div><div className="lease-sign-line blank">&nbsp;</div><div className="lease-sign-line blank">&nbsp;</div></div>
                   <p className="lease-line"><span className="lease-section-title">SEX OFFENDER AND CHILD PREDATOR REGISTRY NOTICE</span> The Louisiana Bureau of Criminal Identification and Information maintains a State Sex Offender and Child Predator Registry, which is a public access database of the locations of individuals required to register pursuant to LSA-R.S. 15:540 et seq. Sheriff's Department and Police Departments serving jurisdictions of 450,000 also maintain such information. The State Sex Offender and Child Predator Registry database can be accessed at www.lasocpr.lsp.org/socpr/ and contains address, pictures and conviction records for registered offenders. The database can be searched by zip code, city, Parish or by offender name. Information is also available by phone at 1-800-858-0551 or 225-925-6100 or mail at P.O. Box 66614, Mail Slip #18, Baton Rouge, Louisiana 70896. You can also email State Services at SOCP@dps.state.la.us for more information.</p>
-                  <div className="lease-signature-row compact"><div className="lease-sign-line">LESSEE'S INITIALS</div><div className="lease-sign-line">LESSEE'S INITIALS</div></div>
+                  <div className="lease-initial-row compact"><div className="lease-sign-line">LESSEE'S INITIALS</div><div className="lease-sign-line">LESSEE'S INITIALS</div><div className="lease-sign-line blank">&nbsp;</div><div className="lease-sign-line blank">&nbsp;</div></div>
                   <p className="lease-line">Time is of the essence. This document and any indicated addendum contain this entire lease. If any part of this lease is or becomes contrary to law, the remainder of this lease shall be unaffected. Any changes must be agreed upon in writing, and signed by Lessor and Lessee.</p>
                   <p className="lease-line lease-warning">WE DO BUSINESS IN ACCORDANCE WITH FEDERAL FAIR HOUSING LAWS<br />FACSIMILE SIGNATURES ARE ACCEPTABLE AND BINDING AS ORIGINALS<br />THIS IS A BINDING LEGAL DOCUMENT. READ CAREFULLY BEFORE SIGNING.</p>
                   <div className="lease-signature-row"><div className="lease-sign-line">Lessee Signature / Date</div><div className="lease-sign-line">Lessee Signature / Date</div></div>
@@ -4506,7 +4507,7 @@ This permanently removes the payment from the ledger.`
                     <li>For purposes of this agreement, lessor shall be either owner or manager.</li>
                     <li>All communication regarding property/lease should be forwarded to the appropriate property manager of {selectedCompanyName}.</li>
                   </ol>
-                  <div className="lease-signature-row compact"><div className="lease-sign-line">Lessee Initials</div><div className="lease-sign-line">Lessee Initials</div></div>
+                  <div className="lease-initial-row compact"><div className="lease-sign-line">Lessee Initials</div><div className="lease-sign-line">Lessee Initials</div><div className="lease-sign-line blank">&nbsp;</div><div className="lease-sign-line blank">&nbsp;</div></div>
                   <div className="lease-page-number">Page 5 of 7</div>
                 </section>
 
