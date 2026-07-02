@@ -13,17 +13,6 @@ function currency(value) {
   }).format(Number(value || 0))
 }
 
-function nullableNumber(value) {
-  if (value === '' || value === null || value === undefined) return null
-  const parsed = Number(value)
-  return Number.isFinite(parsed) ? parsed : null
-}
-
-function numberOrZero(value) {
-  const parsed = nullableNumber(value)
-  return parsed === null ? 0 : parsed
-}
-
 function monthLabel(month) {
   const [year, mon] = month.split('-')
   return new Date(Number(year), Number(mon) - 1, 1).toLocaleDateString('en-US', {
@@ -3194,6 +3183,101 @@ This permanently removes the payment from the ledger.`
     }
   }
 
+
+  async function applyLeaseTenantSetup(leaseRecord = null, infoOverride = null) {
+    const info = infoOverride || getOnboardingChargeInfo(leaseRecord)
+
+    if (!info.propertyId || !info.tenantNames || !info.leaseStartDate || !info.monthKey) {
+      return { posted: false, reason: 'missing_property_tenant_or_date' }
+    }
+
+    const property = companyProperties.find((item) => item.id === info.propertyId) || activeCompanyProperties.find((item) => item.id === info.propertyId)
+    const monthlyRent = nullableNumber(leaseRecord?.monthly_rent) ?? nullableNumber(leaseForm.monthlyRent) ?? nullableNumber(property?.monthly_rent) ?? 0
+
+    let propertyUpdated = false
+    if (property) {
+      const updatePayload = {
+        tenant: info.tenantNames || property.tenant || null,
+        monthly_rent: monthlyRent,
+      }
+
+      const { error: propertyError } = await supabase
+        .from('properties')
+        .update(updatePayload)
+        .eq('id', info.propertyId)
+
+      if (propertyError) {
+        return { posted: false, reason: 'property_error', error: propertyError }
+      }
+      propertyUpdated = true
+    }
+
+    const existing = monthlyOverrides.find((item) => item.property_id === info.propertyId && item.month_key === info.monthKey)
+    const existingNotes = String(existing?.notes || '')
+    const alreadyHasTenantSetup = Boolean(
+      existing?.tenant_override === info.tenantNames &&
+      normalizeDateInputValue(existing?.move_in_date) === info.leaseStartDate
+    )
+
+    const noteParts = [
+      existingNotes,
+      existingNotes.toLowerCase().includes('lease onboarding tenant setup') ? '' : `Lease onboarding tenant setup beginning ${formatDate(info.leaseStartDate)}`,
+    ].filter(Boolean)
+
+    const overridePayload = {
+      property_id: info.propertyId,
+      month_key: info.monthKey,
+      override_rent: existing?.override_rent ?? null,
+      tenant_override: info.tenantNames || existing?.tenant_override || null,
+      move_in_date: info.leaseStartDate,
+      move_out_date: existing?.move_out_date || null,
+      starting_balance: Number(existing?.starting_balance || 0),
+      notes: noteParts.join(' | '),
+    }
+
+    let overrideUpdated = false
+    if (existing?.id) {
+      const { data, error } = await supabase
+        .from('monthly_overrides')
+        .update(overridePayload)
+        .eq('id', existing.id)
+        .select('*')
+        .single()
+
+      if (error) {
+        return { posted: propertyUpdated, reason: 'override_error', error }
+      }
+
+      if (data) {
+        overrideUpdated = !alreadyHasTenantSetup
+        setMonthlyOverrides((current) => {
+          const withoutExisting = current.filter((item) => item.id !== data.id && !(item.property_id === data.property_id && item.month_key === data.month_key))
+          return [...withoutExisting, data].sort((a, b) => String(a.month_key).localeCompare(String(b.month_key)))
+        })
+      }
+    } else {
+      const { data, error } = await supabase
+        .from('monthly_overrides')
+        .insert(overridePayload)
+        .select('*')
+        .single()
+
+      if (error) {
+        return { posted: propertyUpdated, reason: 'override_error', error }
+      }
+
+      if (data) {
+        overrideUpdated = true
+        setMonthlyOverrides((current) => {
+          const withoutExisting = current.filter((item) => item.id !== data.id && !(item.property_id === data.property_id && item.month_key === data.month_key))
+          return [...withoutExisting, data].sort((a, b) => String(a.month_key).localeCompare(String(b.month_key)))
+        })
+      }
+    }
+
+    return { posted: propertyUpdated || overrideUpdated, propertyUpdated, overrideUpdated }
+  }
+
   async function postOnboardingDepositRequirements(leaseRecord = null, overrides = {}) {
     const info = getOnboardingDepositInfo(leaseRecord, overrides)
 
@@ -3207,23 +3291,16 @@ This permanently removes the payment from the ledger.`
 
     const existingRecord = securityDeposits[securityDepositKey(info.propertyId, info.tenantNames)] || null
 
-    const existingSecurityAmount = nullableNumber(existingRecord?.requiredAmount ?? existingRecord?.required_amount)
-    const existingPetAmount = nullableNumber(existingRecord?.petRequiredAmount ?? existingRecord?.pet_required_amount)
-    const existingRefundAmount = nullableNumber(existingRecord?.refundAmount ?? existingRecord?.refund_amount)
-    const existingDeductionAmount = nullableNumber(existingRecord?.deductionAmount ?? existingRecord?.deduction_amount)
-
     const payload = {
       property_id: info.propertyId,
       tenant: info.tenantNames,
-      required_amount: info.securityDeposit > 0 ? info.securityDeposit : existingSecurityAmount,
-      pet_required_amount: info.petDeposit > 0 ? info.petDeposit : existingPetAmount,
+      required_amount: info.securityDeposit > 0 ? info.securityDeposit : (existingRecord?.requiredAmount ?? existingRecord?.required_amount ?? null),
+      pet_required_amount: info.petDeposit > 0 ? info.petDeposit : (existingRecord?.petRequiredAmount ?? existingRecord?.pet_required_amount ?? null),
       due_date: info.dueDate || existingRecord?.dueDate || existingRecord?.due_date || null,
-      pet_due_date: info.petDeposit > 0
-        ? (info.dueDate || existingRecord?.petDueDate || existingRecord?.pet_due_date || null)
-        : (existingRecord?.petDueDate || existingRecord?.pet_due_date || null),
+      pet_due_date: info.petDeposit > 0 ? (info.dueDate || existingRecord?.petDueDate || existingRecord?.pet_due_date || null) : (existingRecord?.petDueDate ?? existingRecord?.pet_due_date ?? null),
       refund_date: existingRecord?.refundDate || existingRecord?.refund_date || null,
-      refund_amount: existingRefundAmount,
-      deduction_amount: existingDeductionAmount,
+      refund_amount: existingRecord?.refundAmount === '' ? null : (existingRecord?.refundAmount ?? existingRecord?.refund_amount ?? null),
+      deduction_amount: existingRecord?.deductionAmount === '' ? null : (existingRecord?.deductionAmount ?? existingRecord?.deduction_amount ?? null),
       deduction_note: existingRecord?.deductionNote || existingRecord?.deduction_note || null,
     }
 
@@ -3315,19 +3392,28 @@ This permanently removes the payment from the ledger.`
     let depositPosted = false
 
     if (!shouldPostProratedRent) {
+      const tenantSetupResult = await applyLeaseTenantSetup(leaseRecord, info)
+      if (tenantSetupResult.error) {
+        if (showMessage) setMessage(tenantSetupResult.error.message)
+        return { posted: false, reason: 'tenant_setup_error', error: tenantSetupResult.error }
+      }
+
       const depositResult = await postOnboardingDepositRequirements(leaseRecord)
       depositPosted = Boolean(depositResult.posted)
       if (depositResult.error) {
         if (showMessage) setMessage(depositResult.error.message)
-        return { posted: false, reason: 'deposit_error', error: depositResult.error }
+        return { posted: Boolean(tenantSetupResult.posted), tenantPosted: Boolean(tenantSetupResult.posted), reason: 'deposit_error', error: depositResult.error }
       }
       if (showMessage) {
-        setMessage(depositPosted
-          ? 'Deposit requirement posted to the security deposit tracker. No prorated rent amount was entered.'
-          : 'No prorated rent or saved deposit amount is entered, so no onboarding charges were posted. Use Post Required Deposits if this older lease record needs a deposit amount added.')
+        const parts = []
+        if (tenantSetupResult.posted) parts.push('tenant and rent setup posted to the ledger')
+        if (depositPosted) parts.push('deposit requirement saved')
+        setMessage(parts.length > 0
+          ? `${parts.join(' and ')}. No prorated rent amount was entered, so full monthly rent will apply for the move-in month.`
+          : 'No prorated rent or saved deposit amount is entered, and the tenant setup was already posted. Use Post Required Deposits if this older lease record needs a deposit amount added.')
       }
       await loadData()
-      return { posted: depositPosted, rentPosted: false, depositPosted }
+      return { posted: Boolean(tenantSetupResult.posted || depositPosted), rentPosted: false, tenantPosted: Boolean(tenantSetupResult.posted), depositPosted }
     }
 
     const existing = monthlyOverrides.find((item) => item.property_id === info.propertyId && item.month_key === info.monthKey)
@@ -3335,18 +3421,24 @@ This permanently removes the payment from the ledger.`
     const alreadyPosted = hasPostedOnboardingCharge(leaseRecord)
 
     if (alreadyPosted) {
+      const tenantSetupResult = await applyLeaseTenantSetup(leaseRecord, info)
+      if (tenantSetupResult.error) {
+        if (showMessage) setMessage(tenantSetupResult.error.message)
+        return { posted: false, reason: 'tenant_setup_error', error: tenantSetupResult.error }
+      }
+
       const depositResult = await postOnboardingDepositRequirements(leaseRecord)
       if (depositResult.error) {
         if (showMessage) setMessage(depositResult.error.message)
-        return { posted: false, reason: 'deposit_error', error: depositResult.error }
+        return { posted: Boolean(tenantSetupResult.posted), tenantPosted: Boolean(tenantSetupResult.posted), reason: 'deposit_error', error: depositResult.error }
       }
       if (showMessage) {
         setMessage(depositResult.posted
-          ? `Onboarding prorated rent was already posted for ${monthLabel(info.monthKey)}. Deposit requirement was also saved.`
-          : `Onboarding prorated rent is already posted for ${monthLabel(info.monthKey)}.`)
+          ? `Onboarding prorated rent was already posted for ${monthLabel(info.monthKey)}. Tenant setup and deposit requirement were also saved.`
+          : `Onboarding prorated rent is already posted for ${monthLabel(info.monthKey)}. Tenant setup was checked.`)
       }
       await loadData()
-      return { posted: Boolean(depositResult.posted), rentPosted: false, depositPosted: Boolean(depositResult.posted), reason: 'already_posted' }
+      return { posted: Boolean(tenantSetupResult.posted || depositResult.posted), rentPosted: false, tenantPosted: Boolean(tenantSetupResult.posted), depositPosted: Boolean(depositResult.posted), reason: 'already_posted' }
     }
 
     const noteParts = [
@@ -3409,7 +3501,7 @@ This permanently removes the payment from the ledger.`
         .from('properties')
         .update({
           tenant: info.tenantNames || property.tenant || null,
-          monthly_rent: nullableNumber(leaseRecord?.monthly_rent) ?? nullableNumber(leaseForm.monthlyRent) ?? nullableNumber(property.monthly_rent) ?? 0,
+          monthly_rent: leaseRecord?.monthly_rent ?? (leaseForm.monthlyRent === '' ? property.monthly_rent : Number(leaseForm.monthlyRent || property.monthly_rent || 0)),
         })
         .eq('id', info.propertyId)
     }
@@ -3463,6 +3555,7 @@ This permanently removes the payment from the ledger.`
 
     const chargeParts = []
     if (onboardingChargeResult.rentPosted) chargeParts.push('prorated rent was posted to the ledger')
+    if (onboardingChargeResult.tenantPosted) chargeParts.push('tenant/rent setup was posted')
     if (onboardingChargeResult.depositPosted) chargeParts.push('deposit requirement was saved')
     const chargeMessage = chargeParts.length > 0 ? ` ${chargeParts.join(' and ')}.` : ''
 
