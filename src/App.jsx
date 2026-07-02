@@ -13,6 +13,17 @@ function currency(value) {
   }).format(Number(value || 0))
 }
 
+function nullableNumber(value) {
+  if (value === '' || value === null || value === undefined) return null
+  const parsed = Number(value)
+  return Number.isFinite(parsed) ? parsed : null
+}
+
+function numberOrZero(value) {
+  const parsed = nullableNumber(value)
+  return parsed === null ? 0 : parsed
+}
+
 function monthLabel(month) {
   const [year, mon] = month.split('-')
   return new Date(Number(year), Number(mon) - 1, 1).toLocaleDateString('en-US', {
@@ -1933,19 +1944,9 @@ This permanently removes the payment from the ledger.`
 
   const selectedDepositTenant = useMemo(() => {
     if (!selectedDepositProperty) return ''
-
     const propertyOverrides = monthlyOverrides.filter((item) => item.property_id === selectedDepositProperty.id)
-    const timelineTenant = getTenantForDate(selectedDepositProperty, propertyOverrides, getTodayDateInput())
-    if (timelineTenant) return timelineTenant
-
-    const latestLeaseForProperty = companyLeaseRecords.find((lease) => lease.property_id === selectedDepositProperty.id)
-    if (latestLeaseForProperty?.tenant_names) return latestLeaseForProperty.tenant_names
-
-    const depositRecordForProperty = Object.values(securityDeposits).find((record) => record.propertyId === selectedDepositProperty.id && record.tenant)
-    if (depositRecordForProperty?.tenant) return depositRecordForProperty.tenant
-
-    return selectedDepositProperty.tenant || ''
-  }, [selectedDepositProperty, monthlyOverrides, companyLeaseRecords, securityDeposits])
+    return getTenantForDate(selectedDepositProperty, propertyOverrides, getTodayDateInput()) || ''
+  }, [selectedDepositProperty, monthlyOverrides])
 
   const selectedDepositRecord = useMemo(() => {
     return buildSecurityDepositRecord(securityDeposits[securityDepositKey(selectedDepositPropertyId, selectedDepositTenant)])
@@ -3206,16 +3207,23 @@ This permanently removes the payment from the ledger.`
 
     const existingRecord = securityDeposits[securityDepositKey(info.propertyId, info.tenantNames)] || null
 
+    const existingSecurityAmount = nullableNumber(existingRecord?.requiredAmount ?? existingRecord?.required_amount)
+    const existingPetAmount = nullableNumber(existingRecord?.petRequiredAmount ?? existingRecord?.pet_required_amount)
+    const existingRefundAmount = nullableNumber(existingRecord?.refundAmount ?? existingRecord?.refund_amount)
+    const existingDeductionAmount = nullableNumber(existingRecord?.deductionAmount ?? existingRecord?.deduction_amount)
+
     const payload = {
       property_id: info.propertyId,
       tenant: info.tenantNames,
-      required_amount: info.securityDeposit > 0 ? info.securityDeposit : (existingRecord?.requiredAmount ?? existingRecord?.required_amount ?? null),
-      pet_required_amount: info.petDeposit > 0 ? info.petDeposit : (existingRecord?.petRequiredAmount ?? existingRecord?.pet_required_amount ?? null),
+      required_amount: info.securityDeposit > 0 ? info.securityDeposit : existingSecurityAmount,
+      pet_required_amount: info.petDeposit > 0 ? info.petDeposit : existingPetAmount,
       due_date: info.dueDate || existingRecord?.dueDate || existingRecord?.due_date || null,
-      pet_due_date: info.petDeposit > 0 ? (info.dueDate || existingRecord?.petDueDate || existingRecord?.pet_due_date || null) : (existingRecord?.petDueDate ?? existingRecord?.pet_due_date ?? null),
+      pet_due_date: info.petDeposit > 0
+        ? (info.dueDate || existingRecord?.petDueDate || existingRecord?.pet_due_date || null)
+        : (existingRecord?.petDueDate || existingRecord?.pet_due_date || null),
       refund_date: existingRecord?.refundDate || existingRecord?.refund_date || null,
-      refund_amount: existingRecord?.refundAmount === '' ? null : (existingRecord?.refundAmount ?? existingRecord?.refund_amount ?? null),
-      deduction_amount: existingRecord?.deductionAmount === '' ? null : (existingRecord?.deductionAmount ?? existingRecord?.deduction_amount ?? null),
+      refund_amount: existingRefundAmount,
+      deduction_amount: existingDeductionAmount,
       deduction_note: existingRecord?.deductionNote || existingRecord?.deduction_note || null,
     }
 
@@ -3225,27 +3233,6 @@ This permanently removes the payment from the ledger.`
 
     if (error) {
       return { posted: false, reason: 'error', error }
-    }
-
-    if (info.propertyId) {
-      setSelectedDepositPropertyId(info.propertyId)
-      setDepositDraft((current) => ({
-        ...buildSecurityDepositRecord(current),
-        propertyId: info.propertyId,
-        tenant: info.tenantNames,
-        requiredAmount: info.securityDeposit > 0 ? String(info.securityDeposit) : (existingRecord?.requiredAmount ?? existingRecord?.required_amount ?? ''),
-        petRequiredAmount: info.petDeposit > 0 ? String(info.petDeposit) : (existingRecord?.petRequiredAmount ?? existingRecord?.pet_required_amount ?? ''),
-        dueDate: info.dueDate || existingRecord?.dueDate || existingRecord?.due_date || '',
-        petDueDate: info.petDeposit > 0 ? (info.dueDate || existingRecord?.petDueDate || existingRecord?.pet_due_date || '') : (existingRecord?.petDueDate ?? existingRecord?.pet_due_date ?? ''),
-      }))
-    }
-
-    const propertyForDeposit = companyProperties.find((item) => item.id === info.propertyId)
-    if (propertyForDeposit && info.tenantNames && !propertyForDeposit.tenant) {
-      await supabase
-        .from('properties')
-        .update({ tenant: info.tenantNames })
-        .eq('id', info.propertyId)
     }
 
     return { posted: true, securityDeposit: info.securityDeposit, petDeposit: info.petDeposit }
@@ -3422,7 +3409,7 @@ This permanently removes the payment from the ledger.`
         .from('properties')
         .update({
           tenant: info.tenantNames || property.tenant || null,
-          monthly_rent: leaseRecord?.monthly_rent ?? (leaseForm.monthlyRent === '' ? property.monthly_rent : Number(leaseForm.monthlyRent || property.monthly_rent || 0)),
+          monthly_rent: nullableNumber(leaseRecord?.monthly_rent) ?? nullableNumber(leaseForm.monthlyRent) ?? nullableNumber(property.monthly_rent) ?? 0,
         })
         .eq('id', info.propertyId)
     }
