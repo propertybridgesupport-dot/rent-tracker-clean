@@ -1779,7 +1779,14 @@ This permanently removes the payment from the ledger.`
         if (!nextTenant) return null
 
         const monthSummary = propertyLedgerMap[property.id]?.monthlySummaries?.find((item) => item.month === selectedMonth)
-        const endingBalance = Number(monthSummary?.endingBalance || 0)
+        const currentTenant = monthSummary?.effectiveTenant || getTenantForDate(property, propertyOverrides, startOfMonth(selectedMonth)) || ''
+        const shouldCarryBalance = Boolean(
+          nextTenant &&
+          currentTenant &&
+          nextTenant === currentTenant &&
+          !monthSummary?.occupancy?.vacancy
+        )
+        const endingBalance = shouldCarryBalance ? Number(monthSummary?.endingBalance || 0) : 0
 
         return {
           property_id: property.id,
@@ -1789,7 +1796,9 @@ This permanently removes the payment from the ledger.`
           move_in_date: null,
           move_out_date: null,
           starting_balance: endingBalance,
-          notes: `Rolled forward from ${monthLabel(selectedMonth)}`,
+          notes: shouldCarryBalance
+            ? `Rolled forward from ${monthLabel(selectedMonth)}`
+            : `New tenant/account setup for ${nextTenant}; prior tenant balance not carried forward`,
         }
       })
       .filter(Boolean)
@@ -2144,8 +2153,18 @@ This permanently removes the payment from the ledger.`
         effectiveTenant &&
         (effectiveTenant !== previousEffectiveTenant || !previousMonthWasOccupied)
       )
+      const tenantChanged = Boolean(
+        effectiveTenant &&
+        previousEffectiveTenant &&
+        effectiveTenant !== previousEffectiveTenant
+      )
+      const shouldResetBalanceForNewAccount = Boolean(
+        !occupancy.isOccupied ||
+        startsFreshTenancy ||
+        tenantChanged
+      )
 
-      if (startsFreshTenancy) {
+      if (shouldResetBalanceForNewAccount) {
         runningBalance = 0
       }
 
