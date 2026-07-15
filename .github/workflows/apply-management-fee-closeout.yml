@@ -8,6 +8,10 @@ on:
       - scripts/apply-management-fee-closeout.mjs
       - supabase/management_fee_closeout.sql
       - .github/workflows/apply-management-fee-closeout.yml
+  pull_request:
+    branches:
+      - main
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
 
 permissions:
