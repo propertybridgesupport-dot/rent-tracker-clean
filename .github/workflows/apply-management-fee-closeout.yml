@@ -6,6 +6,7 @@ on:
       - feature/management-fee-closeout
     paths:
       - scripts/apply-management-fee-closeout.mjs
+      - scripts/run-management-fee-closeout.mjs
       - supabase/management_fee_closeout.sql
       - .github/workflows/apply-management-fee-closeout.yml
   pull_request:
@@ -28,7 +29,7 @@ jobs:
           fetch-depth: 0
 
       - name: Apply App.jsx changes
-        run: node scripts/apply-management-fee-closeout.mjs
+        run: node scripts/run-management-fee-closeout.mjs
 
       - name: Validate app build
         run: |
