@@ -31,11 +31,6 @@ jobs:
       - name: Apply App.jsx changes
         run: node scripts/run-management-fee-closeout.mjs
 
-      - name: Validate app build
-        run: |
-          npm ci
-          npm run build
-
       - name: Commit generated App.jsx update
         run: |
           if git diff --quiet -- src/App.jsx; then
@@ -47,3 +42,18 @@ jobs:
           git add src/App.jsx
           git commit -m "Add management fee closeout and carry-forward"
           git push origin HEAD:feature/management-fee-closeout
+
+  validate:
+    needs: apply
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out updated feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: feature/management-fee-closeout
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate app build
+        run: npm run build
