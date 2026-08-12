@@ -4515,7 +4515,7 @@ This permanently removes the payment from the ledger.`
                             ) : (
                               <div style={{ display: 'grid', gap: 8 }}>
                                 {rowPayments.map((payment) => (
-                                  <div key={`dashboard-amount-${payment.id}`} style={{ minHeight: 50, display: 'flex', alignItems: 'center' }}>
+                                  <div key={`dashboard-amount-${payment.id}`} style={{ display: 'flex', alignItems: 'center', minHeight: 32 }}>
                                     {editingPaymentId === payment.id ? (
                                       <input
                                         style={{ ...styles.tableInput, maxWidth: 110 }}
@@ -4525,7 +4525,18 @@ This permanently removes the payment from the ledger.`
                                         onChange={(e) => setEditPaymentForm({ ...editPaymentForm, amount: e.target.value })}
                                       />
                                     ) : (
-                                      <strong>{currency(payment.amount)}</strong>
+                                      <span
+                                        style={{
+                                          display: 'inline-block',
+                                          fontWeight: 800,
+                                          padding: '3px 8px',
+                                          borderRadius: 8,
+                                          background: 'rgba(212, 168, 92, 0.14)',
+                                          boxShadow: '0 0 10px rgba(212, 168, 92, 0.16)',
+                                        }}
+                                      >
+                                        {currency(payment.amount)}
+                                      </span>
                                     )}
                                   </div>
                                 ))}
@@ -4543,7 +4554,7 @@ This permanently removes the payment from the ledger.`
                             ) : (
                               <div style={{ display: 'grid', gap: 8 }}>
                                 {rowPayments.map((payment) => (
-                                  <div key={`dashboard-date-${payment.id}`} style={{ minHeight: 50, display: 'flex', alignItems: 'center' }}>
+                                  <div key={`dashboard-date-${payment.id}`} style={{ display: 'flex', alignItems: 'center', minHeight: 32 }}>
                                     {editingPaymentId === payment.id ? (
                                       <input
                                         style={{ ...styles.tableInput, maxWidth: 145 }}
@@ -4556,7 +4567,7 @@ This permanently removes the payment from the ledger.`
                                     )}
                                   </div>
                                 ))}
-                                {rowPayments.length > 1 ? <div style={{ height: 21 }} /> : null}
+                                {rowPayments.length > 1 ? <div style={{ height: 8 }} /> : null}
                               </div>
                             )}
                           </td>
@@ -4570,7 +4581,7 @@ This permanently removes the payment from the ledger.`
                                   <div
                                     key={`dashboard-actions-${payment.id}`}
                                     style={{
-                                      minHeight: 36,
+                                      minHeight: 32,
                                       display: 'flex',
                                       flexDirection: 'row',
                                       alignItems: 'center',
@@ -4616,7 +4627,7 @@ This permanently removes the payment from the ledger.`
                                     )}
                                   </div>
                                 ))}
-                                {rowPayments.length > 1 ? <div style={{ height: 21 }} /> : null}
+                                {rowPayments.length > 1 ? <div style={{ height: 8 }} /> : null}
                               </div>
                             )}
                           </td>
