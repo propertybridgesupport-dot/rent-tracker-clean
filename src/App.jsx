@@ -4480,8 +4480,8 @@ This permanently removes the payment from the ledger.`
       {activeTab === 'dashboard' && (
         <div style={styles.sectionGridSingle}>
           <div className="mobile-card" style={styles.card}>
-            <h2 style={styles.cardTitle}>Owner Summary</h2>
-            <p style={styles.smallMuted}>{selectedCompanyName} — {monthLabel(selectedMonth)}</p>
+            <h2 style={styles.cardTitle}>{monthLabel(selectedMonth)} Summary</h2>
+            <p style={styles.smallMuted}>{selectedCompanyName}</p>
             <div style={styles.tableWrap}>
               <table style={styles.table}>
                 <thead>
@@ -4490,22 +4490,139 @@ This permanently removes the payment from the ledger.`
                     <th style={styles.th}>Tenant</th>
                     <th style={styles.th}>Rent</th>
                     <th style={styles.th}>Collected</th>
+                    <th style={styles.th}>Date Collected</th>
                     <th style={styles.th}>Balance</th>
+                    <th style={styles.th}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
                   {filteredLedgerRows.length === 0 ? (
-                    <tr><td style={styles.td} colSpan="5">No matching properties for this view.</td></tr>
+                    <tr><td style={styles.td} colSpan="7">No matching properties for this view.</td></tr>
                   ) : (
-                    filteredLedgerRows.map((row) => (
-                      <tr key={row.id}>
-                        <td style={styles.td}>{row.address}</td>
-                        <td style={styles.td}>{row.effectiveTenant}</td>
-                        <td style={styles.td}>{currency(row.effectiveRent)}</td>
-                        <td style={styles.td}>{currency(row.totalPaid)}</td>
-                        <td style={styles.td}>{currency(row.balanceRemaining)}</td>
-                      </tr>
-                    ))
+                    filteredLedgerRows.map((row) => {
+                      const rowPayments = monthlyPayments
+                        .filter((payment) => payment.property_id === row.id && !isManualLateFeeEntry(payment))
+                        .sort((a, b) => String(a.payment_date).localeCompare(String(b.payment_date)))
+
+                      return (
+                        <tr key={row.id}>
+                          <td style={styles.td}>{row.address}</td>
+                          <td style={styles.td}>{row.effectiveTenant}</td>
+                          <td style={styles.td}>{currency(row.effectiveRent)}</td>
+                          <td style={styles.td}>
+                            {rowPayments.length === 0 ? (
+                              currency(0)
+                            ) : (
+                              <div style={{ display: 'grid', gap: 8 }}>
+                                {rowPayments.map((payment) => (
+                                  <div key={`dashboard-amount-${payment.id}`} style={{ minHeight: 50, display: 'flex', alignItems: 'center' }}>
+                                    {editingPaymentId === payment.id ? (
+                                      <input
+                                        style={{ ...styles.tableInput, maxWidth: 110 }}
+                                        type="number"
+                                        step="0.01"
+                                        value={editPaymentForm.amount}
+                                        onChange={(e) => setEditPaymentForm({ ...editPaymentForm, amount: e.target.value })}
+                                      />
+                                    ) : (
+                                      <strong>{currency(payment.amount)}</strong>
+                                    )}
+                                  </div>
+                                ))}
+                                {rowPayments.length > 1 ? (
+                                  <div style={{ paddingTop: 4, borderTop: '1px solid #eadfce', fontWeight: 700 }}>
+                                    Total: {currency(row.totalPaid)}
+                                  </div>
+                                ) : null}
+                              </div>
+                            )}
+                          </td>
+                          <td style={styles.td}>
+                            {rowPayments.length === 0 ? (
+                              '—'
+                            ) : (
+                              <div style={{ display: 'grid', gap: 8 }}>
+                                {rowPayments.map((payment) => (
+                                  <div key={`dashboard-date-${payment.id}`} style={{ minHeight: 50, display: 'flex', alignItems: 'center' }}>
+                                    {editingPaymentId === payment.id ? (
+                                      <input
+                                        style={{ ...styles.tableInput, maxWidth: 145 }}
+                                        type="date"
+                                        value={editPaymentForm.paymentDate}
+                                        onChange={(e) => setEditPaymentForm({ ...editPaymentForm, paymentDate: e.target.value })}
+                                      />
+                                    ) : (
+                                      formatDate(payment.payment_date)
+                                    )}
+                                  </div>
+                                ))}
+                                {rowPayments.length > 1 ? <div style={{ height: 21 }} /> : null}
+                              </div>
+                            )}
+                          </td>
+                          <td style={styles.td}>{currency(row.balanceRemaining)}</td>
+                          <td style={styles.td}>
+                            {rowPayments.length === 0 ? (
+                              '—'
+                            ) : (
+                              <div style={{ display: 'grid', gap: 8 }}>
+                                {rowPayments.map((payment) => (
+                                  <div
+                                    key={`dashboard-actions-${payment.id}`}
+                                    style={{
+                                      minHeight: 50,
+                                      display: 'flex',
+                                      flexDirection: 'column',
+                                      alignItems: 'stretch',
+                                      justifyContent: 'center',
+                                      gap: 5,
+                                      minWidth: 72,
+                                    }}
+                                  >
+                                    {editingPaymentId === payment.id ? (
+                                      <>
+                                        <button
+                                          style={styles.smallPrimaryButton}
+                                          type="button"
+                                          onClick={() => saveEditedPayment(payment.id)}
+                                        >
+                                          Save
+                                        </button>
+                                        <button
+                                          style={styles.smallSecondaryButton}
+                                          type="button"
+                                          onClick={cancelEditingPayment}
+                                        >
+                                          Cancel
+                                        </button>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <button
+                                          style={styles.smallSecondaryButton}
+                                          type="button"
+                                          onClick={() => startEditingPayment(payment)}
+                                        >
+                                          Edit
+                                        </button>
+                                        <button
+                                          style={styles.dangerButton}
+                                          type="button"
+                                          onClick={() => deletePayment(payment.id)}
+                                        >
+                                          Delete
+                                        </button>
+                                      </>
+                                    )}
+                                  </div>
+                                ))}
+                                {rowPayments.length > 1 ? <div style={{ height: 21 }} /> : null}
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      )
+                    })
                   )}
                 </tbody>
               </table>
