@@ -2053,6 +2053,110 @@ This permanently removes the payment from the ledger.`
     return leases.filter((lease) => propertyIds.has(lease.property_id))
   }, [leases, companyProperties])
 
+  const selectedPropertyCurrentLease = useMemo(() => {
+    if (!selectedLeaseProperty) return null
+
+    const activeNames = selectedOnboardingCurrentTenants
+      .map((tenant) => normalizeSearchText(tenant.full_name))
+      .filter(Boolean)
+    const currentName = normalizeSearchText(selectedOnboardingCurrentTenantName)
+
+    const candidates = companyLeaseRecords
+      .filter((lease) => (
+        lease.property_id === selectedLeaseProperty.id &&
+        String(lease.status || '').toLowerCase() !== 'archived'
+      ))
+      .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))
+
+    if (activeNames.length > 0 || currentName) {
+      const matchingLease = candidates.find((lease) => {
+        const leaseNames = normalizeSearchText(lease.tenant_names)
+        if (!leaseNames) return false
+        if (activeNames.some((name) => leaseNames.includes(name) || name.includes(leaseNames))) return true
+        return currentName && (leaseNames.includes(currentName) || currentName.includes(leaseNames))
+      })
+      return matchingLease || null
+    }
+
+    return null
+  }, [
+    selectedLeaseProperty,
+    selectedOnboardingCurrentTenants,
+    selectedOnboardingCurrentTenantName,
+    companyLeaseRecords,
+  ])
+
+  const archivedTenantGroups = useMemo(() => {
+    const propertyIds = new Set(companyProperties.map((property) => property.id))
+    const archivedTenants = tenants.filter((tenant) => (
+      propertyIds.has(tenant.property_id) &&
+      (tenant.status === 'archived' || tenant.move_out_date)
+    ))
+
+    const grouped = new Map()
+
+    archivedTenants.forEach((tenant) => {
+      const key = tenant.lease_id || `${tenant.property_id || ''}::${tenant.move_out_date || tenant.move_in_date || ''}::${normalizeSearchText(tenant.full_name)}`
+      if (!grouped.has(key)) {
+        grouped.set(key, {
+          key,
+          propertyId: tenant.property_id,
+          leaseId: tenant.lease_id || '',
+          tenants: [],
+          moveInDate: tenant.move_in_date || '',
+          moveOutDate: tenant.move_out_date || '',
+        })
+      }
+
+      const group = grouped.get(key)
+      group.tenants.push(tenant)
+
+      if (tenant.move_in_date && (!group.moveInDate || tenant.move_in_date < group.moveInDate)) {
+        group.moveInDate = tenant.move_in_date
+      }
+      if (tenant.move_out_date && (!group.moveOutDate || tenant.move_out_date > group.moveOutDate)) {
+        group.moveOutDate = tenant.move_out_date
+      }
+    })
+
+    return [...grouped.values()]
+      .map((group) => {
+        const property = companyProperties.find((item) => item.id === group.propertyId) || null
+        const tenantNames = group.tenants.map((tenant) => tenant.full_name).filter(Boolean)
+        const normalizedNames = tenantNames.map((name) => normalizeSearchText(name)).filter(Boolean)
+
+        let leaseRecord = group.leaseId
+          ? companyLeaseRecords.find((lease) => lease.id === group.leaseId) || null
+          : null
+
+        if (!leaseRecord) {
+          leaseRecord = companyLeaseRecords
+            .filter((lease) => lease.property_id === group.propertyId)
+            .filter((lease) => {
+              const leaseNames = normalizeSearchText(lease.tenant_names)
+              return normalizedNames.some((name) => leaseNames.includes(name) || name.includes(leaseNames))
+            })
+            .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))[0] || null
+        }
+
+        const depositRecord = Object.values(securityDeposits).find((record) => {
+          const recordPropertyId = record?.propertyId || record?.property_id
+          if (recordPropertyId !== group.propertyId) return false
+          const depositTenant = normalizeSearchText(record?.tenant)
+          return normalizedNames.some((name) => depositTenant.includes(name) || name.includes(depositTenant))
+        }) || null
+
+        return {
+          ...group,
+          property,
+          tenantNames,
+          leaseRecord,
+          depositRecord: depositRecord ? buildSecurityDepositRecord(depositRecord) : null,
+        }
+      })
+      .sort((a, b) => String(b.moveOutDate || '').localeCompare(String(a.moveOutDate || '')))
+  }, [tenants, companyProperties, companyLeaseRecords, securityDeposits])
+
   const selectedDepositTenant = useMemo(() => {
     return getDepositTenantForProperty(selectedDepositProperty)
   }, [selectedDepositProperty, monthlyOverrides, tenants, companyLeaseRecords, selectedMonth])
@@ -3247,6 +3351,39 @@ This permanently removes the payment from the ledger.`
       }
     }
 
+    const leaseIdsToArchive = new Set(
+      activeTenantRecords.map((tenant) => tenant.lease_id).filter(Boolean)
+    )
+
+    const normalizedTenantNames = [
+      normalizeSearchText(tenantLabel),
+      ...activeTenantRecords.map((tenant) => normalizeSearchText(tenant.full_name)),
+    ].filter(Boolean)
+
+    companyLeaseRecords
+      .filter((lease) => (
+        lease.property_id === propertyId &&
+        String(lease.status || '').toLowerCase() !== 'archived'
+      ))
+      .forEach((lease) => {
+        const leaseNames = normalizeSearchText(lease.tenant_names)
+        if (normalizedTenantNames.some((name) => leaseNames.includes(name) || name.includes(leaseNames))) {
+          leaseIdsToArchive.add(lease.id)
+        }
+      })
+
+    if (leaseIdsToArchive.size > 0) {
+      const { error: leaseArchiveError } = await supabase
+        .from('leases')
+        .update({ status: 'archived' })
+        .in('id', [...leaseIdsToArchive])
+
+      if (leaseArchiveError) {
+        setMessage(leaseArchiveError.message)
+        return
+      }
+    }
+
     const moveOutMonth = monthKeyFromDate(moveOutDate)
     let moveOutOverride = propertyOverrides.find((item) => item.month_key === moveOutMonth) || null
 
@@ -3341,7 +3478,7 @@ This permanently removes the payment from the ledger.`
     setTenantMoveOutDate('')
     if (monthOptions.includes(moveOutMonth)) setSelectedMonth(moveOutMonth)
     await loadData()
-    setMessage(`Move-out recorded for ${tenantLabel || 'tenant'} on ${formatDate(moveOutDate)}. The property will show vacant after that date and the next tenant will start with a clean account.`)
+    setMessage(`Move-out recorded for ${tenantLabel || 'tenant'} on ${formatDate(moveOutDate)}. The tenant and lease record were archived, the property will show vacant after that date, and the next tenant will start with a clean account.`)
   }
 
   function handleLeaseStartDateChange(value) {
@@ -3573,7 +3710,10 @@ This permanently removes the payment from the ledger.`
   function getLatestLeaseForProperty(propertyId) {
     if (!propertyId) return null
     return companyLeaseRecords
-      .filter((lease) => lease.property_id === propertyId)
+      .filter((lease) => (
+        lease.property_id === propertyId &&
+        String(lease.status || '').toLowerCase() !== 'archived'
+      ))
       .sort((a, b) => String(b.created_at || '').localeCompare(String(a.created_at || '')))[0] || null
   }
 
@@ -4446,6 +4586,7 @@ This permanently removes the payment from the ledger.`
         <button style={activeTab === 'reports' ? styles.activeTabButton : styles.tabButton} onClick={() => setActiveTab('reports')}>Reports</button>
         <button style={activeTab === 'notesAlerts' ? styles.activeTabButton : styles.tabButton} onClick={() => setActiveTab('notesAlerts')}>Note & Security Deposit</button>
         <button style={activeTab === 'onboarding' ? styles.activeTabButton : styles.tabButton} onClick={() => setActiveTab('onboarding')}>Tenant Onboarding</button>
+        <button style={activeTab === 'archived' ? styles.activeTabButton : styles.tabButton} onClick={() => setActiveTab('archived')}>Archived</button>
       </div>
 
       {!isMobile ? <div className="mobile-card-grid" style={styles.cardGrid}>
@@ -5091,6 +5232,99 @@ This permanently removes the payment from the ledger.`
         </div>
       )}
 
+
+      {activeTab === 'archived' && (
+        <div style={styles.sectionGridSingle}>
+          <div className="mobile-card" style={styles.card}>
+            <div style={styles.reportHeaderRow}>
+              <div>
+                <h2 style={styles.cardTitle}>Archived Tenant Records</h2>
+                <p style={styles.smallMuted}>Move-outs are kept here instead of being deleted. Each archived record retains the tenant contact information, occupancy dates, lease information, signed lease access, and deposit record when available.</p>
+              </div>
+            </div>
+
+            {archivedTenantGroups.length === 0 ? (
+              <p style={styles.mutedText}>No archived tenant records yet.</p>
+            ) : (
+              <div style={{ display: 'grid', gap: '14px' }}>
+                {archivedTenantGroups.map((group) => {
+                  const leaseRecord = group.leaseRecord
+                  const depositRecord = group.depositRecord
+                  const depositPayments = depositRecord?.payments || []
+                  const depositPaid = depositPayments.reduce((sum, payment) => sum + Number(payment.amount || 0), 0)
+                  const requiredDeposit = Number(depositRecord?.requiredAmount || 0) + Number(depositRecord?.petRequiredAmount || 0)
+
+                  return (
+                    <div key={`archived-${group.key}`} style={styles.notesBox}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '18px', flexWrap: 'wrap', alignItems: 'flex-start' }}>
+                        <div style={{ flex: '1 1 520px' }}>
+                          <strong style={{ fontSize: '16px' }}>{group.tenantNames.join(' and ') || leaseRecord?.tenant_names || 'Archived Tenant'}</strong>
+                          <div style={styles.smallMuted}>{group.property?.address || leaseRecord?.property_address || 'Property not listed'}</div>
+                          <div style={{ marginTop: '8px' }}>
+                            <strong>Occupancy:</strong> {formatDate(group.moveInDate)} - {formatDate(group.moveOutDate)}
+                          </div>
+
+                          {group.tenants.map((tenant) => (
+                            <div key={tenant.id} style={{ marginTop: '6px' }}>
+                              <strong>{tenant.full_name || 'Tenant'}</strong>
+                              {tenant.phone ? <span style={styles.smallMuted}> · {tenant.phone}</span> : null}
+                              {tenant.email ? <span style={styles.smallMuted}> · {tenant.email}</span> : null}
+                              {tenant.notes ? <div style={styles.smallMuted}>Notes: {tenant.notes}</div> : null}
+                            </div>
+                          ))}
+
+                          {leaseRecord ? (
+                            <div style={{ marginTop: '10px' }}>
+                              <strong>Lease:</strong> {formatDate(leaseRecord.lease_start_date)} - {formatDate(leaseRecord.lease_end_date)}
+                              <span style={styles.smallMuted}> · {currency(leaseRecord.monthly_rent)} rent · Archived</span>
+                              {leaseRecord.signed_file_name ? <div style={styles.smallMuted}>Signed file: {leaseRecord.signed_file_name}</div> : null}
+                            </div>
+                          ) : (
+                            <div style={{ ...styles.smallMuted, marginTop: '10px' }}>No saved lease record was linked to this archived tenant.</div>
+                          )}
+
+                          {depositRecord ? (
+                            <div style={{ marginTop: '10px' }}>
+                              <strong>Deposit record:</strong> Required {currency(requiredDeposit)} · Payments recorded {currency(depositPaid)}
+                              {depositRecord.refundAmount ? <span> · Refund {currency(depositRecord.refundAmount)}</span> : null}
+                              {depositRecord.deductionAmount ? <span> · Deductions {currency(depositRecord.deductionAmount)}</span> : null}
+                            </div>
+                          ) : null}
+                        </div>
+
+                        <div className="mobile-button-row" style={{ ...styles.buttonRow, marginTop: 0 }}>
+                          {leaseRecord ? (
+                            <button
+                              style={styles.secondaryButton}
+                              type="button"
+                              disabled={!leaseRecord.signed_file_path}
+                              onClick={() => openSignedLease(leaseRecord)}
+                            >
+                              Open Signed Lease
+                            </button>
+                          ) : null}
+                          <button
+                            style={styles.secondaryButton}
+                            type="button"
+                            onClick={() => {
+                              setSelectedReportPropertyId(group.propertyId || '')
+                              setReportStartDate(normalizeDateInputValue(group.moveInDate))
+                              setReportEndDate(normalizeDateInputValue(group.moveOutDate))
+                              setActiveTab('ledger')
+                            }}
+                          >
+                            View Ledger
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {activeTab === 'ledger' && (
         <div style={styles.sectionGridSingle}>
@@ -5798,61 +6032,59 @@ This permanently removes the payment from the ledger.`
           <div className="mobile-card" style={styles.card}>
             <div style={styles.reportHeaderRow}>
               <div>
-                <h2 style={styles.cardTitle}>Saved Lease Records</h2>
-                <p style={styles.smallMuted}>Upload the Adobe-signed PDF here after it comes back signed. Records are tied to the selected company/property.</p>
+                <h2 style={styles.cardTitle}>Current Lease Record</h2>
+                <p style={styles.smallMuted}>The lease shown here follows the property selected on the left. Prior tenant records move to Archived after move-out.</p>
               </div>
             </div>
 
-            {companyLeaseRecords.length === 0 ? (
-              <p style={styles.mutedText}>No lease records saved yet.</p>
-            ) : (
-              <div style={{ display: 'grid', gap: '12px' }}>
-                {companyLeaseRecords.map((leaseRecord) => {
-                  const property = companyProperties.find((item) => item.id === leaseRecord.property_id)
-                  return (
-                    <div key={leaseRecord.id} style={styles.notesBox}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: '12px', flexWrap: 'wrap' }}>
-                        <div>
-                          <strong>{leaseRecord.tenant_names || 'Tenant not listed'}</strong>
-                          <div style={styles.smallMuted}>{property?.address || leaseRecord.property_address || 'Property not listed'}</div>
-                          <div style={styles.smallMuted}>
-                            {formatDate(leaseRecord.lease_start_date)} - {formatDate(leaseRecord.lease_end_date)} · {currency(leaseRecord.monthly_rent)} rent · Status: {leaseRecord.status || 'draft'}
-                          </div>
-                          {Number(leaseRecord.prorated_rent || 0) > 0 ? (
-                            <div style={styles.smallMuted}>Prorated move-in charge: {currency(leaseRecord.prorated_rent)} through {formatDate(leaseRecord.last_day_first_month)} {hasPostedOnboardingCharge(leaseRecord) ? '· Posted' : '· Not posted'}</div>
-                          ) : null}
-                          {Number(leaseRecord.deposit_amount || 0) > 0 || Number(leaseRecord.pet_deposit_amount || 0) > 0 ? (
-                            <div style={styles.smallMuted}>Required deposits: {Number(leaseRecord.deposit_amount || 0) > 0 ? `Security ${currency(leaseRecord.deposit_amount)}` : ''}{Number(leaseRecord.deposit_amount || 0) > 0 && Number(leaseRecord.pet_deposit_amount || 0) > 0 ? ' · ' : ''}{Number(leaseRecord.pet_deposit_amount || 0) > 0 ? `Pet ${currency(leaseRecord.pet_deposit_amount)}` : ''}</div>
-                          ) : (
-                            <div style={styles.smallMuted}>No deposit amount saved on this lease record. Use Post Required Deposits if needed.</div>
-                          )}
-                          {leaseRecord.signed_file_name ? (
-                            <div style={styles.smallMuted}>Signed file: {leaseRecord.signed_file_name}</div>
-                          ) : null}
-                        </div>
-                        <div className="mobile-button-row" style={styles.buttonRow}>
-                          <label style={styles.secondaryButton}>
-                            {uploadingLeaseId === leaseRecord.id ? 'Uploading...' : 'Upload Signed PDF'}
-                            <input
-                              type="file"
-                              accept="application/pdf,.pdf"
-                              style={{ display: 'none' }}
-                              disabled={uploadingLeaseId === leaseRecord.id}
-                              onChange={(e) => uploadSignedLease(leaseRecord, e.target.files?.[0])}
-                            />
-                          </label>
-                          <button style={styles.secondaryButton} type="button" onClick={() => openSignedLease(leaseRecord)} disabled={!leaseRecord.signed_file_path}>Open Signed PDF</button>
-                          <button style={styles.secondaryButton} type="button" onClick={() => markLeaseStatus(leaseRecord.id, 'sent')}>Mark Sent</button>
-                          <button style={styles.secondaryButton} type="button" onClick={() => postOnboardingCharges(leaseRecord)}>Post Onboarding Charges</button>
-                          <button style={styles.secondaryButton} type="button" onClick={() => postRequiredDeposits(leaseRecord)}>Post Required Deposits</button>
-                          <button style={styles.dangerButton} type="button" onClick={() => deleteLeaseRecord(leaseRecord)}>Delete</button>
-                        </div>
-                      </div>
-                    </div>
-                  )
-                })}
+            {!selectedLeaseProperty ? (
+              <p style={styles.mutedText}>Select a property to view its current lease record.</p>
+            ) : !selectedPropertyCurrentLease ? (
+              <div style={styles.notesBox}>
+                <strong>{selectedLeaseProperty.address}</strong>
+                <div style={styles.smallMuted}>No current lease record is attached to the active tenant for this property.</div>
               </div>
-            )}
+            ) : (() => {
+              const leaseRecord = selectedPropertyCurrentLease
+              return (
+                <div style={styles.notesBox}>
+                  <div>
+                    <strong>{leaseRecord.tenant_names || 'Tenant not listed'}</strong>
+                    <div style={styles.smallMuted}>{selectedLeaseProperty.address}</div>
+                    <div style={styles.smallMuted}>
+                      {formatDate(leaseRecord.lease_start_date)} - {formatDate(leaseRecord.lease_end_date)} · {currency(leaseRecord.monthly_rent)} rent · Status: {leaseRecord.status || 'draft'}
+                    </div>
+                    {Number(leaseRecord.prorated_rent || 0) > 0 ? (
+                      <div style={styles.smallMuted}>Prorated move-in charge: {currency(leaseRecord.prorated_rent)} through {formatDate(leaseRecord.last_day_first_month)} {hasPostedOnboardingCharge(leaseRecord) ? '· Posted' : '· Not posted'}</div>
+                    ) : null}
+                    {Number(leaseRecord.deposit_amount || 0) > 0 || Number(leaseRecord.pet_deposit_amount || 0) > 0 ? (
+                      <div style={styles.smallMuted}>Required deposits: {Number(leaseRecord.deposit_amount || 0) > 0 ? `Security ${currency(leaseRecord.deposit_amount)}` : ''}{Number(leaseRecord.deposit_amount || 0) > 0 && Number(leaseRecord.pet_deposit_amount || 0) > 0 ? ' · ' : ''}{Number(leaseRecord.pet_deposit_amount || 0) > 0 ? `Pet ${currency(leaseRecord.pet_deposit_amount)}` : ''}</div>
+                    ) : null}
+                    {leaseRecord.signed_file_name ? (
+                      <div style={styles.smallMuted}>Signed file: {leaseRecord.signed_file_name}</div>
+                    ) : null}
+                  </div>
+
+                  <div className="mobile-button-row" style={{ ...styles.buttonRow, marginTop: '12px' }}>
+                    <label style={styles.secondaryButton}>
+                      {uploadingLeaseId === leaseRecord.id ? 'Uploading...' : 'Upload Signed PDF'}
+                      <input
+                        type="file"
+                        accept="application/pdf,.pdf"
+                        style={{ display: 'none' }}
+                        disabled={uploadingLeaseId === leaseRecord.id}
+                        onChange={(e) => uploadSignedLease(leaseRecord, e.target.files?.[0])}
+                      />
+                    </label>
+                    <button style={styles.secondaryButton} type="button" onClick={() => openSignedLease(leaseRecord)} disabled={!leaseRecord.signed_file_path}>Open Signed PDF</button>
+                    <button style={styles.secondaryButton} type="button" onClick={() => markLeaseStatus(leaseRecord.id, 'sent')}>Mark Sent</button>
+                    <button style={styles.secondaryButton} type="button" onClick={() => postOnboardingCharges(leaseRecord)}>Post Onboarding Charges</button>
+                    <button style={styles.secondaryButton} type="button" onClick={() => postRequiredDeposits(leaseRecord)}>Post Required Deposits</button>
+                    <button style={styles.dangerButton} type="button" onClick={() => deleteLeaseRecord(leaseRecord)}>Delete</button>
+                  </div>
+                </div>
+              )
+            })()}
           </div>
 
           <div className="mobile-card" style={styles.card}>
