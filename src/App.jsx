@@ -4486,13 +4486,13 @@ This permanently removes the payment from the ledger.`
               <table style={styles.table}>
                 <thead>
                   <tr>
-                    <th style={{ ...styles.th, textAlign: 'center', verticalAlign: 'middle' }}>Property</th>
-                    <th style={{ ...styles.th, textAlign: 'center', verticalAlign: 'middle' }}>Tenant</th>
-                    <th style={{ ...styles.th, textAlign: 'center', verticalAlign: 'middle' }}>Rent</th>
-                    <th style={{ ...styles.th, textAlign: 'center', verticalAlign: 'middle' }}>Collected</th>
-                    <th style={{ ...styles.th, textAlign: 'center', verticalAlign: 'middle' }}>Date Collected</th>
-                    <th style={{ ...styles.th, textAlign: 'center', verticalAlign: 'middle' }}>Balance</th>
-                    <th style={{ ...styles.th, textAlign: 'center', verticalAlign: 'middle' }}>Actions</th>
+                    <th style={{ ...styles.th, textAlign: 'left', verticalAlign: 'middle' }}>Property</th>
+                    <th style={{ ...styles.th, textAlign: 'left', verticalAlign: 'middle' }}>Tenant</th>
+                    <th style={{ ...styles.th, textAlign: 'left', verticalAlign: 'middle' }}>Rent</th>
+                    <th style={{ ...styles.th, textAlign: 'left', verticalAlign: 'middle' }}>Collected</th>
+                    <th style={{ ...styles.th, textAlign: 'left', verticalAlign: 'middle' }}>Date Collected</th>
+                    <th style={{ ...styles.th, textAlign: 'left', verticalAlign: 'middle' }}>Balance</th>
+                    <th style={{ ...styles.th, textAlign: 'left', verticalAlign: 'middle' }}>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -4506,16 +4506,16 @@ This permanently removes the payment from the ledger.`
 
                       return (
                         <tr key={row.id}>
-                          <td style={{ ...styles.td, textAlign: 'center', verticalAlign: 'middle' }}>{row.address}</td>
-                          <td style={{ ...styles.td, textAlign: 'center', verticalAlign: 'middle' }}>{row.effectiveTenant}</td>
-                          <td style={{ ...styles.td, textAlign: 'center', verticalAlign: 'middle' }}>{currency(row.effectiveRent)}</td>
-                          <td style={{ ...styles.td, textAlign: 'center', verticalAlign: 'middle' }}>
+                          <td style={{ ...styles.td, textAlign: 'left', verticalAlign: 'middle' }}>{row.address}</td>
+                          <td style={{ ...styles.td, textAlign: 'left', verticalAlign: 'middle' }}>{row.effectiveTenant}</td>
+                          <td style={{ ...styles.td, textAlign: 'left', verticalAlign: 'middle' }}>{currency(row.effectiveRent)}</td>
+                          <td style={{ ...styles.td, textAlign: 'left', verticalAlign: 'middle' }}>
                             {rowPayments.length === 0 ? (
                               currency(0)
                             ) : (
                               <div style={{ display: 'grid', gap: 8 }}>
                                 {rowPayments.map((payment) => (
-                                  <div key={`dashboard-amount-${payment.id}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 32 }}>
+                                  <div key={`dashboard-amount-${payment.id}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', minHeight: 32 }}>
                                     {editingPaymentId === payment.id ? (
                                       <input
                                         style={{ ...styles.tableInput, maxWidth: 110 }}
@@ -4541,20 +4541,20 @@ This permanently removes the payment from the ledger.`
                                   </div>
                                 ))}
                                 {rowPayments.length > 1 ? (
-                                  <div style={{ paddingTop: 4, borderTop: '1px solid #eadfce', fontWeight: 700, textAlign: 'center' }}>
+                                  <div style={{ paddingTop: 4, borderTop: '1px solid #eadfce', fontWeight: 700, textAlign: 'left' }}>
                                     Total: {currency(row.totalPaid)}
                                   </div>
                                 ) : null}
                               </div>
                             )}
                           </td>
-                          <td style={{ ...styles.td, textAlign: 'center', verticalAlign: 'middle' }}>
+                          <td style={{ ...styles.td, textAlign: 'left', verticalAlign: 'middle' }}>
                             {rowPayments.length === 0 ? (
                               '—'
                             ) : (
                               <div style={{ display: 'grid', gap: 8 }}>
                                 {rowPayments.map((payment) => (
-                                  <div key={`dashboard-date-${payment.id}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: 32 }}>
+                                  <div key={`dashboard-date-${payment.id}`} style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-start', minHeight: 32 }}>
                                     {editingPaymentId === payment.id ? (
                                       <input
                                         style={{ ...styles.tableInput, maxWidth: 145 }}
@@ -4571,8 +4571,8 @@ This permanently removes the payment from the ledger.`
                               </div>
                             )}
                           </td>
-                          <td style={{ ...styles.td, textAlign: 'center', verticalAlign: 'middle' }}>{currency(row.balanceRemaining)}</td>
-                          <td style={{ ...styles.td, textAlign: 'center', verticalAlign: 'middle' }}>
+                          <td style={{ ...styles.td, textAlign: 'left', verticalAlign: 'middle' }}>{currency(row.balanceRemaining)}</td>
+                          <td style={{ ...styles.td, textAlign: 'left', verticalAlign: 'middle' }}>
                             {rowPayments.length === 0 ? (
                               '—'
                             ) : (
@@ -4585,7 +4585,7 @@ This permanently removes the payment from the ledger.`
                                       display: 'flex',
                                       flexDirection: 'row',
                                       alignItems: 'center',
-                                      justifyContent: 'center',
+                                      justifyContent: 'flex-start',
                                       gap: 6,
                                       whiteSpace: 'nowrap',
                                     }}
