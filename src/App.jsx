@@ -442,6 +442,7 @@ export default function App() {
   })
 
   const [leaseForm, setLeaseForm] = useState(buildLeaseOnboardingForm())
+  const [tenantMoveOutDate, setTenantMoveOutDate] = useState('')
   const [uploadingLeaseId, setUploadingLeaseId] = useState('')
   const [lastReceipt, setLastReceipt] = useState(null)
 
@@ -458,7 +459,6 @@ export default function App() {
 
   const [propertyForm, setPropertyForm] = useState({
     address: '',
-    tenant: '',
     monthlyRent: '',
     dueDay: '1',
     lateFee: '0',
@@ -479,7 +479,6 @@ export default function App() {
   const [editingPropertyId, setEditingPropertyId] = useState(null)
   const [editPropertyForm, setEditPropertyForm] = useState({
     address: '',
-    tenant: '',
     monthlyRent: '',
     dueDay: '1',
     lateFee: '0',
@@ -495,12 +494,7 @@ export default function App() {
 
   const [editingOverrideId, setEditingOverrideId] = useState(null)
   const [overrideForm, setOverrideForm] = useState({
-    tenantOverride: '',
     overrideRent: '',
-    moveInDate: '',
-    moveOutDate: '',
-    startingBalance: '',
-    notes: '',
   })
 
   const ownerReportRef = useRef(null)
@@ -1145,7 +1139,6 @@ export default function App() {
     const payload = {
       company_id: selectedCompanyId,
       address: propertyForm.address,
-      tenant: propertyForm.tenant,
       monthly_rent: Number(propertyForm.monthlyRent || 0),
       due_day: Number(propertyForm.dueDay || 1),
       late_fee: Number(propertyForm.lateFee || 0),
@@ -1161,7 +1154,6 @@ export default function App() {
 
     setPropertyForm({
       address: '',
-      tenant: '',
       monthlyRent: '',
       dueDay: '1',
       lateFee: '0',
@@ -1286,7 +1278,6 @@ export default function App() {
     setEditingPropertyId(property.id)
     setEditPropertyForm({
       address: property.address || '',
-      tenant: property.tenant || '',
       monthlyRent: String(property.monthly_rent || ''),
       dueDay: String(property.due_day || 1),
       lateFee: String(property.late_fee || 0),
@@ -1297,7 +1288,6 @@ export default function App() {
     setEditingPropertyId(null)
     setEditPropertyForm({
       address: '',
-      tenant: '',
       monthlyRent: '',
       dueDay: '1',
       lateFee: '0',
@@ -1311,7 +1301,6 @@ export default function App() {
       .from('properties')
       .update({
         address: editPropertyForm.address,
-        tenant: editPropertyForm.tenant,
         monthly_rent: Number(editPropertyForm.monthlyRent || 0),
         due_day: Number(editPropertyForm.dueDay || 1),
         late_fee: Number(editPropertyForm.lateFee || 0),
@@ -1325,6 +1314,40 @@ export default function App() {
 
     cancelEditingProperty()
     await loadData()
+  }
+
+  async function deleteProperty(propertyId, address) {
+    const property = properties.find((item) => item.id === propertyId)
+    const hasHistory = Boolean(
+      property?.tenant ||
+      payments.some((item) => item.property_id === propertyId) ||
+      leases.some((item) => item.property_id === propertyId) ||
+      tenants.some((item) => item.property_id === propertyId) ||
+      monthlyOverrides.some((item) => item.property_id === propertyId) ||
+      Object.values(securityDeposits).some((item) => item?.propertyId === propertyId || item?.property_id === propertyId)
+    )
+
+    if (hasHistory) {
+      setMessage(`"${address}" has tenant, payment, lease, deposit, or ledger history, so it was not deleted. This protects your historical records.`)
+      return
+    }
+
+    const confirmed = confirmDeleteWithPrompt(
+      `Delete property: ${address}?\n\nUse this only for a property that was added by mistake and has no history. This permanently removes it.`
+    )
+    if (!confirmed) return
+
+    setMessage('')
+    const { error } = await supabase.from('properties').delete().eq('id', propertyId)
+
+    if (error) {
+      setMessage(error.message)
+      return
+    }
+
+    if (editingPropertyId === propertyId) cancelEditingProperty()
+    await loadData()
+    setMessage(`Property deleted: ${address}.`)
   }
 
   async function archiveProperty(propertyId, address) {
@@ -1692,24 +1715,14 @@ This permanently removes the payment from the ledger.`
   function startEditingOverride(propertyId, current) {
     setEditingOverrideId(propertyId)
     setOverrideForm({
-      tenantOverride: current?.tenant_override || '',
       overrideRent: current?.override_rent ?? '',
-      moveInDate: current?.move_in_date || '',
-      moveOutDate: current?.move_out_date || '',
-      startingBalance: current?.starting_balance ?? '',
-      notes: current?.notes || '',
     })
   }
 
   function cancelEditingOverride() {
     setEditingOverrideId(null)
     setOverrideForm({
-      tenantOverride: '',
       overrideRent: '',
-      moveInDate: '',
-      moveOutDate: '',
-      startingBalance: '',
-      notes: '',
     })
   }
 
@@ -1723,7 +1736,7 @@ This permanently removes the payment from the ledger.`
     if (!existing) {
       const { data: existingRow, error: lookupError } = await supabase
         .from('monthly_overrides')
-        .select('id, property_id, month_key')
+        .select('*')
         .eq('property_id', propertyId)
         .eq('month_key', selectedMonth)
         .maybeSingle()
@@ -1736,41 +1749,27 @@ This permanently removes the payment from the ledger.`
       existing = existingRow || null
     }
 
-    const payload = {
-      property_id: propertyId,
-      month_key: selectedMonth,
-      override_rent: overrideForm.overrideRent === '' ? null : Number(overrideForm.overrideRent),
-      tenant_override: overrideForm.tenantOverride || null,
-      move_in_date: overrideForm.moveInDate || null,
-      move_out_date: overrideForm.moveOutDate || null,
-      starting_balance: overrideForm.startingBalance === '' ? 0 : Number(overrideForm.startingBalance || 0),
-      notes: overrideForm.notes || null,
+    const overrideRent = overrideForm.overrideRent === '' ? null : Number(overrideForm.overrideRent)
+    if (overrideRent !== null && !Number.isFinite(overrideRent)) {
+      setMessage('Please enter a valid override rent amount.')
+      return
     }
 
     let error
 
     if (existing?.id) {
-      ;({ error } = await supabase.from('monthly_overrides').update(payload).eq('id', existing.id))
-    } else {
-      ;({ error } = await supabase.from('monthly_overrides').insert(payload))
-
-      if (error && String(error.message || '').includes('monthly_overrides_property_id_month_key_key')) {
-        const { data: fallbackExisting, error: fallbackLookupError } = await supabase
-          .from('monthly_overrides')
-          .select('id')
-          .eq('property_id', propertyId)
-          .eq('month_key', selectedMonth)
-          .maybeSingle()
-
-        if (fallbackLookupError) {
-          setMessage(fallbackLookupError.message)
-          return
-        }
-
-        if (fallbackExisting?.id) {
-          ;({ error } = await supabase.from('monthly_overrides').update(payload).eq('id', fallbackExisting.id))
-        }
-      }
+      ;({ error } = await supabase
+        .from('monthly_overrides')
+        .update({ override_rent: overrideRent })
+        .eq('id', existing.id))
+    } else if (overrideRent !== null) {
+      ;({ error } = await supabase
+        .from('monthly_overrides')
+        .insert({
+          property_id: propertyId,
+          month_key: selectedMonth,
+          override_rent: overrideRent,
+        }))
     }
 
     if (error) {
@@ -1780,7 +1779,9 @@ This permanently removes the payment from the ledger.`
 
     cancelEditingOverride()
     await loadData()
-    setMessage(`Override saved for ${monthLabel(selectedMonth)}.`)
+    setMessage(overrideRent === null
+      ? `Rent override cleared for ${monthLabel(selectedMonth)}.`
+      : `Rent override saved for ${monthLabel(selectedMonth)}.`)
   }
 
   async function rollMonthForward() {
@@ -1916,7 +1917,7 @@ This permanently removes the payment from the ledger.`
         ...current,
         propertyId: property.id,
         propertyAddress: property.address || '',
-        tenantNames: current.tenantNames || property.tenant || '',
+        tenantNames: current.tenantNames || '',
         monthlyRent: current.monthlyRent || rent,
         grossRent: current.grossRent || grossRent,
         depositAmount: current.depositAmount || rent,
@@ -1959,6 +1960,26 @@ This permanently removes the payment from the ledger.`
   const selectedLeaseProperty = useMemo(() => {
     return companyProperties.find((property) => property.id === leaseForm.propertyId) || null
   }, [companyProperties, leaseForm.propertyId])
+
+  const selectedOnboardingCurrentTenants = useMemo(() => {
+    if (!selectedLeaseProperty) return []
+    return tenants
+      .filter((tenant) => (
+        tenant.property_id === selectedLeaseProperty.id &&
+        tenant.status !== 'archived' &&
+        !tenant.move_out_date
+      ))
+      .sort((a, b) => String(a.full_name || '').localeCompare(String(b.full_name || '')))
+  }, [tenants, selectedLeaseProperty])
+
+  const selectedOnboardingCurrentTenantName = useMemo(() => {
+    if (!selectedLeaseProperty) return ''
+    const propertyOverrides = monthlyOverrides.filter((item) => item.property_id === selectedLeaseProperty.id)
+    const timelineTenant = getTenantForDate(selectedLeaseProperty, propertyOverrides, getTodayDateInput())
+    if (timelineTenant) return timelineTenant
+    if (selectedLeaseProperty.tenant) return selectedLeaseProperty.tenant
+    return selectedOnboardingCurrentTenants.map((tenant) => tenant.full_name).filter(Boolean).join(' and ')
+  }, [selectedLeaseProperty, monthlyOverrides, selectedOnboardingCurrentTenants])
 
   const companyLeaseRecords = useMemo(() => {
     const propertyIds = new Set(companyProperties.map((property) => property.id))
@@ -3079,14 +3100,181 @@ This permanently removes the payment from the ledger.`
   function handleLeasePropertyChange(propertyId) {
     const property = companyProperties.find((item) => item.id === propertyId)
     const rent = property?.monthly_rent ? String(property.monthly_rent) : ''
+    setTenantMoveOutDate('')
     updateLeaseForm({
       propertyId,
       propertyAddress: property?.address || '',
-      tenantNames: property?.tenant || leaseForm.tenantNames,
-      monthlyRent: rent || leaseForm.monthlyRent,
-      grossRent: rent ? String(Number(rent) + 50) : leaseForm.grossRent,
-      depositAmount: rent || leaseForm.depositAmount,
+      tenantNames: '',
+      tenantPhone: '',
+      tenantEmail: '',
+      tenant2Name: '',
+      tenant2Phone: '',
+      tenant2Email: '',
+      tenantContactNotes: '',
+      occupants: '',
+      monthlyRent: rent || '',
+      grossRent: rent ? String(Number(rent) + 50) : '',
+      proratedRent: '0',
+      depositAmount: rent || '',
+      hasPets: 'no',
+      numberOfPets: '',
+      petNames: '',
+      petDepositAmount: '',
     })
+  }
+
+  async function recordTenantMoveOut() {
+    if (!selectedLeaseProperty) {
+      setMessage('Please select a property first.')
+      return
+    }
+
+    const moveOutDate = normalizeDateInputValue(tenantMoveOutDate)
+    if (!moveOutDate) {
+      setMessage('Please enter a valid move-out date.')
+      return
+    }
+
+    const propertyId = selectedLeaseProperty.id
+    const propertyOverrides = monthlyOverrides.filter((item) => item.property_id === propertyId)
+    const tenantAtMoveOut = getTenantForDate(selectedLeaseProperty, propertyOverrides, moveOutDate)
+      || selectedOnboardingCurrentTenantName
+      || selectedLeaseProperty.tenant
+      || ''
+    const activeTenantRecords = tenants.filter((tenant) => (
+      tenant.property_id === propertyId &&
+      tenant.status !== 'archived' &&
+      !tenant.move_out_date
+    ))
+    const tenantLabel = tenantAtMoveOut
+      || activeTenantRecords.map((tenant) => tenant.full_name).filter(Boolean).join(' and ')
+
+    if (!tenantLabel && activeTenantRecords.length === 0) {
+      setMessage('No current tenant is recorded for this property.')
+      return
+    }
+
+    const confirmed = window.confirm(
+      `Record move-out for ${tenantLabel || 'the current tenant'} at ${selectedLeaseProperty.address} on ${formatDate(moveOutDate)}?\n\n` +
+      `The tenant profile will be archived, the property will become vacant after that date, and the prior tenant balance will not carry into the next tenant account.`
+    )
+    if (!confirmed) return
+
+    setMessage('')
+
+    if (activeTenantRecords.length > 0) {
+      const tenantIds = activeTenantRecords.map((tenant) => tenant.id).filter(Boolean)
+      if (tenantIds.length > 0) {
+        const { error: tenantError } = await supabase
+          .from('tenants')
+          .update({
+            move_out_date: moveOutDate,
+            status: 'archived',
+          })
+          .in('id', tenantIds)
+
+        if (tenantError) {
+          setMessage(tenantError.message)
+          return
+        }
+      }
+    }
+
+    const moveOutMonth = monthKeyFromDate(moveOutDate)
+    let moveOutOverride = propertyOverrides.find((item) => item.month_key === moveOutMonth) || null
+
+    if (!moveOutOverride) {
+      const { data: existingRow, error: lookupError } = await supabase
+        .from('monthly_overrides')
+        .select('*')
+        .eq('property_id', propertyId)
+        .eq('month_key', moveOutMonth)
+        .maybeSingle()
+
+      if (lookupError) {
+        setMessage(lookupError.message)
+        return
+      }
+      moveOutOverride = existingRow || null
+    }
+
+    const moveOutNote = `Tenant move-out recorded ${formatDate(moveOutDate)}`
+    let overrideError
+
+    if (moveOutOverride?.id) {
+      const notes = [moveOutOverride.notes, moveOutNote]
+        .filter(Boolean)
+        .filter((value, index, array) => array.indexOf(value) === index)
+        .join(' | ')
+
+      ;({ error: overrideError } = await supabase
+        .from('monthly_overrides')
+        .update({
+          tenant_override: moveOutOverride.tenant_override || tenantLabel || null,
+          move_out_date: moveOutDate,
+          notes,
+        })
+        .eq('id', moveOutOverride.id))
+    } else {
+      ;({ error: overrideError } = await supabase
+        .from('monthly_overrides')
+        .insert({
+          property_id: propertyId,
+          month_key: moveOutMonth,
+          tenant_override: tenantLabel || null,
+          move_out_date: moveOutDate,
+          starting_balance: 0,
+          notes: moveOutNote,
+        }))
+    }
+
+    if (overrideError) {
+      setMessage(overrideError.message)
+      return
+    }
+
+    const normalizedTenantLabel = normalizeSearchText(tenantLabel)
+    const futureOldTenantRows = propertyOverrides.filter((item) => (
+      item.id &&
+      item.month_key > moveOutMonth &&
+      !item.move_in_date &&
+      normalizedTenantLabel &&
+      normalizeSearchText(item.tenant_override) === normalizedTenantLabel
+    ))
+
+    for (const row of futureOldTenantRows) {
+      const notes = [row.notes, `Prior tenant ended ${formatDate(moveOutDate)}`]
+        .filter(Boolean)
+        .join(' | ')
+      const { error: futureError } = await supabase
+        .from('monthly_overrides')
+        .update({
+          tenant_override: null,
+          starting_balance: 0,
+          notes,
+        })
+        .eq('id', row.id)
+
+      if (futureError) {
+        setMessage(futureError.message)
+        return
+      }
+    }
+
+    const { error: propertyError } = await supabase
+      .from('properties')
+      .update({ tenant: null })
+      .eq('id', propertyId)
+
+    if (propertyError) {
+      setMessage(propertyError.message)
+      return
+    }
+
+    setTenantMoveOutDate('')
+    if (monthOptions.includes(moveOutMonth)) setSelectedMonth(moveOutMonth)
+    await loadData()
+    setMessage(`Move-out recorded for ${tenantLabel || 'tenant'} on ${formatDate(moveOutDate)}. The property will show vacant after that date and the next tenant will start with a clean account.`)
   }
 
   function handleLeaseStartDateChange(value) {
@@ -4419,25 +4607,15 @@ This permanently removes the payment from the ledger.`
             <div style={styles.reportHeaderRow}>
               <div>
                 <h2 style={styles.cardTitle}>Properties</h2>
-                <p style={styles.smallMuted}>Archive keeps a property in your historical reports without leaving it in your active working list.</p>
+                <p style={styles.smallMuted}>Simple property setup only. Tenant changes are handled from Tenant Onboarding.</p>
               </div>
-              <label style={styles.inlineToggleLabel}>
-                <input
-                  type="checkbox"
-                  checked={showArchivedProperties}
-                  onChange={(e) => setShowArchivedProperties(e.target.checked)}
-                />
-                <span>Show archived properties</span>
-              </label>
             </div>
             <div style={styles.tableWrap}>
               <table style={styles.table}>
                 <thead>
                   <tr>
                     <th style={styles.th}>Address</th>
-                    <th style={styles.th}>Status</th>
-                    <th style={styles.th}>Tenant</th>
-                    <th style={styles.th}>Rent</th>
+                    <th style={styles.th}>Monthly Rent</th>
                     <th style={styles.th}>Due Day</th>
                     <th style={styles.th}>Late Fee</th>
                     <th style={styles.th}>Actions</th>
@@ -4445,7 +4623,7 @@ This permanently removes the payment from the ledger.`
                 </thead>
                 <tbody>
                   {filteredVisibleProperties.length === 0 ? (
-                    <tr><td style={styles.td} colSpan="7">No matching properties to show for this company.</td></tr>
+                    <tr><td style={styles.td} colSpan="5">No matching properties to show for this company.</td></tr>
                   ) : (
                     filteredVisibleProperties.map((property) => (
                       <tr key={property.id}>
@@ -4453,16 +4631,6 @@ This permanently removes the payment from the ledger.`
                           {editingPropertyId === property.id ? (
                             <input style={styles.tableInput} value={editPropertyForm.address} onChange={(e) => setEditPropertyForm({ ...editPropertyForm, address: e.target.value })} />
                           ) : property.address}
-                        </td>
-                        <td style={styles.td}>
-                          <span style={property.is_active === false ? styles.archivedBadge : styles.activeBadge}>
-                            {property.is_active === false ? 'Archived' : 'Active'}
-                          </span>
-                        </td>
-                        <td style={styles.td}>
-                          {editingPropertyId === property.id ? (
-                            <input style={styles.tableInput} value={editPropertyForm.tenant} onChange={(e) => setEditPropertyForm({ ...editPropertyForm, tenant: e.target.value })} />
-                          ) : property.tenant}
                         </td>
                         <td style={styles.td}>
                           {editingPropertyId === property.id ? (
@@ -4489,11 +4657,7 @@ This permanently removes the payment from the ledger.`
                             ) : (
                               <>
                                 <button style={styles.smallSecondaryButton} type="button" onClick={() => startEditingProperty(property)}>Edit</button>
-                                {property.is_active === false ? (
-                                  <button style={styles.smallPrimaryButton} type="button" onClick={() => restoreProperty(property.id, property.address)}>Restore</button>
-                                ) : (
-                                  <button style={styles.smallDangerButton} type="button" onClick={() => archiveProperty(property.id, property.address)}>Archive</button>
-                                )}
+                                <button style={styles.smallDangerButton} type="button" onClick={() => deleteProperty(property.id, property.address)}>Delete</button>
                               </>
                             )}
                           </div>
@@ -4511,8 +4675,6 @@ This permanently removes the payment from the ledger.`
             <form onSubmit={addProperty}>
               <label style={styles.label}>Address</label>
               <input className="mobile-input" style={styles.input} value={propertyForm.address} onChange={(e) => setPropertyForm({ ...propertyForm, address: e.target.value })} />
-              <label style={styles.label}>Tenant</label>
-              <input className="mobile-input" style={styles.input} value={propertyForm.tenant} onChange={(e) => setPropertyForm({ ...propertyForm, tenant: e.target.value })} />
               <label style={styles.label}>Monthly Rent</label>
               <input className="mobile-input" style={styles.input} type="number" value={propertyForm.monthlyRent} onChange={(e) => setPropertyForm({ ...propertyForm, monthlyRent: e.target.value })} />
               <label style={styles.label}>Due Day</label>
@@ -4795,18 +4957,9 @@ This permanently removes the payment from the ledger.`
         <div className="mobile-card" style={styles.card}>
           <div style={styles.reportHeaderRow}>
             <div>
-              <h2 style={styles.cardTitle}>Monthly Overrides</h2>
-              <p style={styles.smallMuted}>Use this for prorated rent, monthly tenant changes, move-in / move-out dates, starting balances, and notes.</p>
+              <h2 style={styles.cardTitle}>Monthly Rent Overrides</h2>
+              <p style={styles.smallMuted}>Use this only when the rent charged for {monthLabel(selectedMonth)} needs to differ from the property's regular monthly rent. Move-in and move-out dates are handled in Tenant Onboarding.</p>
             </div>
-            <div style={styles.actionRow}>
-              <button style={styles.smallPrimaryButton} type="button" onClick={rollMonthForward}>
-                Roll Active Properties to {monthLabel(nextMonthKey)}
-              </button>
-            </div>
-          </div>
-
-          <div style={styles.notesBox}>
-            <strong>Quick setup:</strong> This creates next-month override rows only for properties with an active tenant on {formatDate(startOfMonth(nextMonthKey))}. It keeps the standard property rent, carries the ending balance forward, and leaves any existing next-month override rows untouched.
           </div>
 
           <div style={styles.tableWrap}>
@@ -4814,12 +4967,8 @@ This permanently removes the payment from the ledger.`
               <thead>
                 <tr>
                   <th style={styles.th}>Property</th>
-                  <th style={styles.th}>Tenant Override</th>
+                  <th style={styles.th}>Regular Rent</th>
                   <th style={styles.th}>Override Rent</th>
-                  <th style={styles.th}>Start Bal</th>
-                  <th style={styles.th}>Move In</th>
-                  <th style={styles.th}>Move Out</th>
-                  <th style={styles.th}>Notes</th>
                   <th style={styles.th}>Action</th>
                 </tr>
               </thead>
@@ -4828,41 +4977,23 @@ This permanently removes the payment from the ledger.`
                   const current = companyOverrides.find(
                     (item) => item.property_id === property.id && item.month_key === selectedMonth
                   )
-
                   const isEditing = editingOverrideId === property.id
 
                   return (
                     <tr key={`override-${property.id}`}>
                       <td style={styles.td}>{property.address}</td>
+                      <td style={styles.td}>{currency(property.monthly_rent)}</td>
                       <td style={styles.td}>
                         {isEditing ? (
-                          <input style={styles.tableInput} value={overrideForm.tenantOverride} onChange={(e) => setOverrideForm({ ...overrideForm, tenantOverride: e.target.value })} />
-                        ) : (current?.tenant_override || '—')}
-                      </td>
-                      <td style={styles.td}>
-                        {isEditing ? (
-                          <input style={styles.tableInput} type="number" value={overrideForm.overrideRent} onChange={(e) => setOverrideForm({ ...overrideForm, overrideRent: e.target.value })} />
+                          <input
+                            style={styles.tableInput}
+                            type="number"
+                            step="0.01"
+                            value={overrideForm.overrideRent}
+                            onChange={(e) => setOverrideForm({ overrideRent: e.target.value })}
+                            placeholder="Leave blank for regular rent"
+                          />
                         ) : (current?.override_rent !== null && current?.override_rent !== undefined ? currency(current.override_rent) : '—')}
-                      </td>
-                      <td style={styles.td}>
-                        {isEditing ? (
-                          <input style={styles.tableInput} type="number" value={overrideForm.startingBalance} onChange={(e) => setOverrideForm({ ...overrideForm, startingBalance: e.target.value })} />
-                        ) : (current?.starting_balance ? currency(current.starting_balance) : '—')}
-                      </td>
-                      <td style={styles.td}>
-                        {isEditing ? (
-                          <input style={styles.tableInput} type="date" value={overrideForm.moveInDate} onChange={(e) => setOverrideForm({ ...overrideForm, moveInDate: e.target.value })} />
-                        ) : (current?.move_in_date || '—')}
-                      </td>
-                      <td style={styles.td}>
-                        {isEditing ? (
-                          <input style={styles.tableInput} type="date" value={overrideForm.moveOutDate} onChange={(e) => setOverrideForm({ ...overrideForm, moveOutDate: e.target.value })} />
-                        ) : (current?.move_out_date || '—')}
-                      </td>
-                      <td style={styles.td}>
-                        {isEditing ? (
-                          <input style={styles.tableInput} value={overrideForm.notes} onChange={(e) => setOverrideForm({ ...overrideForm, notes: e.target.value })} />
-                        ) : (current?.notes || '—')}
                       </td>
                       <td style={styles.td}>
                         <div style={styles.actionRow}>
@@ -5397,7 +5528,7 @@ This permanently removes the payment from the ledger.`
             <div style={styles.reportHeaderRow}>
               <div>
                 <h2 style={styles.cardTitle}>Tenant Onboarding</h2>
-                <p style={styles.smallMuted}>Enter the new-tenant details once, preview the lease package, then print/save it as a PDF for Adobe signatures.</p>
+                <p style={styles.smallMuted}>Select a property to view the current tenant, record a move-out when needed, or enter a new tenant once and generate the lease package.</p>
               </div>
             </div>
 
@@ -5408,6 +5539,49 @@ This permanently removes the payment from the ledger.`
                 <option key={`lease-property-${property.id}`} value={property.id}>{property.address}</option>
               ))}
             </select>
+
+            {selectedLeaseProperty ? (
+              <div style={{ ...styles.notesBox, marginTop: '12px', marginBottom: '16px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', gap: '16px', flexWrap: 'wrap', alignItems: 'flex-end' }}>
+                  <div style={{ flex: '1 1 420px' }}>
+                    <strong>Current Tenant</strong>
+                    {selectedOnboardingCurrentTenants.length > 0 ? (
+                      <div style={{ display: 'grid', gap: '6px', marginTop: '8px' }}>
+                        {selectedOnboardingCurrentTenants.map((tenant) => (
+                          <div key={tenant.id || `${tenant.full_name}-${tenant.phone || ''}`}>
+                            <strong>{tenant.full_name || 'Tenant'}</strong>
+                            {tenant.phone ? <span style={styles.smallMuted}> · {tenant.phone}</span> : null}
+                            {tenant.email ? <span style={styles.smallMuted}> · {tenant.email}</span> : null}
+                            {tenant.move_in_date ? <span style={styles.smallMuted}> · Moved in {formatDate(tenant.move_in_date)}</span> : null}
+                          </div>
+                        ))}
+                      </div>
+                    ) : selectedOnboardingCurrentTenantName ? (
+                      <div style={{ marginTop: '8px' }}>{selectedOnboardingCurrentTenantName}</div>
+                    ) : (
+                      <div style={{ ...styles.smallMuted, marginTop: '8px' }}>No current tenant. This property is ready for new-tenant onboarding.</div>
+                    )}
+                  </div>
+
+                  {selectedOnboardingCurrentTenantName || selectedOnboardingCurrentTenants.length > 0 ? (
+                    <div style={{ display: 'flex', gap: '10px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
+                      <div>
+                        <label style={styles.label}>Move-Out Date</label>
+                        <input
+                          style={{ ...styles.input, width: '190px' }}
+                          type="date"
+                          value={tenantMoveOutDate}
+                          onChange={(e) => setTenantMoveOutDate(e.target.value)}
+                        />
+                      </div>
+                      <button style={styles.smallDangerButton} type="button" onClick={recordTenantMoveOut}>
+                        Record Move-Out
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            ) : null}
 
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 223px)', gap: '12px', justifyContent: 'start', alignItems: 'end', overflowX: 'auto', paddingBottom: '4px' }}>
               <div>
@@ -5538,7 +5712,7 @@ This permanently removes the payment from the ledger.`
               <button style={styles.primaryButton} type="button" onClick={() => saveLeaseRecord({ openPrint: true })}>Save Record & Print PDF</button>
               <button style={styles.secondaryButton} type="button" onClick={printLeasePackage}>Print Only</button>
               <button style={styles.secondaryButton} type="button" onClick={() => saveLeaseRecord({ openPrint: false })}>Save Record Only</button>
-              <button style={styles.secondaryButton} type="button" onClick={() => setLeaseForm(buildLeaseOnboardingForm())}>Clear Form</button>
+              <button style={styles.secondaryButton} type="button" onClick={() => { setLeaseForm(buildLeaseOnboardingForm()); setTenantMoveOutDate('') }}>Clear Form</button>
             </div>
 
             <div style={styles.notesBox}>
