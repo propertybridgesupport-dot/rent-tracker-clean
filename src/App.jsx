@@ -4687,8 +4687,8 @@ This permanently removes the payment from the ledger.`
                             company.owner_email || '—'
                           )}
                         </td>
-                        <td style={styles.td}>
-                          <div style={styles.actionRow}>
+                        <td style={{ ...styles.td, verticalAlign: 'middle' }}>
+                          <div style={{ ...styles.actionRow, alignItems: 'center' }}>
                             {editingCompanyId === company.id ? (
                               <>
                                 <button
@@ -4962,7 +4962,7 @@ This permanently removes the payment from the ledger.`
       )}
 
       {activeTab === 'overrides' && (
-        <div style={styles.sectionGridSingle}>
+        <div className="responsive-section-grid" style={styles.sectionGrid}>
           <div className="mobile-card" style={styles.card}>
             <div style={styles.reportHeaderRow}>
               <div>
@@ -4975,10 +4975,10 @@ This permanently removes the payment from the ledger.`
               <table style={styles.table}>
                 <thead>
                   <tr>
-                    <th style={styles.th}>Property</th>
-                    <th style={styles.th}>Regular Rent</th>
-                    <th style={styles.th}>Override Rent</th>
-                    <th style={styles.th}>Action</th>
+                    <th style={{ ...styles.th, verticalAlign: 'middle' }}>Property</th>
+                    <th style={{ ...styles.th, verticalAlign: 'middle' }}>Regular Rent</th>
+                    <th style={{ ...styles.th, verticalAlign: 'middle' }}>Override Rent</th>
+                    <th style={{ ...styles.th, verticalAlign: 'middle' }}>Action</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -4990,9 +4990,9 @@ This permanently removes the payment from the ledger.`
 
                     return (
                       <tr key={`override-${property.id}`}>
-                        <td style={styles.td}>{property.address}</td>
-                        <td style={styles.td}>{currency(property.monthly_rent)}</td>
-                        <td style={styles.td}>
+                        <td style={{ ...styles.td, verticalAlign: 'middle' }}>{property.address}</td>
+                        <td style={{ ...styles.td, verticalAlign: 'middle' }}>{currency(property.monthly_rent)}</td>
+                        <td style={{ ...styles.td, verticalAlign: 'middle' }}>
                           {isEditing ? (
                             <input
                               style={styles.tableInput}
@@ -5024,9 +5024,9 @@ This permanently removes the payment from the ledger.`
             </div>
           </div>
 
-          <div className="mobile-card" style={styles.card}>
+          <div className="mobile-card" style={{ ...styles.card, alignSelf: 'start' }}>
             <h2 style={styles.cardTitle}>Add Late Fee</h2>
-            <p style={styles.smallMuted}>Post a one-time late fee to the tenant's ledger. The default amount comes from the property setup, but you can change it for an individual charge.</p>
+            <p style={styles.smallMuted}>Post a one-time late fee to the tenant's ledger. The property default fills automatically, but you can change the amount or date before posting.</p>
 
             <form onSubmit={addLateFeeFromOverrides}>
               <div style={styles.statementFilterGrid}>
