@@ -471,6 +471,12 @@ export default function App() {
     method: 'Cash',
     note: '',
   })
+  const [lateFeeForm, setLateFeeForm] = useState({
+    propertyId: '',
+    chargeDate: getTodayDateInput(),
+    amount: '',
+    note: '',
+  })
   const [paymentSuccessMessage, setPaymentSuccessMessage] = useState('')
   const [voiceTranscript, setVoiceTranscript] = useState('')
   const [voiceStatus, setVoiceStatus] = useState('')
@@ -1272,6 +1278,67 @@ export default function App() {
 
   async function addLateFee() {
     await savePaymentEntry({ addAnother: false, entryType: 'late_fee' })
+  }
+
+  async function addLateFeeFromOverrides(e) {
+    e?.preventDefault()
+    setMessage('')
+
+    if (!lateFeeForm.propertyId) {
+      setMessage('Please select a property for the late fee.')
+      return
+    }
+
+    if (!lateFeeForm.chargeDate) {
+      setMessage('Please enter the late fee date.')
+      return
+    }
+
+    const property = activeCompanyProperties.find((item) => item.id === lateFeeForm.propertyId)
+      || companyProperties.find((item) => item.id === lateFeeForm.propertyId)
+
+    const amountToUse = lateFeeForm.amount !== '' && Number(lateFeeForm.amount) > 0
+      ? Number(lateFeeForm.amount)
+      : Number(property?.late_fee || 0)
+
+    if (!amountToUse || amountToUse <= 0) {
+      setMessage('Please enter a late fee amount greater than zero, or save a default late fee on the property first.')
+      return
+    }
+
+    const chargeDate = normalizeDateInputValue(lateFeeForm.chargeDate)
+    if (!chargeDate) {
+      setMessage('Please enter a valid late fee date.')
+      return
+    }
+
+    const { error } = await supabase
+      .from('payments')
+      .insert({
+        property_id: lateFeeForm.propertyId,
+        payment_date: chargeDate,
+        amount: amountToUse,
+        method: 'Late Fee',
+        note: lateFeeForm.note || null,
+      })
+
+    if (error) {
+      setMessage(error.message)
+      return
+    }
+
+    const postedMonth = monthKeyFromDate(chargeDate)
+    if (postedMonth) setSelectedMonth(postedMonth)
+
+    setLateFeeForm({
+      propertyId: '',
+      chargeDate: getTodayDateInput(),
+      amount: '',
+      note: '',
+    })
+
+    await loadData()
+    setMessage(`Late fee posted for ${property?.address || 'selected property'} — ${currency(amountToUse)} on ${formatDate(chargeDate)}.`)
   }
 
   function startEditingProperty(property) {
@@ -4448,47 +4515,6 @@ This permanently removes the payment from the ledger.`
             </div>
           </div>
 
-          <div className="mobile-card" style={styles.card}>
-            <div style={styles.reportHeaderRow}>
-              <div>
-                <h2 style={styles.cardTitle}>Dashboard Alerts</h2>
-                <p style={styles.smallMuted}>Quick watch list for balances, vacancies, and move-outs.</p>
-              </div>
-              <div style={styles.alertSummaryInline}>
-                <span style={styles.alertBadgeHigh}>{highAlertCount} high</span>
-                <span style={styles.alertBadgeMedium}>{mediumAlertCount} medium</span>
-                <span style={styles.alertBadgeLow}>{lowAlertCount} low</span>
-              </div>
-            </div>
-
-            {companyAlerts.length === 0 ? (
-              <div style={styles.notesBox}>No alerts for the current company and month.</div>
-            ) : (
-              <div style={styles.alertList}>
-                {companyAlerts.slice(0, 8).map((alert) => (
-                  <div key={alert.id} style={styles.alertCard}>
-                    <div style={styles.alertCardTopRow}>
-                      <span style={alert.severity === 'high' ? styles.alertBadgeHigh : alert.severity === 'medium' ? styles.alertBadgeMedium : styles.alertBadgeLow}>
-                        {alert.category}
-                      </span>
-                      <button
-                        style={styles.linkButton}
-                        type="button"
-                        onClick={() => {
-                          setSelectedNotesPropertyId(alert.propertyId || '')
-                          setActiveTab('notesAlerts')
-                        }}
-                      >
-                        Open notes
-                      </button>
-                    </div>
-                    <div style={styles.alertCardTitle}>{alert.title}</div>
-                    <div style={styles.smallMuted}>{alert.detail}</div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
         </div>
       )}
 
@@ -4688,190 +4714,22 @@ This permanently removes the payment from the ledger.`
       )}
 
       {activeTab === 'payments' && (
-        <div className="responsive-section-grid" style={styles.sectionGrid}>
+        <div style={styles.sectionGridSingle}>
           {isMobile ? (
             <div style={styles.mobilePaymentBanner}>
               <div style={styles.mobilePaymentBannerTitle}>Phone-friendly payment screen</div>
-              <div style={styles.mobilePaymentBannerText}>This tab is now the default mobile landing screen so you can get straight to payment entry.</div>
+              <div style={styles.mobilePaymentBannerText}>Straight to payment entry with only the fields you need.</div>
             </div>
           ) : null}
-          <div className="mobile-card" style={styles.card}>
-            <h2 style={styles.cardTitle}>Payments This Month</h2>
-            <p style={styles.smallMuted}>{selectedCompanyName} — {monthLabel(selectedMonth)}</p>
-            <div style={styles.tableWrap}>
-              <table style={styles.table}>
-                <thead>
-                  <tr>
-                    <th style={styles.th}>Date</th>
-                    <th style={styles.th}>Property</th>
-                    <th style={styles.th}>Amount</th>
-                    <th style={styles.th}>Method</th>
-                    <th style={styles.th}>Note</th>
-                    <th style={styles.th}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {filteredMonthlyPayments.length === 0 ? (
-                    <tr><td style={styles.td} colSpan="6">No matching payments entered for this month.</td></tr>
-                  ) : (
-                    filteredMonthlyPayments.map((payment) => {
-                      const property = companyProperties.find((p) => p.id === payment.property_id)
-                      return (
-                        <tr key={payment.id}>
-                          <td style={styles.td}>
-                            {editingPaymentId === payment.id ? (
-                              <input style={styles.tableInput} type="date" value={editPaymentForm.paymentDate} onChange={(e) => setEditPaymentForm({ ...editPaymentForm, paymentDate: e.target.value })} />
-                            ) : payment.payment_date}
-                          </td>
-                          <td style={styles.td}>{property?.address || '—'}</td>
-                          <td style={styles.td}>
-                            {editingPaymentId === payment.id ? (
-                              <input style={styles.tableInput} type="number" value={editPaymentForm.amount} onChange={(e) => setEditPaymentForm({ ...editPaymentForm, amount: e.target.value })} />
-                            ) : currency(payment.amount)}
-                          </td>
-                          <td style={styles.td}>
-                            {editingPaymentId === payment.id ? (
-                              <select style={styles.tableInput} value={editPaymentForm.method} onChange={(e) => setEditPaymentForm({ ...editPaymentForm, method: e.target.value })}>
-                                <option value="Cash">Cash</option>
-                                <option value="Bank Deposit">Bank Deposit</option>
-                                <option value="Check">Check</option>
-                                <option value="Money Order">Money Order</option>
-                                <option value="Cash App">Cash App</option>
-                                <option value="Zelle">Zelle</option>
-                                <option value="Venmo">Venmo</option>
-                              </select>
-                            ) : (payment.method || '—')}
-                          </td>
-                          <td style={styles.td}>
-                            {editingPaymentId === payment.id ? (
-                              <input style={styles.tableInput} value={editPaymentForm.note} onChange={(e) => setEditPaymentForm({ ...editPaymentForm, note: e.target.value })} />
-                            ) : (payment.note || '—')}
-                          </td>
-                          <td style={styles.td}>
-                            <div style={styles.actionRow}>
-                              {editingPaymentId === payment.id ? (
-                                <>
-                                  <button style={styles.smallPrimaryButton} type="button" onClick={() => saveEditedPayment(payment.id)}>Save</button>
-                                  <button style={styles.smallSecondaryButton} type="button" onClick={cancelEditingPayment}>Cancel</button>
-                                </>
-                              ) : (
-                                <>
-                                  <button style={styles.smallSecondaryButton} type="button" onClick={() => startEditingPayment(payment)}>Edit</button>
-                                  <button style={styles.smallDangerButton} type="button" onClick={() => deletePayment(payment.id)}>Delete</button>
-                                </>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      )
-                    })
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
 
           <div className="mobile-card" style={styles.card}>
             <div className="mobile-hero-card" style={styles.mobileHeroCard}>
               <div style={styles.mobileHeroEyebrow}>Open Door Support</div>
               <h2 style={styles.mobileHeroTitle}>Quick Payment Entry</h2>
-              <p style={styles.mobileHeroText}>Built for easier phone use with larger controls, stacked spacing, and voice-friendly entry tools.</p>
+              <p style={styles.mobileHeroText}>Record a rent payment, save it, and send the tenant a text receipt.</p>
             </div>
             <p style={styles.smallMuted}>Default date starts on today, the last saved payment method is remembered, and you can save another payment without rebuilding the form.</p>
-            <div style={styles.infoBanner}>Payments post by the payment date you enter, not the month currently showing at the top. After you save, the month selector will follow that payment date so you can see it in the right month.</div>
-
-            <div style={styles.voiceCard}>
-              <div style={styles.voiceHeaderRow}>
-                <div>
-                  <div style={styles.voiceTitle}>Voice Payment Entry</div>
-                  <div style={styles.smallMuted}>Say something like: “5342A St. Matthew Lane, March 8 2026, 1100 dollars, cash.”</div>
-                </div>
-                <div style={styles.voiceButtonGroup}>
-                  <button
-                    style={isListening ? styles.voiceDangerButton : styles.voicePrimaryButton}
-                    type="button"
-                    onClick={isListening ? stopVoiceEntry : startVoiceEntry}
-                  >
-                    {isListening ? 'Stop Listening' : 'Use Phone Mic'}
-                  </button>
-                  <button
-                    style={styles.voiceSecondaryButton}
-                    type="button"
-                    onClick={focusTranscriptForKeyboardMic}
-                  >
-                    Use Keyboard Mic
-                  </button>
-                </div>
-              </div>
-
-              <div style={styles.voiceHelpBox}>
-                <strong>Android tip:</strong> In Chrome or Edge, try <strong>Use Phone Mic</strong>. If that does not work well on your phone, tap <strong>Use Keyboard Mic</strong>, speak into your keyboard microphone, then press <strong>Apply Transcript</strong>.
-              </div>
-
-              {voiceStatus ? <div style={styles.infoBanner}>{voiceStatus}</div> : null}
-
-              {!browserSupportsVoiceEntry() ? (
-                <div style={styles.warningBanner}>This browser may not support direct voice dictation. The keyboard mic option still works well on many Android phones.</div>
-              ) : null}
-
-              <label style={styles.label}>Transcript</label>
-              <textarea
-                ref={voiceTranscriptRef}
-                style={styles.textarea}
-                rows={4}
-                value={voiceTranscript}
-                onChange={(e) => {
-                  setVoiceTranscript(e.target.value)
-                  setVoiceStatus('Transcript updated. Use Apply Transcript to fill the payment form.')
-                }}
-                placeholder="Your dictated payment will appear here. You can also tap into this box and use your phone keyboard microphone."
-              />
-              <div style={styles.voiceButtonGroup}>
-                <button
-                  style={styles.voiceSecondaryButton}
-                  type="button"
-                  onClick={() => applyVoicePaymentTranscript(voiceTranscript)}
-                >
-                  Apply Transcript
-                </button>
-                <button
-                  style={styles.voiceSecondaryButton}
-                  type="button"
-                  onClick={() => {
-                    setVoiceTranscript('')
-                    setVoiceStatus('')
-                    if (voiceTranscriptRef.current) voiceTranscriptRef.current.focus()
-                  }}
-                >
-                  Clear Voice Entry
-                </button>
-              </div>
-            </div>
-
-            {paymentSuccessMessage ? (
-              <div style={styles.successBanner}>{paymentSuccessMessage}</div>
-            ) : null}
-
-            {lastReceipt?.message ? (
-              <div style={styles.receiptBox}>
-                <strong>Receipt ready</strong>
-                <pre style={styles.receiptPreview}>{lastReceipt.message}</pre>
-                <div className="mobile-button-row" style={styles.buttonRow}>
-                  <button style={styles.primaryButton} type="button" onClick={() => openTextReceipt(lastReceipt)}>Text Receipt</button>
-                  <button style={styles.secondaryButton} type="button" onClick={() => copyReceipt(lastReceipt)}>Copy Receipt</button>
-                </div>
-                {lastReceipt.contactOptions?.length > 1 ? (
-                  <div className="mobile-button-row" style={styles.buttonRow}>
-                    {lastReceipt.contactOptions.map((contact) => (
-                      <button key={`${contact.name}-${contact.phone}`} style={styles.smallSecondaryButton} type="button" onClick={() => openTextReceipt(lastReceipt, contact.phone)}>
-                        Text {contact.name}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-                {!lastReceipt.phone ? <div style={styles.smallMuted}>No tenant phone is saved yet, so Copy Receipt may be easiest for this one.</div> : null}
-              </div>
-            ) : null}
+            <div style={styles.infoBanner}>Payments post by the payment date you enter, not the month currently showing at the top. After you save, the month selector will follow that payment date.</div>
 
             <form onSubmit={addPayment}>
               <label style={styles.label}>Property</label>
@@ -4928,10 +4786,8 @@ This permanently removes the payment from the ledger.`
                 <option value="Cash App">Cash App</option>
                 <option value="Zelle">Zelle</option>
                 <option value="Venmo">Venmo</option>
-                <option value="Late Fee">Late Fee</option>
               </select>
-
-              <div style={styles.smallMuted}>Last used method will carry forward after you save. Use Add Late Fee below to post a separate late-fee charge instead of increasing rent.</div>
+              <div style={styles.smallMuted}>Last used payment method will carry forward after you save.</div>
 
               <label style={styles.label}>Note</label>
               <input
@@ -4946,72 +4802,163 @@ This permanently removes the payment from the ledger.`
               <div className="mobile-button-row" style={styles.buttonRow}>
                 <button style={styles.primaryButton} type="submit">Save Payment</button>
                 <button style={styles.secondaryButton} type="button" onClick={addPaymentAndContinue}>Save + Add Another</button>
-                <button style={styles.secondaryButton} type="button" onClick={addLateFee}>Add Late Fee</button>
               </div>
             </form>
+
+            {paymentSuccessMessage ? (
+              <div style={styles.successBanner}>{paymentSuccessMessage}</div>
+            ) : null}
+
+            {lastReceipt?.message ? (
+              <div style={styles.receiptBox}>
+                <strong>Receipt ready</strong>
+                <pre style={styles.receiptPreview}>{lastReceipt.message}</pre>
+                <div className="mobile-button-row" style={styles.buttonRow}>
+                  <button style={styles.primaryButton} type="button" onClick={() => openTextReceipt(lastReceipt)}>Text Receipt</button>
+                  <button style={styles.secondaryButton} type="button" onClick={() => copyReceipt(lastReceipt)}>Copy Receipt</button>
+                </div>
+                {lastReceipt.contactOptions?.length > 1 ? (
+                  <div className="mobile-button-row" style={styles.buttonRow}>
+                    {lastReceipt.contactOptions.map((contact) => (
+                      <button key={`${contact.name}-${contact.phone}`} style={styles.smallSecondaryButton} type="button" onClick={() => openTextReceipt(lastReceipt, contact.phone)}>
+                        Text {contact.name}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+                {!lastReceipt.phone ? <div style={styles.smallMuted}>No tenant phone is saved yet, so Copy Receipt may be easiest for this one.</div> : null}
+              </div>
+            ) : null}
           </div>
         </div>
       )}
 
       {activeTab === 'overrides' && (
-        <div className="mobile-card" style={styles.card}>
-          <div style={styles.reportHeaderRow}>
-            <div>
-              <h2 style={styles.cardTitle}>Monthly Rent Overrides</h2>
-              <p style={styles.smallMuted}>Use this only when the rent charged for {monthLabel(selectedMonth)} needs to differ from the property's regular monthly rent. Move-in and move-out dates are handled in Tenant Onboarding.</p>
+        <div style={styles.sectionGridSingle}>
+          <div className="mobile-card" style={styles.card}>
+            <div style={styles.reportHeaderRow}>
+              <div>
+                <h2 style={styles.cardTitle}>Monthly Rent Overrides</h2>
+                <p style={styles.smallMuted}>Use this only when the rent charged for {monthLabel(selectedMonth)} needs to differ from the property's regular monthly rent. Move-in and move-out dates are handled in Tenant Onboarding.</p>
+              </div>
+            </div>
+
+            <div style={styles.tableWrap}>
+              <table style={styles.table}>
+                <thead>
+                  <tr>
+                    <th style={styles.th}>Property</th>
+                    <th style={styles.th}>Regular Rent</th>
+                    <th style={styles.th}>Override Rent</th>
+                    <th style={styles.th}>Action</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {companyProperties.map((property) => {
+                    const current = companyOverrides.find(
+                      (item) => item.property_id === property.id && item.month_key === selectedMonth
+                    )
+                    const isEditing = editingOverrideId === property.id
+
+                    return (
+                      <tr key={`override-${property.id}`}>
+                        <td style={styles.td}>{property.address}</td>
+                        <td style={styles.td}>{currency(property.monthly_rent)}</td>
+                        <td style={styles.td}>
+                          {isEditing ? (
+                            <input
+                              style={styles.tableInput}
+                              type="number"
+                              step="0.01"
+                              value={overrideForm.overrideRent}
+                              onChange={(e) => setOverrideForm({ overrideRent: e.target.value })}
+                              placeholder="Leave blank for regular rent"
+                            />
+                          ) : (current?.override_rent !== null && current?.override_rent !== undefined ? currency(current.override_rent) : '—')}
+                        </td>
+                        <td style={styles.td}>
+                          <div style={styles.actionRow}>
+                            {isEditing ? (
+                              <>
+                                <button style={styles.smallPrimaryButton} type="button" onClick={() => saveOverride(property.id)}>Save</button>
+                                <button style={styles.smallSecondaryButton} type="button" onClick={cancelEditingOverride}>Cancel</button>
+                              </>
+                            ) : (
+                              <button style={styles.smallSecondaryButton} type="button" onClick={() => startEditingOverride(property.id, current)}>Edit</button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
             </div>
           </div>
 
-          <div style={styles.tableWrap}>
-            <table style={styles.table}>
-              <thead>
-                <tr>
-                  <th style={styles.th}>Property</th>
-                  <th style={styles.th}>Regular Rent</th>
-                  <th style={styles.th}>Override Rent</th>
-                  <th style={styles.th}>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {companyProperties.map((property) => {
-                  const current = companyOverrides.find(
-                    (item) => item.property_id === property.id && item.month_key === selectedMonth
-                  )
-                  const isEditing = editingOverrideId === property.id
+          <div className="mobile-card" style={styles.card}>
+            <h2 style={styles.cardTitle}>Add Late Fee</h2>
+            <p style={styles.smallMuted}>Post a one-time late fee to the tenant's ledger. The default amount comes from the property setup, but you can change it for an individual charge.</p>
 
-                  return (
-                    <tr key={`override-${property.id}`}>
-                      <td style={styles.td}>{property.address}</td>
-                      <td style={styles.td}>{currency(property.monthly_rent)}</td>
-                      <td style={styles.td}>
-                        {isEditing ? (
-                          <input
-                            style={styles.tableInput}
-                            type="number"
-                            step="0.01"
-                            value={overrideForm.overrideRent}
-                            onChange={(e) => setOverrideForm({ overrideRent: e.target.value })}
-                            placeholder="Leave blank for regular rent"
-                          />
-                        ) : (current?.override_rent !== null && current?.override_rent !== undefined ? currency(current.override_rent) : '—')}
-                      </td>
-                      <td style={styles.td}>
-                        <div style={styles.actionRow}>
-                          {isEditing ? (
-                            <>
-                              <button style={styles.smallPrimaryButton} type="button" onClick={() => saveOverride(property.id)}>Save</button>
-                              <button style={styles.smallSecondaryButton} type="button" onClick={cancelEditingOverride}>Cancel</button>
-                            </>
-                          ) : (
-                            <button style={styles.smallSecondaryButton} type="button" onClick={() => startEditingOverride(property.id, current)}>Edit</button>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                })}
-              </tbody>
-            </table>
+            <form onSubmit={addLateFeeFromOverrides}>
+              <div style={styles.statementFilterGrid}>
+                <div>
+                  <label style={styles.label}>Property</label>
+                  <select
+                    style={styles.input}
+                    value={lateFeeForm.propertyId}
+                    onChange={(e) => {
+                      const propertyId = e.target.value
+                      const property = companyProperties.find((item) => item.id === propertyId)
+                      setLateFeeForm((current) => ({
+                        ...current,
+                        propertyId,
+                        amount: propertyId ? String(Number(property?.late_fee || 0) || '') : '',
+                      }))
+                    }}
+                  >
+                    <option value="">Select property</option>
+                    {filteredPropertyOptions.filter((property) => property.is_active !== false).map((property) => (
+                      <option key={`late-fee-${property.id}`} value={property.id}>{property.address}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label style={styles.label}>Late Fee Date</label>
+                  <input
+                    style={styles.input}
+                    type="date"
+                    value={lateFeeForm.chargeDate}
+                    onChange={(e) => setLateFeeForm((current) => ({ ...current, chargeDate: e.target.value }))}
+                  />
+                </div>
+
+                <div>
+                  <label style={styles.label}>Late Fee Amount</label>
+                  <input
+                    style={styles.input}
+                    type="number"
+                    step="0.01"
+                    value={lateFeeForm.amount}
+                    onChange={(e) => setLateFeeForm((current) => ({ ...current, amount: e.target.value }))}
+                    placeholder="Uses property default"
+                  />
+                </div>
+              </div>
+
+              <label style={styles.label}>Note</label>
+              <input
+                style={styles.input}
+                value={lateFeeForm.note}
+                onChange={(e) => setLateFeeForm((current) => ({ ...current, note: e.target.value }))}
+                placeholder="Optional"
+              />
+
+              <div className="mobile-button-row" style={styles.buttonRow}>
+                <button style={styles.primaryButton} type="submit">Post Late Fee</button>
+              </div>
+            </form>
           </div>
         </div>
       )}
