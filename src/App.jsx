@@ -2926,6 +2926,7 @@ This permanently removes the payment from the ledger.`
             .report-print-title { font-size: 24px; font-weight: 700; margin-bottom: 6px; color: #2f102d; }
             .report-print-meta { font-size: 14px; color: #4b5563; margin-bottom: 4px; }
             .report-print-footer { margin-top: 18px; padding-top: 12px; border-top: 1px solid #d9cfc0; font-size: 12px; color: #6b7280; display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+            .management-fee-history-screen-only { display: none !important; }
             .notes-box { margin-top: 16px; background: #fbf7f1; border: 1px solid #e8dccb; border-radius: 8px; padding: 12px 14px; font-size: 14px; color: #4b5563; }
             .report-totals { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 10px; margin-top: 16px; font-size: 14px; }
             table { width: 100%; border-collapse: collapse; margin-top: 16px; }
@@ -6037,7 +6038,7 @@ This permanently removes the payment from the ledger.`
               </div>
 
               {companyManagementFeeHistory.length > 0 && (
-                <div style={{ marginTop: 18 }}>
+                <div className="management-fee-history-screen-only" style={{ marginTop: 18 }}>
                   <h3 style={{ marginBottom: 8 }}>Management Fee Closeout History</h3>
                   <div style={styles.tableWrap}>
                     <table style={styles.table}>
