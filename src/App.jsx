@@ -4570,26 +4570,26 @@ This permanently removes the payment from the ledger.`
                                   <div
                                     key={`dashboard-actions-${payment.id}`}
                                     style={{
-                                      minHeight: 50,
+                                      minHeight: 36,
                                       display: 'flex',
-                                      flexDirection: 'column',
-                                      alignItems: 'stretch',
-                                      justifyContent: 'center',
-                                      gap: 5,
-                                      minWidth: 72,
+                                      flexDirection: 'row',
+                                      alignItems: 'center',
+                                      justifyContent: 'flex-start',
+                                      gap: 6,
+                                      whiteSpace: 'nowrap',
                                     }}
                                   >
                                     {editingPaymentId === payment.id ? (
                                       <>
                                         <button
-                                          style={styles.smallPrimaryButton}
+                                          style={{ ...styles.smallPrimaryButton, width: 'auto', minWidth: 58, padding: '6px 10px' }}
                                           type="button"
                                           onClick={() => saveEditedPayment(payment.id)}
                                         >
                                           Save
                                         </button>
                                         <button
-                                          style={styles.smallSecondaryButton}
+                                          style={{ ...styles.smallSecondaryButton, width: 'auto', minWidth: 58, padding: '6px 10px' }}
                                           type="button"
                                           onClick={cancelEditingPayment}
                                         >
@@ -4599,14 +4599,14 @@ This permanently removes the payment from the ledger.`
                                     ) : (
                                       <>
                                         <button
-                                          style={styles.smallSecondaryButton}
+                                          style={{ ...styles.smallSecondaryButton, width: 'auto', minWidth: 52, padding: '6px 10px' }}
                                           type="button"
                                           onClick={() => startEditingPayment(payment)}
                                         >
                                           Edit
                                         </button>
                                         <button
-                                          style={styles.dangerButton}
+                                          style={{ ...styles.dangerButton, width: 'auto', minWidth: 58, padding: '6px 10px', fontSize: '13px' }}
                                           type="button"
                                           onClick={() => deletePayment(payment.id)}
                                         >
