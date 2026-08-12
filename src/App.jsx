@@ -409,6 +409,10 @@ export default function App() {
   const [leases, setLeases] = useState([])
   const [tenants, setTenants] = useState([])
   const [monthlyOverrides, setMonthlyOverrides] = useState([])
+  const [managementFeeInvoices, setManagementFeeInvoices] = useState([])
+  const [managementFeeInvoiceItems, setManagementFeeInvoiceItems] = useState([])
+  const [managementFeeCutoffDate, setManagementFeeCutoffDate] = useState(getTodayDateInput())
+  const [closingManagementFee, setClosingManagementFee] = useState(false)
 
   const [selectedCompanyId, setSelectedCompanyId] = useState('')
   const [selectedMonth, setSelectedMonth] = useState(getCurrentMonthKey())
@@ -590,6 +594,17 @@ export default function App() {
   useEffect(() => {
     if (typeof window === 'undefined') return
     window.localStorage.setItem('rentTrackerSelectedMonth', selectedMonth)
+  }, [selectedMonth])
+
+  useEffect(() => {
+    const today = getTodayDateInput()
+    const monthEnd = endOfMonth(selectedMonth)
+    const monthStart = startOfMonth(selectedMonth)
+    if (today < monthStart) {
+      setManagementFeeCutoffDate(monthStart)
+    } else {
+      setManagementFeeCutoffDate(today < monthEnd ? today : monthEnd)
+    }
   }, [selectedMonth])
 
   useEffect(() => {
@@ -949,6 +964,8 @@ export default function App() {
       { data: overrideData, error: overrideError },
       { data: depositProfileData, error: depositProfileError },
       { data: depositPaymentData, error: depositPaymentError },
+      { data: managementFeeInvoiceData, error: managementFeeInvoiceError },
+      { data: managementFeeItemData, error: managementFeeItemError },
     ] = await Promise.all([
       supabase.from('companies').select('*').order('created_at', { ascending: true }),
       supabase.from('properties').select('*').order('created_at', { ascending: true }),
@@ -958,6 +975,8 @@ export default function App() {
       supabase.from('monthly_overrides').select('*').order('month_key', { ascending: true }),
       supabase.from('security_deposits').select('*').order('created_at', { ascending: true }),
       supabase.from('security_deposit_payments').select('*').order('payment_date', { ascending: true }),
+      supabase.from('management_fee_invoices').select('*').order('created_at', { ascending: false }),
+      supabase.from('management_fee_invoice_items').select('*').order('payment_date', { ascending: true }),
     ])
 
     if (companyError) setMessage(companyError.message)
@@ -968,6 +987,8 @@ export default function App() {
     if (overrideError) setMessage(overrideError.message)
     if (depositProfileError) console.error('Security deposit profile load failed.', depositProfileError)
     if (depositPaymentError) console.error('Security deposit payment load failed.', depositPaymentError)
+    if (managementFeeInvoiceError) console.error('Management fee invoice load failed.', managementFeeInvoiceError)
+    if (managementFeeItemError) console.error('Management fee invoice item load failed.', managementFeeItemError)
 
     const safeCompanies = companyData || []
     const safeProperties = propertyData || []
@@ -977,6 +998,8 @@ export default function App() {
     const safeOverrides = overrideData || []
     const safeDepositProfiles = depositProfileData || []
     const safeDepositPayments = depositPaymentData || []
+    const safeManagementFeeInvoices = managementFeeInvoiceData || []
+    const safeManagementFeeItems = managementFeeItemData || []
 
     setCompanies(safeCompanies)
     setProperties(safeProperties)
@@ -985,6 +1008,8 @@ export default function App() {
     setTenants(safeTenants)
     setMonthlyOverrides(safeOverrides)
     setSecurityDeposits(buildSecurityDepositMap(safeDepositProfiles, safeDepositPayments))
+    setManagementFeeInvoices(safeManagementFeeInvoices)
+    setManagementFeeInvoiceItems(safeManagementFeeItems)
 
     if (safeCompanies.length > 0) {
       const stillExists = safeCompanies.find((c) => c.id === selectedCompanyId)
@@ -2628,6 +2653,140 @@ This permanently removes the payment from the ledger.`
   const totalCollected = filteredLedgerRows.reduce((sum, row) => sum + Number(row.totalPaid || 0), 0)
   const totalOutstanding = filteredLedgerRows.reduce((sum, row) => sum + Number(row.balanceRemaining || 0), 0)
   const managementFeeCollected = totalCollected * 0.1
+  const managementFeeRate = 0.1
+
+  const companyManagementFeeInvoices = useMemo(() => {
+    return managementFeeInvoices.filter((invoice) => invoice.company_id === selectedCompanyId)
+  }, [managementFeeInvoices, selectedCompanyId])
+
+  const invoicedManagementFeePaymentIds = useMemo(() => {
+    const companyInvoiceIds = new Set(companyManagementFeeInvoices.map((invoice) => invoice.id))
+    return new Set(
+      managementFeeInvoiceItems
+        .filter((item) => companyInvoiceIds.has(item.invoice_id))
+        .map((item) => item.payment_id)
+        .filter(Boolean)
+    )
+  }, [managementFeeInvoiceItems, companyManagementFeeInvoices])
+
+  const effectiveManagementFeeCutoffDate = useMemo(() => {
+    const requested = normalizeDateInputValue(managementFeeCutoffDate) || getTodayDateInput()
+    const monthEnd = endOfMonth(selectedMonth)
+    return requested < monthEnd ? requested : monthEnd
+  }, [managementFeeCutoffDate, selectedMonth])
+
+  const managementFeePreviewPayments = useMemo(() => {
+    const hasCloseoutHistory = companyManagementFeeInvoices.length > 0
+
+    return companyPayments
+      .filter((payment) => !isManualLateFeeEntry(payment))
+      .filter((payment) => Number(payment.amount || 0) > 0)
+      .filter((payment) => String(payment.payment_date || '').slice(0, 10) <= effectiveManagementFeeCutoffDate)
+      .filter((payment) => !invoicedManagementFeePaymentIds.has(payment.id))
+      // On the very first closeout, begin with the selected month so old, already-settled
+      // management fees are not accidentally billed again. After the first closeout, any
+      // uninvoiced older payment automatically rolls forward as a previous balance.
+      .filter((payment) => hasCloseoutHistory || monthKeyFromDate(payment.payment_date) === selectedMonth)
+      .sort((a, b) => String(a.payment_date || '').localeCompare(String(b.payment_date || '')))
+  }, [companyPayments, companyManagementFeeInvoices, effectiveManagementFeeCutoffDate, invoicedManagementFeePaymentIds, selectedMonth])
+
+  const managementFeePreviewGroups = useMemo(() => {
+    const groups = new Map()
+    managementFeePreviewPayments.forEach((payment) => {
+      const paymentMonth = monthKeyFromDate(payment.payment_date) || selectedMonth
+      const current = groups.get(paymentMonth) || { month: paymentMonth, collected: 0, fee: 0, payments: [] }
+      const amount = Number(payment.amount || 0)
+      current.collected += amount
+      current.fee += amount * managementFeeRate
+      current.payments.push(payment)
+      groups.set(paymentMonth, current)
+    })
+    return [...groups.values()].sort((a, b) => a.month.localeCompare(b.month))
+  }, [managementFeePreviewPayments, selectedMonth])
+
+  const priorManagementFeeGroups = managementFeePreviewGroups.filter((group) => group.month < selectedMonth)
+  const currentManagementFeeGroups = managementFeePreviewGroups.filter((group) => group.month === selectedMonth)
+  const priorManagementFeeBalance = priorManagementFeeGroups.reduce((sum, group) => sum + group.fee, 0)
+  const currentManagementFeeDue = currentManagementFeeGroups.reduce((sum, group) => sum + group.fee, 0)
+  const managementFeeInvoiceCollected = managementFeePreviewGroups.reduce((sum, group) => sum + group.collected, 0)
+  const managementFeeInvoiceDue = managementFeePreviewGroups.reduce((sum, group) => sum + group.fee, 0)
+
+  const companyManagementFeeHistory = useMemo(() => {
+    return companyManagementFeeInvoices
+      .slice()
+      .sort((a, b) => String(b.cutoff_date || b.created_at || '').localeCompare(String(a.cutoff_date || a.created_at || '')))
+  }, [companyManagementFeeInvoices])
+
+  async function closeOutManagementFeeInvoice() {
+    if (!selectedCompanyId) {
+      setMessage('Please select a company first.')
+      return
+    }
+    if (managementFeePreviewPayments.length === 0) {
+      setMessage('There are no uninvoiced rent payments through this closeout date.')
+      return
+    }
+
+    const cutoffDate = effectiveManagementFeeCutoffDate
+    if (!cutoffDate) {
+      setMessage('Please enter a valid management fee closeout date.')
+      return
+    }
+
+    const confirmed = window.confirm(
+      `Close out management fees through ${formatDate(cutoffDate)}?\n\n` +
+      `${managementFeePreviewPayments.length} payment${managementFeePreviewPayments.length === 1 ? '' : 's'} will be marked as paid/invoiced for ${currency(managementFeeInvoiceDue)}.\n\n` +
+      `Any rent payments entered after this closeout will remain uninvoiced and roll into the next management fee invoice.`
+    )
+    if (!confirmed) return
+
+    setClosingManagementFee(true)
+    setMessage('')
+
+    const invoiceNumber = `${getManagementInvoiceNumber()}-${cutoffDate.replaceAll('-', '')}`
+    const { data: invoice, error: invoiceError } = await supabase
+      .from('management_fee_invoices')
+      .insert({
+        company_id: selectedCompanyId,
+        invoice_month: selectedMonth,
+        invoice_number: invoiceNumber,
+        cutoff_date: cutoffDate,
+        fee_rate: managementFeeRate,
+        collected_amount: managementFeeInvoiceCollected,
+        fee_amount: managementFeeInvoiceDue,
+        status: 'closed',
+      })
+      .select('*')
+      .single()
+
+    if (invoiceError || !invoice) {
+      setClosingManagementFee(false)
+      setMessage(invoiceError?.message || 'Unable to create management fee closeout.')
+      return
+    }
+
+    const itemRows = managementFeePreviewPayments.map((payment) => ({
+      invoice_id: invoice.id,
+      payment_id: payment.id,
+      property_id: payment.property_id,
+      payment_month: monthKeyFromDate(payment.payment_date),
+      payment_date: payment.payment_date,
+      collected_amount: Number(payment.amount || 0),
+      fee_amount: Number(payment.amount || 0) * managementFeeRate,
+    }))
+
+    const { error: itemError } = await supabase.from('management_fee_invoice_items').insert(itemRows)
+    if (itemError) {
+      await supabase.from('management_fee_invoices').delete().eq('id', invoice.id)
+      setClosingManagementFee(false)
+      setMessage(itemError.message)
+      return
+    }
+
+    await loadData()
+    setClosingManagementFee(false)
+    setMessage(`Management fee closeout recorded through ${formatDate(cutoffDate)} for ${currency(managementFeeInvoiceDue)}.`)
+  }
 
   function printOwnerReport() {
     window.print()
@@ -2731,11 +2890,15 @@ This permanently removes the payment from the ledger.`
       '',
       `Billed To: ${selectedCompanyName}`,
       `Invoice #: ${getManagementInvoiceNumber()}`,
+      `Closeout Through: ${formatDate(effectiveManagementFeeCutoffDate)}`,
       `Generated: ${generatedOnLabel}`,
       '',
-      `Collected Rent: ${currency(totalCollected)}`,
+      `Uninvoiced Rent Collected: ${currency(managementFeeInvoiceCollected)}`,
+      `Previous Balance: ${currency(priorManagementFeeBalance)}`,
+      `${formatMonthYear(selectedMonth)} Fee: ${currency(currentManagementFeeDue)}`,
       `Management Fee Rate: 10%`,
-      `Amount Due: ${currency(managementFeeCollected)}`,
+      `Amount Due: ${currency(managementFeeInvoiceDue)}`,
+      ...priorManagementFeeGroups.map((group) => `Previous balance from ${formatMonthYear(group.month)} late collections: ${currency(group.fee)}`),
       '',
       'Thank you for your business.',
     ]
@@ -4051,8 +4214,8 @@ This permanently removes the payment from the ledger.`
           <div style={styles.kpiValue}>{currency(totalOutstanding)}</div>
         </div>
         <div className="mobile-kpi-card" style={styles.kpiCard}>
-          <div style={styles.kpiLabel}>10% Mgmt Fee</div>
-          <div style={styles.kpiValue}>{currency(managementFeeCollected)}</div>
+          <div style={styles.kpiLabel}>Mgmt Fee Due</div>
+          <div style={styles.kpiValue}>{currency(managementFeeInvoiceDue)}</div>
         </div>
       </div> : null}
 
@@ -5760,6 +5923,23 @@ This permanently removes the payment from the ledger.`
                 <p style={styles.smallMuted}>{selectedCompanyName} — {formatMonthYear(selectedMonth)}</p>
               </div>
               <div style={styles.actionRow}>
+                <label style={{ ...styles.label, marginBottom: 0 }}>
+                  Closeout through
+                  <input
+                    type="date"
+                    style={{ ...styles.input, width: 170, marginLeft: 8 }}
+                    value={managementFeeCutoffDate}
+                    onChange={(e) => setManagementFeeCutoffDate(e.target.value)}
+                  />
+                </label>
+                <button
+                  style={styles.smallPrimaryButton}
+                  type="button"
+                  onClick={closeOutManagementFeeInvoice}
+                  disabled={closingManagementFee || managementFeePreviewPayments.length === 0}
+                >
+                  {closingManagementFee ? 'Closing…' : 'Close Out & Record Payment'}
+                </button>
                 <button
                   style={styles.smallSecondaryButton}
                   type="button"
@@ -5802,13 +5982,14 @@ This permanently removes the payment from the ledger.`
                 <div style={styles.reportPrintMeta}>{formatMonthYear(selectedMonth)}</div>
                 <div style={styles.reportPrintMeta}><strong>Billed To:</strong> {selectedCompanyName}</div>
                 <div style={styles.reportPrintMeta}><strong>Invoice #:</strong> {getManagementInvoiceNumber()}</div>
+                <div style={styles.reportPrintMeta}><strong>Closeout Through:</strong> {formatDate(effectiveManagementFeeCutoffDate)}</div>
                 <div style={styles.reportPrintMeta}><strong>Generated:</strong> {generatedOnLabel}</div>
               </div>
 
               <div style={styles.invoiceSummaryGrid}>
                 <div style={styles.invoiceSummaryCard}>
-                  <div style={styles.invoiceSummaryLabel}>Collected Rent</div>
-                  <div style={styles.invoiceSummaryValue}>{currency(totalCollected)}</div>
+                  <div style={styles.invoiceSummaryLabel}>Uninvoiced Collections</div>
+                  <div style={styles.invoiceSummaryValue}>{currency(managementFeeInvoiceCollected)}</div>
                 </div>
                 <div style={styles.invoiceSummaryCard}>
                   <div style={styles.invoiceSummaryLabel}>Management Fee Rate</div>
@@ -5816,13 +5997,65 @@ This permanently removes the payment from the ledger.`
                 </div>
                 <div style={styles.invoiceSummaryCard}>
                   <div style={styles.invoiceSummaryLabel}>Amount Due</div>
-                  <div style={styles.invoiceSummaryValue}>{currency(managementFeeCollected)}</div>
+                  <div style={styles.invoiceSummaryValue}>{currency(managementFeeInvoiceDue)}</div>
                 </div>
               </div>
 
-              <div style={styles.notesBox}>
-                <strong>Invoice Notes:</strong> Property management fee for {formatMonthYear(selectedMonth)} based on rent collected for {selectedCompanyName}.
+              <div style={styles.tableWrap}>
+                <table style={styles.table}>
+                  <thead>
+                    <tr>
+                      <th style={styles.th}>Fee Period</th>
+                      <th style={styles.th}>Description</th>
+                      <th style={styles.th}>Rent Collected</th>
+                      <th style={styles.th}>Fee Due</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {managementFeePreviewGroups.length === 0 ? (
+                      <tr><td style={styles.td} colSpan="4">No uninvoiced rent payments through the selected closeout date.</td></tr>
+                    ) : managementFeePreviewGroups.map((group) => (
+                      <tr key={`management-fee-${group.month}`}>
+                        <td style={styles.td}>{formatMonthYear(group.month)}</td>
+                        <td style={styles.td}>{group.month < selectedMonth ? `Previous balance — late collections from ${formatMonthYear(group.month)}` : `${formatMonthYear(group.month)} management fee`}</td>
+                        <td style={styles.td}>{currency(group.collected)}</td>
+                        <td style={styles.td}>{currency(group.fee)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
+
+              <div style={styles.reportTotals}>
+                <div><strong>Previous Balance:</strong> {currency(priorManagementFeeBalance)}</div>
+                <div><strong>{formatMonthYear(selectedMonth)} Fee:</strong> {currency(currentManagementFeeDue)}</div>
+                <div><strong>Total Due:</strong> {currency(managementFeeInvoiceDue)}</div>
+              </div>
+
+              <div style={styles.notesBox}>
+                <strong>Invoice Notes:</strong> This invoice includes rent payments that have not previously been included in a management-fee closeout, through {formatDate(effectiveManagementFeeCutoffDate)}. After you click <strong>Close Out &amp; Record Payment</strong>, those payments are marked settled for management-fee purposes. Any rent received afterward will remain pending and automatically appear on the next invoice; if it belongs to an earlier month, it will be labeled as a previous balance from that month.
+              </div>
+
+              {companyManagementFeeHistory.length > 0 && (
+                <div style={{ marginTop: 18 }}>
+                  <h3 style={{ marginBottom: 8 }}>Management Fee Closeout History</h3>
+                  <div style={styles.tableWrap}>
+                    <table style={styles.table}>
+                      <thead><tr><th style={styles.th}>Invoice</th><th style={styles.th}>Closeout Through</th><th style={styles.th}>Invoice Month</th><th style={styles.th}>Fee Paid</th></tr></thead>
+                      <tbody>
+                        {companyManagementFeeHistory.slice(0, 12).map((invoice) => (
+                          <tr key={invoice.id}>
+                            <td style={styles.td}>{invoice.invoice_number}</td>
+                            <td style={styles.td}>{formatDate(invoice.cutoff_date)}</td>
+                            <td style={styles.td}>{formatMonthYear(invoice.invoice_month)}</td>
+                            <td style={styles.td}>{currency(invoice.fee_amount)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
 
               <div style={styles.reportPrintFooter}>
                 <span>Open Door Support</span>
