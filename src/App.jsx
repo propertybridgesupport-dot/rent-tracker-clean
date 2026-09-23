@@ -477,6 +477,13 @@ export default function App() {
     amount: '',
     note: '',
   })
+  const [editingLateFeeId, setEditingLateFeeId] = useState(null)
+  const [editLateFeeForm, setEditLateFeeForm] = useState({
+    propertyId: '',
+    chargeDate: '',
+    amount: '',
+    note: '',
+  })
   const [paymentSuccessMessage, setPaymentSuccessMessage] = useState('')
   const [voiceTranscript, setVoiceTranscript] = useState('')
   const [voiceStatus, setVoiceStatus] = useState('')
@@ -1339,6 +1346,76 @@ export default function App() {
 
     await loadData()
     setMessage(`Late fee posted for ${property?.address || 'selected property'} — ${currency(amountToUse)} on ${formatDate(chargeDate)}.`)
+  }
+
+  function startEditingLateFee(payment) {
+    setEditingLateFeeId(payment.id)
+    setEditLateFeeForm({
+      propertyId: payment.property_id || '',
+      chargeDate: normalizeDateInputValue(payment.payment_date),
+      amount: String(payment.amount || ''),
+      note: payment.note || '',
+    })
+  }
+
+  function cancelEditingLateFee() {
+    setEditingLateFeeId(null)
+    setEditLateFeeForm({
+      propertyId: '',
+      chargeDate: '',
+      amount: '',
+      note: '',
+    })
+  }
+
+  async function saveEditedLateFee(paymentId) {
+    setMessage('')
+
+    if (!editLateFeeForm.propertyId) {
+      setMessage('Please select a property for the late fee.')
+      return
+    }
+
+    const chargeDate = normalizeDateInputValue(editLateFeeForm.chargeDate)
+    if (!chargeDate) {
+      setMessage('Please enter a valid late fee date.')
+      return
+    }
+
+    const amount = Number(editLateFeeForm.amount || 0)
+    if (!amount || amount <= 0) {
+      setMessage('Please enter a late fee amount greater than zero.')
+      return
+    }
+
+    const { data: updatedFee, error } = await supabase
+      .from('payments')
+      .update({
+        property_id: editLateFeeForm.propertyId,
+        payment_date: chargeDate,
+        amount,
+        method: 'Late Fee',
+        note: editLateFeeForm.note || null,
+      })
+      .eq('id', paymentId)
+      .select('*')
+      .single()
+
+    if (error) {
+      setMessage(error.message)
+      return
+    }
+
+    if (updatedFee) {
+      setPayments((current) => current.map((item) => (item.id === paymentId ? updatedFee : item)))
+    }
+
+    const postedMonth = monthKeyFromDate(chargeDate)
+    cancelEditingLateFee()
+    if (postedMonth) setSelectedMonth(postedMonth)
+
+    await loadData()
+    setMessage(`Late fee updated — ${currency(amount)} on ${formatDate(chargeDate)}.`)
   }
 
   function startEditingProperty(property) {
@@ -2314,6 +2391,15 @@ This permanently removes the payment from the ledger.`
 
   const monthlyPayments = useMemo(() => {
     return companyPayments.filter((payment) => String(payment.payment_date).startsWith(selectedMonth))
+  }, [companyPayments, selectedMonth])
+
+  const monthlyLateFees = useMemo(() => {
+    return companyPayments
+      .filter((payment) => (
+        isManualLateFeeEntry(payment) &&
+        String(payment.payment_date || '').startsWith(selectedMonth)
+      ))
+      .sort((a, b) => String(b.payment_date || '').localeCompare(String(a.payment_date || '')))
   }, [companyPayments, selectedMonth])
 
 
@@ -5228,6 +5314,106 @@ This permanently removes the payment from the ledger.`
                 <button style={styles.primaryButton} type="submit">Post Late Fee</button>
               </div>
             </form>
+
+            <div style={{ marginTop: '22px', paddingTop: '18px', borderTop: '1px solid #eadfce' }}>
+              <h3 style={{ ...styles.cardTitle, marginBottom: '4px' }}>Posted Late Fees — {monthLabel(selectedMonth)}</h3>
+              <p style={styles.smallMuted}>Edit a fee if the property, date, amount, or note was entered incorrectly, or delete it completely.</p>
+
+              <div style={styles.tableWrap}>
+                <table style={styles.table}>
+                  <thead>
+                    <tr>
+                      <th style={styles.th}>Date</th>
+                      <th style={styles.th}>Property</th>
+                      <th style={styles.th}>Amount</th>
+                      <th style={styles.th}>Note</th>
+                      <th style={styles.th}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {monthlyLateFees.length === 0 ? (
+                      <tr>
+                        <td style={styles.td} colSpan="5">No late fees posted for {monthLabel(selectedMonth)}.</td>
+                      </tr>
+                    ) : (
+                      monthlyLateFees.map((fee) => {
+                        const property = companyProperties.find((item) => item.id === fee.property_id)
+                        const isEditing = editingLateFeeId === fee.id
+
+                        return (
+                          <tr key={`posted-late-fee-${fee.id}`}>
+                            <td style={{ ...styles.td, verticalAlign: 'middle' }}>
+                              {isEditing ? (
+                                <input
+                                  style={{ ...styles.tableInput, minWidth: '135px' }}
+                                  type="date"
+                                  value={editLateFeeForm.chargeDate}
+                                  onChange={(e) => setEditLateFeeForm((current) => ({ ...current, chargeDate: e.target.value }))}
+                                />
+                              ) : formatDate(fee.payment_date)}
+                            </td>
+
+                            <td style={{ ...styles.td, verticalAlign: 'middle' }}>
+                              {isEditing ? (
+                                <select
+                                  style={{ ...styles.tableInput, minWidth: '190px' }}
+                                  value={editLateFeeForm.propertyId}
+                                  onChange={(e) => setEditLateFeeForm((current) => ({ ...current, propertyId: e.target.value }))}
+                                >
+                                  <option value="">Select property</option>
+                                  {activeCompanyProperties.map((item) => (
+                                    <option key={`edit-late-fee-property-${item.id}`} value={item.id}>{item.address}</option>
+                                  ))}
+                                </select>
+                              ) : (property?.address || 'Property not found')}
+                            </td>
+
+                            <td style={{ ...styles.td, verticalAlign: 'middle' }}>
+                              {isEditing ? (
+                                <input
+                                  style={{ ...styles.tableInput, maxWidth: '110px' }}
+                                  type="number"
+                                  step="0.01"
+                                  value={editLateFeeForm.amount}
+                                  onChange={(e) => setEditLateFeeForm((current) => ({ ...current, amount: e.target.value }))}
+                                />
+                              ) : <strong>{currency(fee.amount)}</strong>}
+                            </td>
+
+                            <td style={{ ...styles.td, verticalAlign: 'middle' }}>
+                              {isEditing ? (
+                                <input
+                                  style={{ ...styles.tableInput, minWidth: '160px' }}
+                                  value={editLateFeeForm.note}
+                                  onChange={(e) => setEditLateFeeForm((current) => ({ ...current, note: e.target.value }))}
+                                  placeholder="Optional"
+                                />
+                              ) : (fee.note || '—')}
+                            </td>
+
+                            <td style={{ ...styles.td, verticalAlign: 'middle' }}>
+                              <div style={{ ...styles.actionRow, alignItems: 'center', flexWrap: 'nowrap' }}>
+                                {isEditing ? (
+                                  <>
+                                    <button style={styles.smallPrimaryButton} type="button" onClick={() => saveEditedLateFee(fee.id)}>Save</button>
+                                    <button style={styles.smallSecondaryButton} type="button" onClick={cancelEditingLateFee}>Cancel</button>
+                                  </>
+                                ) : (
+                                  <>
+                                    <button style={styles.smallSecondaryButton} type="button" onClick={() => startEditingLateFee(fee)}>Edit</button>
+                                    <button style={styles.smallDangerButton} type="button" onClick={() => deletePayment(fee.id)}>Delete</button>
+                                  </>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
           </div>
         </div>
       )}
