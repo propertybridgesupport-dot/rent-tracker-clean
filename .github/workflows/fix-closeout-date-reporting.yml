@@ -1,0 +1,41 @@
+name: Fix closeout date reporting
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - .github/workflows/fix-closeout-date-reporting.yml
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Apply closeout date reporting fix
+        run: node scripts/fix-closeout-date-reporting.cjs
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Validate build
+        run: npm run build
+
+      - name: Commit app update and remove temporary files
+        run: |
+          rm -f scripts/fix-closeout-date-reporting.cjs
+          rm -f .github/workflows/fix-closeout-date-reporting.yml
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/App.jsx scripts/fix-closeout-date-reporting.cjs .github/workflows/fix-closeout-date-reporting.yml
+          git commit -m "Fix closeout date reporting logic"
+          git push origin HEAD:main
