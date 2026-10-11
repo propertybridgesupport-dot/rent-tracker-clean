@@ -6672,9 +6672,6 @@ This permanently removes the payment from the ledger.`
                           <td style={styles.td}>{currency(row.effectiveRent)}</td>
                           <td style={styles.td}>
                             <strong>{currency(row.ownerReportCollected)}</strong>
-                            {row.ownerReportCarryIn > 0 ? (
-                              <div style={styles.smallMuted}>Includes {currency(row.ownerReportCarryIn)} received after prior closeout</div>
-                            ) : null}
                           </td>
                           <td style={styles.td}>
                             {row.ownerReportPaymentDates.length
