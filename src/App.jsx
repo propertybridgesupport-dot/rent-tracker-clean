@@ -3061,6 +3061,7 @@ This permanently removes the payment from the ledger.`
         total: 0,
         carryIn: 0,
         paymentDates: [],
+        payments: [],
       }
 
       const amount = Number(payment.amount || 0)
@@ -3075,6 +3076,12 @@ This permanently removes the payment from the ledger.`
         current.paymentDates.push(paymentDate)
       }
 
+      current.payments.push({
+        id: payment.id,
+        amount,
+        date: paymentDate,
+      })
+
       map.set(payment.property_id, current)
     })
 
@@ -3087,6 +3094,7 @@ This permanently removes the payment from the ledger.`
         total: 0,
         carryIn: 0,
         paymentDates: [],
+        payments: [],
       }
 
       return {
@@ -3094,6 +3102,7 @@ This permanently removes the payment from the ledger.`
         ownerReportCollected: paymentSummary.total,
         ownerReportCarryIn: paymentSummary.carryIn,
         ownerReportPaymentDates: paymentSummary.paymentDates,
+        ownerReportPayments: paymentSummary.payments,
       }
     })
   }, [filteredLedgerRows, ownerReportPaymentMap])
@@ -3199,9 +3208,12 @@ This permanently removes the payment from the ledger.`
       `10% Management Fee: ${currency(ownerReportManagementFee)}`,
       '',
       'Owner Summary:',
-      ...ownerReportRows.map((row) =>
-        `${row.address} | ${row.effectiveTenant} | Rent: ${currency(row.effectiveRent)} | Collected: ${currency(row.ownerReportCollected)} | Payment Date(s): ${row.ownerReportPaymentDates.length ? row.ownerReportPaymentDates.map(formatDate).join(', ') : '—'} | Balance: ${currency(row.balanceRemaining)}`
-      ),
+      ...ownerReportRows.map((row) => {
+        const paymentDetail = row.ownerReportPayments.length
+          ? row.ownerReportPayments.map((payment) => `${currency(payment.amount)} on ${formatDate(payment.date)}`).join('; ')
+          : '—'
+        return `${row.address} | ${row.effectiveTenant} | Rent: ${currency(row.effectiveRent)} | Payments: ${paymentDetail} | Balance: ${currency(row.balanceRemaining)}`
+      }),
       '',
       'Notes:',
       'Collections follow the owner reporting cycle: payments received after the prior management-fee closeout through this report cutoff. Actual payment dates are shown. Balances continue to follow the tenant ledger.',
@@ -6671,12 +6683,28 @@ This permanently removes the payment from the ledger.`
                           <td style={styles.td}>{row.effectiveTenant}</td>
                           <td style={styles.td}>{currency(row.effectiveRent)}</td>
                           <td style={styles.td}>
-                            <strong>{currency(row.ownerReportCollected)}</strong>
+                            {row.ownerReportPayments.length ? (
+                              <div style={{ display: 'grid', gap: '4px' }}>
+                                {row.ownerReportPayments.map((payment) => (
+                                  <div key={`owner-payment-amount-${payment.id}`}>
+                                    <strong>{currency(payment.amount)}</strong>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <strong>{currency(0)}</strong>
+                            )}
                           </td>
                           <td style={styles.td}>
-                            {row.ownerReportPaymentDates.length
-                              ? row.ownerReportPaymentDates.map(formatDate).join(', ')
-                              : '—'}
+                            {row.ownerReportPayments.length ? (
+                              <div style={{ display: 'grid', gap: '4px' }}>
+                                {row.ownerReportPayments.map((payment) => (
+                                  <div key={`owner-payment-date-${payment.id}`}>
+                                    {formatDate(payment.date)}
+                                  </div>
+                                ))}
+                              </div>
+                            ) : '—'}
                           </td>
                           <td style={styles.td}>{currency(row.balanceRemaining)}</td>
                         </tr>
